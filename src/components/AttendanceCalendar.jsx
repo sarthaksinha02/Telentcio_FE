@@ -15,11 +15,13 @@ const AttendanceCalendar = ({ history, onMonthChange, user }) => {
         return Array.from({ length: days }, (_, i) => new Date(year, month, i + 1));
     };
 
+
+
     const normalizeDate = (d) => new Date(d).toDateString();
 
     const days = getDaysInMonth(currentDate);
     const startDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay(); // 0 = Sun
-    
+
     // Create empty cells for start padding
     const blanks = Array.from({ length: startDay }, (_, i) => i);
 
@@ -74,18 +76,18 @@ const AttendanceCalendar = ({ history, onMonthChange, user }) => {
                 {blanks.map((b) => (
                     <div key={`blank-${b}`} className="min-h-[100px] border-b border-r border-slate-100 bg-slate-50/30"></div>
                 ))}
-                
+
                 {days.map((day) => {
                     const record = history.find(h => normalizeDate(h.date) === normalizeDate(day));
                     const isToday = normalizeDate(day) === normalizeDate(new Date());
                     const isSunday = day.getDay() === 0;
                     const joiningDate = user?.joiningDate ? new Date(user.joiningDate) : null;
-                    if (joiningDate) joiningDate.setHours(0,0,0,0);
+                    if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
                     const isBeforeJoining = joiningDate && day < joiningDate;
 
                     return (
-                        <div 
-                            key={day.toISOString()} 
+                        <div
+                            key={day.toISOString()}
                             className={`min-h-[100px] border-b border-r border-slate-100 p-2 relative group hover:bg-slate-50 transition-colors ${isToday ? 'bg-blue-50/30' : ''}`}
                         >
                             <div className={`text-right mb-2 font-medium ${isToday ? 'text-blue-600' : 'text-slate-400'}`}>
