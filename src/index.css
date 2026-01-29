@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans antialiased;
+  }
+}
+
+@layer components {
+  .zoho-card {
+    @apply bg-white border border-slate-200 rounded-lg shadow-sm;
+  }
+
+  .zoho-input {
+    @apply w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all;
+  }
+
+  .zoho-btn-primary {
+    @apply px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors shadow-sm;
+  }
+
+  .zoho-btn-secondary {
+    @apply px-4 py-2 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50 transition-colors shadow-sm;
+  }
+
+  .zoho-sidebar-link {
+    @apply flex items-center space-x-3 px-3 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors text-sm font-medium;
+  }
+
+  .zoho-sidebar-link-active {
+    @apply flex items-center space-x-3 px-3 py-2.5 text-white bg-blue-600 rounded-md text-sm font-medium shadow-md;
+  }
+}
