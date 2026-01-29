@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock } from 'lucide-react';
+import Skeleton from '../components/Skeleton';
 import { format, startOfWeek, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -14,14 +15,14 @@ const Timesheet = () => {
     const [attendanceLogs, setAttendanceLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [projects, setProjects] = useState([]);
-    
+
     // Approval Logic
     const [activeTab, setActiveTab] = useState('timesheet');
     const [pendingApprovals, setPendingApprovals] = useState([]);
     const [loadingApprovals, setLoadingApprovals] = useState(false);
 
     const canApprove = user?.roles?.includes('Admin') || user?.permissions?.includes('attendance.approve');
-    
+
     // Permission to edit own attendance
     const canEditAttendance = user?.roles?.includes('Admin') || user?.permissions?.includes('attendance.update_self');
 
@@ -41,8 +42,8 @@ const Timesheet = () => {
     };
 
     const toggleEntryRejection = (entryId) => {
-        setRejectedEntryIds(prev => 
-            prev.includes(entryId) 
+        setRejectedEntryIds(prev =>
+            prev.includes(entryId)
                 ? prev.filter(id => id !== entryId)
                 : [...prev, entryId]
         );
@@ -59,8 +60,8 @@ const Timesheet = () => {
         }
 
         try {
-            await api.put(`/timesheet/${selectedTimesheet._id}/approve`, { 
-                status: 'REJECTED', 
+            await api.put(`/timesheet/${selectedTimesheet._id}/approve`, {
+                status: 'REJECTED',
                 reason: rejectReason,
                 type: rejectionType,
                 rejectedEntryIds: rejectionType === 'PARTIAL' ? rejectedEntryIds : []
@@ -85,7 +86,7 @@ const Timesheet = () => {
             const s = new Date(`2000/01/01 ${start}`);
             const e = new Date(`2000/01/01 ${end}`);
             let diff = (e - s) / 3600000; // milliseconds to hours
-            if (diff < 0) diff += 24; 
+            if (diff < 0) diff += 24;
             return diff.toFixed(2);
         }
         return null;
@@ -95,18 +96,18 @@ const Timesheet = () => {
         setEntryToEdit(entry);
         setEditHours(entry.hours); // Load saved hours (PRIORITY)
         setEditDescription(entry.description || '');
-        
+
         if (entry.startTime && entry.endTime) {
             setEditStartTime(entry.startTime);
             setEditEndTime(entry.endTime);
         } else {
             const entryDateKey = format(new Date(entry.date), 'yyyy-MM-dd');
             const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === entryDateKey);
-            
+
             if (log && log.clockIn && log.clockOut) {
                 const fmtTime = (dateStr) => {
                     const d = new Date(dateStr);
-                    return d.toTimeString().substring(0, 5); 
+                    return d.toTimeString().substring(0, 5);
                 };
                 setEditStartTime(fmtTime(log.clockIn));
                 setEditEndTime(fmtTime(log.clockOut));
@@ -119,36 +120,36 @@ const Timesheet = () => {
 
     const submitEdit = async () => {
         try {
-                if (entryToEdit.type === 'ATTENDANCE_CREATE') {
-                    if (!editStartTime || !editEndTime) {
-                        toast.error('Both Check-In and Check-Out times are required');
-                        return;
-                    }
-                    // Create New
-                     const baseDate = format(new Date(entryToEdit.date), 'yyyy-MM-dd');
-                     const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}`) : null;
-                     const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}`) : null;
+            if (entryToEdit.type === 'ATTENDANCE_CREATE') {
+                if (!editStartTime || !editEndTime) {
+                    toast.error('Both Check-In and Check-Out times are required');
+                    return;
+                }
+                // Create New
+                const baseDate = format(new Date(entryToEdit.date), 'yyyy-MM-dd');
+                const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}`) : null;
+                const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}`) : null;
 
-                     await api.post('/attendance', {
-                        date: entryToEdit.date,
-                        clockIn: inTime,
-                        clockOut: outTime
-                     });
-                     toast.success('Attendance created');
+                await api.post('/attendance', {
+                    date: entryToEdit.date,
+                    clockIn: inTime,
+                    clockOut: outTime
+                });
+                toast.success('Attendance created');
 
-                } else if (entryToEdit.type === 'ATTENDANCE') {
-                    // Update Existing
-                    // Formatting dates back to ISO with correct date
-                    const baseDate = format(new Date(entryToEdit.date), 'yyyy-MM-dd');
-                    const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}`) : null;
-                    const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}`) : null;
+            } else if (entryToEdit.type === 'ATTENDANCE') {
+                // Update Existing
+                // Formatting dates back to ISO with correct date
+                const baseDate = format(new Date(entryToEdit.date), 'yyyy-MM-dd');
+                const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}`) : null;
+                const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}`) : null;
 
-                    await api.put(`/attendance/${entryToEdit._id}`, {
-                        clockIn: inTime,
-                        clockOut: outTime
-                    });
-                    toast.success('Attendance updated');
-                } else {
+                await api.put(`/attendance/${entryToEdit._id}`, {
+                    clockIn: inTime,
+                    clockOut: outTime
+                });
+                toast.success('Attendance updated');
+            } else {
                 await api.put(`/timesheet/entry/${entryToEdit._id}`, {
                     hours: Number(editHours),
                     description: editDescription,
@@ -158,7 +159,7 @@ const Timesheet = () => {
                 toast.success('Entry updated');
             }
             setEntryToEdit(null);
-            fetchData(); 
+            fetchData();
         } catch (error) {
             console.error(error);
             toast.error('Failed to update entry');
@@ -208,8 +209,8 @@ const Timesheet = () => {
         try {
             const formattedMonth = format(viewDate, 'yyyy-MM');
             const [tsRes, projRes] = await Promise.all([
-                targetUserId 
-                    ? api.get(`/timesheet/user/${targetUserId}?month=${formattedMonth}`) 
+                targetUserId
+                    ? api.get(`/timesheet/user/${targetUserId}?month=${formattedMonth}`)
                     : api.get('/timesheet/current'),
                 api.get('/timesheet/projects')
             ]);
@@ -240,18 +241,18 @@ const Timesheet = () => {
     const getEntriesByProject = () => {
         if (!timesheet) return {};
         const groups = {};
-        
+
         timesheet.entries.forEach(entry => {
             const pid = entry.project._id || entry.project; // Handle populated or id
             if (!groups[pid]) {
-                groups[pid] = { 
-                    project: entry.project, 
+                groups[pid] = {
+                    project: entry.project,
                     hours: {}, // Key: YYYY-MM-DD, Value: Total Hours
                     logs: {}   // Key: YYYY-MM-DD, Value: [Entries]
                 };
             }
             const dateKey = format(new Date(entry.date), 'yyyy-MM-dd');
-            
+
             // Sum hours
             const current = groups[pid].hours[dateKey] || 0;
             groups[pid].hours[dateKey] = current + entry.hours;
@@ -304,10 +305,10 @@ const Timesheet = () => {
         if (!timesheet) return;
 
         const workbook = new ExcelJS.Workbook();
-        
+
         // --- SHEET 1: WORK LOGS (HIERARCHICAL) ---
         const wsLogs = workbook.addWorksheet('Detailed Report');
-        
+
         // Columns setup
         wsLogs.columns = [
             { header: 'Item Name / Description', key: 'name', width: 50 },
@@ -332,11 +333,11 @@ const Timesheet = () => {
         console.log('Export Debug - User:', u);
 
         wsLogs.insertRow(1, { name: 'Timesheet Report' });
-        wsLogs.insertRow(2, { 
-            name: `Employee: ${u.firstName || u.email || 'Unknown'} ${u.lastName || ''}` 
+        wsLogs.insertRow(2, {
+            name: `Employee: ${u.firstName || u.email || 'Unknown'} ${u.lastName || ''}`
         });
-        wsLogs.insertRow(3, { 
-             name: `Supervisor: ${mgr.firstName ? `${mgr.firstName} ${mgr.lastName}` : 'N/A'}` 
+        wsLogs.insertRow(3, {
+            name: `Supervisor: ${mgr.firstName ? `${mgr.firstName} ${mgr.lastName}` : 'N/A'}`
         });
         wsLogs.insertRow(4, { name: '' }); // Spacer
 
@@ -344,14 +345,14 @@ const Timesheet = () => {
         wsLogs.getRow(1).font = { bold: true, size: 16 };
         wsLogs.getRow(2).font = { size: 12 };
         wsLogs.getRow(3).font = { size: 12 };
-        
+
         // Fix Header Row Index after insertion (Original Row 1 is now Row 5)
         const newHeaderRow = wsLogs.getRow(5);
         newHeaderRow.values = ['Item Name / Description', 'Status', 'Date', 'Hours', 'Start Time', 'End Time', 'Client'];
         newHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
-        newHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F497D' } }; 
+        newHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F497D' } };
         newHeaderRow.alignment = { vertical: 'middle', horizontal: 'center' };
-        
+
         // 1. Group Data: Project -> Module -> Task -> Logs
         const hierarchy = {};
 
@@ -359,7 +360,7 @@ const Timesheet = () => {
             const pId = entry.project?._id || entry.project || 'UNKNOWN_PROJECT';
             const pName = entry.project?.name || 'Unknown Project';
             const clientName = entry.project?.client?.name || 'Internal';
-            
+
             if (!hierarchy[pId]) {
                 hierarchy[pId] = { name: pName, client: clientName, modules: {}, totalHours: 0 };
             }
@@ -413,7 +414,7 @@ const Timesheet = () => {
                 mRow.outlineLevel = 1;
                 mRow.font = { bold: true, size: 12, color: { argb: 'FF000000' } };
                 mRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } }; // Pale Blue
-                
+
                 Object.values(mod.tasks).forEach(task => {
                     // Level 2: Task
                     const tRow = wsLogs.addRow({
@@ -445,14 +446,14 @@ const Timesheet = () => {
                         lRow.getCell('name').alignment = { indent: 2 }; // Visual Indent
 
                         if (log.status === 'REJECTED') {
-                             lRow.font = { color: { argb: 'FFFF0000' }, strike: true };
-                             lRow.getCell('status').font = { bold: true, color: { argb: 'FFFF0000' } };
+                            lRow.font = { color: { argb: 'FFFF0000' }, strike: true };
+                            lRow.getCell('status').font = { bold: true, color: { argb: 'FFFF0000' } };
                         }
                     });
                 });
             });
         });
-        
+
         // Auto-Filter
         wsLogs.autoFilter = { from: 'A1', to: { row: 1, column: 7 } };
 
@@ -467,26 +468,26 @@ const Timesheet = () => {
             { header: 'Status', key: 'status', width: 15 },
         ];
 
-         const attHeader = wsAtt.getRow(1);
-         attHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-         attHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF228B22' } }; // Green
-         attHeader.alignment = { vertical: 'middle', horizontal: 'center' };
+        const attHeader = wsAtt.getRow(1);
+        attHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        attHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF228B22' } }; // Green
+        attHeader.alignment = { vertical: 'middle', horizontal: 'center' };
 
-         attendanceLogs.forEach(log => {
-             const inTime = log.clockIn ? new Date(log.clockIn) : null;
-             const outTime = log.clockOut ? new Date(log.clockOut) : null;
-             let duration = 0;
-             if (log.duration) duration = (log.duration / 60).toFixed(2);
-             else if (inTime && outTime) duration = ((outTime - inTime) / 3600000).toFixed(2);
+        attendanceLogs.forEach(log => {
+            const inTime = log.clockIn ? new Date(log.clockIn) : null;
+            const outTime = log.clockOut ? new Date(log.clockOut) : null;
+            let duration = 0;
+            if (log.duration) duration = (log.duration / 60).toFixed(2);
+            else if (inTime && outTime) duration = ((outTime - inTime) / 3600000).toFixed(2);
 
-             wsAtt.addRow({
-                 date: format(new Date(log.date), 'yyyy-MM-dd'),
-                 in: inTime ? format(inTime, 'HH:mm:ss') : '-',
-                 out: outTime ? format(outTime, 'HH:mm:ss') : '-',
-                 duration: duration,
-                 status: (inTime && outTime) ? 'Present' : 'Incomplete'
-             });
-         });
+            wsAtt.addRow({
+                date: format(new Date(log.date), 'yyyy-MM-dd'),
+                in: inTime ? format(inTime, 'HH:mm:ss') : '-',
+                out: outTime ? format(outTime, 'HH:mm:ss') : '-',
+                duration: duration,
+                status: (inTime && outTime) ? 'Present' : 'Incomplete'
+            });
+        });
 
         // Export
         const buffer = await workbook.xlsx.writeBuffer();
@@ -497,19 +498,19 @@ const Timesheet = () => {
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-7xl mx-auto space-y-6">
-                
+
                 {/* Tabs & Header */}
                 <div className="flex flex-col space-y-4">
                     <div className="flex justify-between items-center">
                         <div className="flex space-x-1 bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
-                            <button 
+                            <button
                                 onClick={() => setActiveTab('timesheet')}
                                 className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'timesheet' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Timesheet View
                             </button>
                             {(canApprove) && (
-                                <button 
+                                <button
                                     onClick={() => setActiveTab('approvals')}
                                     className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center space-x-2 ${activeTab === 'approvals' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
@@ -526,7 +527,7 @@ const Timesheet = () => {
 
                     {activeTab === 'timesheet' && (
                         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
-                             <div className="flex justify-between items-center mb-4">
+                            <div className="flex justify-between items-center mb-4">
                                 <div>
                                     <h1 className="text-2xl font-bold text-slate-800">
                                         {targetUserName ? `${targetUserName}'s Timesheet` : 'Timesheet'}
@@ -558,16 +559,16 @@ const Timesheet = () => {
                                         </button>
                                     )}
                                 </div>
-                             </div>
-                             
-                             {/* Rejection Feedback */}
-                             {timesheet?.status === 'REJECTED' && (
+                            </div>
+
+                            {/* Rejection Feedback */}
+                            {timesheet?.status === 'REJECTED' && (
                                 <div className="bg-red-50 border border-red-100 p-3 rounded-lg text-sm text-red-800 mb-4">
                                     <div className="flex items-start mb-2">
                                         <div className="font-bold mr-2">Rejection Reason:</div>
                                         <div>{timesheet.rejectionReason}</div>
                                     </div>
-                                    
+
                                     {/* Rejected Entries List */}
                                     {timesheet.entries.filter(e => e.status === 'REJECTED').length > 0 && (
                                         <div className="mt-2 bg-white rounded border border-red-100 p-2">
@@ -576,7 +577,7 @@ const Timesheet = () => {
                                                 {timesheet.entries.filter(e => e.status === 'REJECTED').map(entry => (
                                                     <div key={entry._id} className="flex justify-between items-center text-xs p-1 hover:bg-red-50 rounded">
                                                         <span>{format(new Date(entry.date), 'MMM d')} - {entry.project?.name} ({entry.hours}h)</span>
-                                                        <button 
+                                                        <button
                                                             onClick={() => handleEditClick(entry)}
                                                             className="px-2 py-0.5 bg-red-100 text-red-700 hover:bg-red-200 rounded font-bold border border-red-200"
                                                         >
@@ -588,94 +589,111 @@ const Timesheet = () => {
                                         </div>
                                     )}
                                 </div>
-                             )}
+                            )}
+                        </>
+                    )}
+                </div>
+                    )}
+            </div>
+
+            {activeTab === 'approvals' ? (
+                <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                        <h3 className="font-bold text-slate-700">Attendance Requests</h3>
+                    </div>
+                    {loadingApprovals ? (
+                        <div className="divide-y divide-slate-100">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="px-6 py-4 flex justify-between items-center">
+                                    <div className="space-y-2">
+                                        <Skeleton className="h-5 w-32" />
+                                        <Skeleton className="h-3 w-24" />
+                                    </div>
+                                    <Skeleton className="h-4 w-16" />
+                                    <Skeleton className="h-6 w-16 rounded-full" />
+                                    <div className="flex space-x-2">
+                                        <Skeleton className="h-6 w-16" />
+                                        <Skeleton className="h-6 w-16" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : pendingApprovals.length > 0 ? (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-50 text-slate-500 font-medium">
+                                    <tr>
+                                        <th className="px-6 py-3">Employee</th>
+                                        <th className="px-6 py-3">Month</th>
+                                        <th className="px-6 py-3">Total Entries</th>
+                                        <th className="px-6 py-3 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {pendingApprovals.map(ts => (
+                                        <tr key={ts._id} className="hover:bg-slate-50/50">
+                                            <td className="px-6 py-3">
+                                                <div className="font-medium text-slate-800">{ts.user?.firstName} {ts.user?.lastName}</div>
+                                                <div className="text-xs text-slate-500">{ts.user?.employeeCode}</div>
+                                            </td>
+                                            <td className="px-6 py-3 font-mono text-slate-600">
+                                                {ts.month}
+                                            </td>
+                                            <td className="px-6 py-3 text-slate-600">
+                                                <span className="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded-full">
+                                                    {ts.entries?.length || 0} Items
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-3 text-right space-x-2">
+                                                <button
+                                                    onClick={() => {
+                                                        // View logic: Redirect to URL with params to trigger Manager View
+                                                        const url = new URL(window.location);
+                                                        url.searchParams.set('userId', ts.user._id);
+                                                        url.searchParams.set('name', `${ts.user.firstName} ${ts.user.lastName}`);
+                                                        window.history.pushState({}, '', url);
+                                                        // Force reload/re-render logic:
+                                                        // Since we use window.location.search in component body (which is not reactive solely by pushState),
+                                                        // we should technically reload or lift state. 
+                                                        // Better: Use internal state if possible, but our logic uses queryParams const.
+                                                        // Simplest: Force reload or use navigate if using react-router (which we likely are but I see no hook usage).
+                                                        window.location.reload();
+                                                    }}
+                                                    className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded text-xs font-bold transition-colors"
+                                                >
+                                                    View Details
+                                                </button>
+                                                <button
+                                                    onClick={() => handleApprove(ts, 'APPROVED')}
+                                                    className="px-3 py-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded text-xs font-bold transition-colors"
+                                                >
+                                                    Approve
+                                                </button>
+                                                <button
+                                                    onClick={() => handleApprove(ts, 'REJECTED')}
+                                                    className="px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded text-xs font-bold transition-colors"
+                                                >
+                                                    Reject
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="p-12 text-center text-slate-400">
+                            <Clock size={48} className="mx-auto mb-3 text-slate-200" />
+                            <p>No pending approvals found.</p>
                         </div>
                     )}
                 </div>
-
-                {activeTab === 'approvals' ? (
-                    <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                            <h3 className="font-bold text-slate-700">Attendance Requests</h3>
-                        </div>
-                        {loadingApprovals ? (
-                            <div className="p-8 text-center text-slate-500">Loading requests...</div>
-                        ) : pendingApprovals.length > 0 ? (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-slate-50 text-slate-500 font-medium">
-                                        <tr>
-                                            <th className="px-6 py-3">Employee</th>
-                                            <th className="px-6 py-3">Month</th>
-                                            <th className="px-6 py-3">Total Entries</th>
-                                            <th className="px-6 py-3 text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {pendingApprovals.map(ts => (
-                                            <tr key={ts._id} className="hover:bg-slate-50/50">
-                                                <td className="px-6 py-3">
-                                                    <div className="font-medium text-slate-800">{ts.user?.firstName} {ts.user?.lastName}</div>
-                                                    <div className="text-xs text-slate-500">{ts.user?.employeeCode}</div>
-                                                </td>
-                                                <td className="px-6 py-3 font-mono text-slate-600">
-                                                    {ts.month}
-                                                </td>
-                                                <td className="px-6 py-3 text-slate-600">
-                                                    <span className="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded-full">
-                                                        {ts.entries?.length || 0} Items
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-3 text-right space-x-2">
-                                                    <button 
-                                                        onClick={() => {
-                                                            // View logic: Redirect to URL with params to trigger Manager View
-                                                            const url = new URL(window.location);
-                                                            url.searchParams.set('userId', ts.user._id);
-                                                            url.searchParams.set('name', `${ts.user.firstName} ${ts.user.lastName}`);
-                                                            window.history.pushState({}, '', url);
-                                                            // Force reload/re-render logic:
-                                                            // Since we use window.location.search in component body (which is not reactive solely by pushState),
-                                                            // we should technically reload or lift state. 
-                                                            // Better: Use internal state if possible, but our logic uses queryParams const.
-                                                            // Simplest: Force reload or use navigate if using react-router (which we likely are but I see no hook usage).
-                                                            window.location.reload(); 
-                                                        }}
-                                                        className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded text-xs font-bold transition-colors"
-                                                    >
-                                                        View Details
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleApprove(ts, 'APPROVED')}
-                                                        className="px-3 py-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded text-xs font-bold transition-colors"
-                                                    >
-                                                        Approve
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleApprove(ts, 'REJECTED')}
-                                                        className="px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded text-xs font-bold transition-colors"
-                                                    >
-                                                        Reject
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <div className="p-12 text-center text-slate-400">
-                                <Clock size={48} className="mx-auto mb-3 text-slate-200" />
-                                <p>No pending approvals found.</p>
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <>
+            ) : (
+                <>
                     {/* Inline Detail View */}
                     {selectedCell && (
                         <div className="bg-white rounded-lg shadow-sm border border-slate-200 mb-6 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-200">
-                             <div className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center">
+                            <div className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center">
                                 <div>
                                     <h3 className="font-bold text-slate-800 text-lg">{format(selectedCell.date, 'EEEE, d MMM yyyy')}</h3>
                                     <p className="text-xs text-slate-500 uppercase tracking-wide mt-1">{selectedCell.project.name}</p>
@@ -687,113 +705,113 @@ const Timesheet = () => {
                                 <div className="p-4 bg-slate-50/50">
                                     <h4 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center justify-between">
                                         <div className="flex items-center"><Clock size={12} className="mr-1" /> Attendance</div>
-                                        {attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date))) && 
-                                         (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && canEditAttendance && (
-                                            <button 
-                                                onClick={() => {
-                                                    const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
-                                                    setEntryToEdit({ _id: log._id, type: 'ATTENDANCE', ...log });
-                                                    // Pre-fill
-                                                    const fmtTime = (d) => d ? new Date(d).toTimeString().substring(0, 5) : '';
-                                                    setEditStartTime(fmtTime(log.clockIn));
-                                                    setEditEndTime(fmtTime(log.clockOut));
-                                                }}
-                                                className="text-[10px] text-blue-600 hover:underline cursor-pointer"
-                                            >
-                                                Edit Time
-                                            </button>
-                                        )}
+                                        {attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date))) &&
+                                            (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && canEditAttendance && (
+                                                <button
+                                                    onClick={() => {
+                                                        const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
+                                                        setEntryToEdit({ _id: log._id, type: 'ATTENDANCE', ...log });
+                                                        // Pre-fill
+                                                        const fmtTime = (d) => d ? new Date(d).toTimeString().substring(0, 5) : '';
+                                                        setEditStartTime(fmtTime(log.clockIn));
+                                                        setEditEndTime(fmtTime(log.clockOut));
+                                                    }}
+                                                    className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                                                >
+                                                    Edit Time
+                                                </button>
+                                            )}
                                     </h4>
 
                                     {/* Inline Attendance Edit Logic */
-                                    (entryToEdit && (entryToEdit.type === 'ATTENDANCE' || entryToEdit.type === 'ATTENDANCE_CREATE')) ? (
-                                        <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 animate-in fade-in zoom-in-95 duration-200">
-                                            <div className="grid grid-cols-2 gap-4 mb-4">
-                                                <div>
-                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Check In</label>
-                                                    <input 
-                                                        type="time" 
-                                                        value={editStartTime}
-                                                        onChange={e => setEditStartTime(e.target.value)}
-                                                        className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
-                                                    />
+                                        (entryToEdit && (entryToEdit.type === 'ATTENDANCE' || entryToEdit.type === 'ATTENDANCE_CREATE')) ? (
+                                            <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 animate-in fade-in zoom-in-95 duration-200">
+                                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Check In</label>
+                                                        <input
+                                                            type="time"
+                                                            value={editStartTime}
+                                                            onChange={e => setEditStartTime(e.target.value)}
+                                                            className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Check Out</label>
+                                                        <input
+                                                            type="time"
+                                                            value={editEndTime}
+                                                            onChange={e => setEditEndTime(e.target.value)}
+                                                            className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                                                        />
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Check Out</label>
-                                                    <input 
-                                                        type="time" 
-                                                        value={editEndTime}
-                                                        onChange={e => setEditEndTime(e.target.value)}
-                                                        className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
-                                                    />
+                                                <div className="flex justify-between items-center">
+                                                    <div className="text-xs text-slate-400 italic">
+                                                        Modifying attendance will auto-update calculated hours.
+                                                    </div>
+                                                    <div className="flex space-x-2">
+                                                        <button
+                                                            onClick={() => setEntryToEdit(null)}
+                                                            className="px-3 py-1.5 text-slate-600 hover:text-slate-800 font-medium text-xs bg-white border border-slate-200 rounded"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            onClick={submitEdit}
+                                                            className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold text-xs shadow-sm"
+                                                        >
+                                                            Save Attendance
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div className="flex justify-between items-center">
-                                                <div className="text-xs text-slate-400 italic">
-                                                    Modifying attendance will auto-update calculated hours.
-                                                </div>
-                                                <div className="flex space-x-2">
-                                                    <button 
-                                                        onClick={() => setEntryToEdit(null)}
-                                                        className="px-3 py-1.5 text-slate-600 hover:text-slate-800 font-medium text-xs bg-white border border-slate-200 rounded"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button 
-                                                        onClick={submitEdit}
-                                                        className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold text-xs shadow-sm"
-                                                    >
-                                                        Save Attendance
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date))) ? (
-                                            (() => {
-                                                const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
-                                                const start = log.clockIn ? new Date(log.clockIn) : null;
-                                                const end = log.clockOut ? new Date(log.clockOut) : null;
-                                                const duration = start && end ? ((end - start) / 3600000).toFixed(2) : '0.0';
+                                        ) : (
+                                            attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date))) ? (
+                                                (() => {
+                                                    const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
+                                                    const start = log.clockIn ? new Date(log.clockIn) : null;
+                                                    const end = log.clockOut ? new Date(log.clockOut) : null;
+                                                    const duration = start && end ? ((end - start) / 3600000).toFixed(2) : '0.0';
 
-                                                return (
-                                                    <div className="flex flex-col space-y-2">
-                                                        <div className="flex justify-between items-center text-sm bg-white p-2 rounded border border-slate-200 shadow-sm">
-                                                            <div className="flex flex-col">
-                                                                <span className="text-slate-400 text-[10px] font-bold uppercase">Check In</span> 
-                                                                <span className="font-mono font-medium text-emerald-600">
-                                                                    {start ? format(start, 'h:mm:ss a') : '--:--'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="h-8 w-px bg-slate-100"></div>
-                                                            <div className="flex flex-col text-right">
-                                                                <span className="text-slate-400 text-[10px] font-bold uppercase">Check Out</span> 
-                                                                <span className="font-mono font-medium text-red-600">
-                                                                    {end ? format(end, 'h:mm:ss a') : 'Active'}
-                                                                </span>
+                                                    return (
+                                                        <div className="flex flex-col space-y-2">
+                                                            <div className="flex justify-between items-center text-sm bg-white p-2 rounded border border-slate-200 shadow-sm">
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-slate-400 text-[10px] font-bold uppercase">Check In</span>
+                                                                    <span className="font-mono font-medium text-emerald-600">
+                                                                        {start ? format(start, 'h:mm:ss a') : '--:--'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="h-8 w-px bg-slate-100"></div>
+                                                                <div className="flex flex-col text-right">
+                                                                    <span className="text-slate-400 text-[10px] font-bold uppercase">Check Out</span>
+                                                                    <span className="font-mono font-medium text-red-600">
+                                                                        {end ? format(end, 'h:mm:ss a') : 'Active'}
+                                                                    </span>
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                );
-                                            })()
-                                        ) : (
-                                            <div className="text-center py-4 space-y-3">
-                                                <div className="text-xs text-slate-400 italic">No attendance record found for this date.</div>
-                                                {(timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && canEditAttendance && (
-                                                    <button
-                                                        onClick={() => {
-                                                            setEntryToEdit({ type: 'ATTENDANCE_CREATE', date: selectedCell.date });
-                                                            setEditStartTime('');
-                                                            setEditEndTime('');
-                                                        }}
-                                                        className="zoho-btn-secondary text-xs w-full justify-center"
-                                                    >
-                                                        <Clock size={14} className="mr-1" /> Add Attendance Manually
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )
-                                    )}
+                                                    );
+                                                })()
+                                            ) : (
+                                                <div className="text-center py-4 space-y-3">
+                                                    <div className="text-xs text-slate-400 italic">No attendance record found for this date.</div>
+                                                    {(timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && canEditAttendance && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setEntryToEdit({ type: 'ATTENDANCE_CREATE', date: selectedCell.date });
+                                                                setEditStartTime('');
+                                                                setEditEndTime('');
+                                                            }}
+                                                            className="zoho-btn-secondary text-xs w-full justify-center"
+                                                        >
+                                                            <Clock size={14} className="mr-1" /> Add Attendance Manually
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )
+                                        )}
                                 </div>
 
                                 {selectedCell.logs.map((log, i) => (
@@ -827,8 +845,8 @@ const Timesheet = () => {
                                                 <div className="grid grid-cols-4 gap-3 mb-3">
                                                     <div className="col-span-1">
                                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hours</label>
-                                                        <input 
-                                                            type="number" 
+                                                        <input
+                                                            type="number"
                                                             value={editHours}
                                                             onChange={e => setEditHours(e.target.value)}
                                                             className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm"
@@ -837,7 +855,7 @@ const Timesheet = () => {
                                                     </div>
                                                     <div className="col-span-3">
                                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
-                                                        <textarea 
+                                                        <textarea
                                                             value={editDescription}
                                                             onChange={e => setEditDescription(e.target.value)}
                                                             className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none h-[38px] min-h-[38px] resize-none text-sm leading-tight"
@@ -845,13 +863,13 @@ const Timesheet = () => {
                                                     </div>
                                                 </div>
                                                 <div className="flex justify-end space-x-2">
-                                                    <button 
+                                                    <button
                                                         onClick={() => setEntryToEdit(null)}
                                                         className="px-3 py-1 text-slate-500 hover:text-slate-700 text-xs font-medium"
                                                     >
                                                         Cancel
                                                     </button>
-                                                    <button 
+                                                    <button
                                                         onClick={submitEdit}
                                                         className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-bold"
                                                     >
@@ -874,12 +892,12 @@ const Timesheet = () => {
                                                             {log.hours}h
                                                         </span>
                                                         {(timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED') && !targetUserId && (
-                                                             <button 
+                                                            <button
                                                                 onClick={() => { setSelectedCell(null); handleEditClick(log); }}
                                                                 className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
-                                                             >
+                                                            >
                                                                 Edit
-                                                             </button>
+                                                            </button>
                                                         )}
                                                     </div>
                                                 </div>
@@ -891,8 +909,8 @@ const Timesheet = () => {
                             <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between items-center text-sm">
                                 <span className="text-slate-500">Total for Day</span>
                                 <span className="font-bold text-slate-800 text-lg">
-                                    {(selectedCell.logs.length > 0 
-                                        ? selectedCell.logs.reduce((acc, l) => acc + l.hours, 0) 
+                                    {(selectedCell.logs.length > 0
+                                        ? selectedCell.logs.reduce((acc, l) => acc + l.hours, 0)
                                         : (() => {
                                             const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
                                             if (!log) return 0;
@@ -904,280 +922,278 @@ const Timesheet = () => {
                         </div>
                     )}
 
-                <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
-                                    <th className="p-4 border-r border-slate-200 min-w-[200px] sticky left-0 z-20 bg-slate-50 font-bold">
-                                        Project / Task
-                                    </th>
-                                    {daysInMonth.map(day => (
-                                        <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[50px] text-center ${['Sat', 'Sun'].includes(format(day, 'EEE')) ? 'bg-slate-100/50' : ''}`}>
-                                            <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
-                                            <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
+                    <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
+                                        <th className="p-4 border-r border-slate-200 min-w-[200px] sticky left-0 z-20 bg-slate-50 font-bold">
+                                            Project / Task
                                         </th>
-                                    ))}
-                                    <th className="p-4 border-l border-slate-200 min-w-[80px] font-bold text-center bg-slate-50 sticky right-0 z-10">
-                                        Total
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {/* Attendance Row */}
-                                <tr className="bg-slate-50/80 border-b border-slate-200">
-                                    <td className="p-4 border-r border-slate-200 font-bold text-slate-700 sticky left-0 bg-slate-50 z-10">
-                                        <div className="flex flex-col">
-                                            <span>Attendance</span>
-                                            <span className="text-[10px] text-slate-400 font-normal uppercase">Check-in / Out</span>
-                                        </div>
-                                    </td>
-                                    {daysInMonth.map(day => {
-                                        const dateKey = format(day, 'yyyy-MM-dd');
-                                        const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateKey);
-                                        const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
-                                        
-                                        return (
-                                            <td 
-                                                key={'att-' + day} 
-                                                onClick={() => handleCellClick({ name: 'Attendance Log' }, day, [], true)}
-                                                className={`p-1 border-r border-slate-200 text-center text-xs cursor-pointer hover:bg-blue-50 transition-colors ${
-                                                    isWeekend ? 'bg-slate-100/50' : ''
-                                                }`}
-                                            >
-                                                {log ? (
-                                                    <div className="flex flex-col items-center justify-center">
-                                                        <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${
-                                                            log.clockOutIST || isSameDay(new Date(log.date), new Date()) 
-                                                                ? 'bg-slate-200 text-slate-800' 
-                                                                : 'bg-red-100 text-red-700'
-                                                        }`}>
-                                                            {log.duration 
-                                                                ? (log.duration / 60).toFixed(1) 
-                                                                : (log.clockOut && log.clockIn 
-                                                                    ? ((new Date(log.clockOut) - new Date(log.clockIn)) / 3600000).toFixed(1) 
-                                                                    : '-')}
-                                                        </span>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-slate-300">-</span>
-                                                )}
-                                            </td>
-                                        );
-                                    })}
-                                    <td className="p-4 border-l border-slate-200 font-bold text-center bg-slate-50 sticky right-0 z-10">
-                                         {/* Total Attendance Hours */}
-                                         {(attendanceLogs.reduce((acc, log) => {
-                                             if (log.duration) return acc + (log.duration / 60);
-                                             if (log.clockIn && log.clockOut) {
-                                                const dur = (new Date(log.clockOut) - new Date(log.clockIn)) / 3600000;
-                                                return acc + dur;
-                                             }
-                                             return acc;
-                                         }, 0)).toFixed(1)}
-                                    </td>
-                                </tr>
-                                {Object.values(projectGroups).length > 0 ? (
-                                    Object.values(projectGroups).map((group, idx) => {
-                                        const projectTotal = Object.values(group.hours).reduce((a, b) => a + b, 0);
-                                        return (
-                                            <tr key={group.project._id || idx} className="hover:bg-blue-50/30 transition-colors group">
-                                                <td className="p-4 border-r border-slate-200 font-medium text-slate-700 sticky left-0 bg-white group-hover:bg-blue-50/30 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-sm text-slate-800">{group.project.name || 'Unknown Project'}</span>
-                                                        <span className="text-xs text-slate-400 font-normal">{group.project.client?.name || 'Internal'}</span>
-                                                    </div>
-                                                </td>
-                                                {daysInMonth.map(day => {
-                                                    const dateKey = format(day, 'yyyy-MM-dd');
-                                                    const hours = group.hours[dateKey];
-                                                    const logs = group.logs[dateKey] || [];
-                                                    const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
-                                                    const isRejected = logs.some(l => l.status === 'REJECTED');
-                                                    return (
-                                                        <td 
-                                                            key={day.toString()} 
-                                                            onClick={() => handleCellClick(group.project, day, logs)}
-                                                            className={`p-1 border-r border-slate-200 text-center cursor-pointer hover:bg-blue-100 transition-colors ${isWeekend ? 'bg-slate-50/30' : ''}`}
-                                                        >
-                                                            {hours ? (
-                                                                <div className="flex flex-col items-center justify-center group/cell relative">
-                                                                     <span className={`inline-flex items-center justify-center h-8 w-8 rounded-full font-bold text-xs shadow-sm transition-all ${
-                                                                         isRejected 
-                                                                            ? 'bg-red-100 text-red-700 ring-1 ring-red-500 group-hover/cell:bg-red-600 group-hover/cell:text-white' 
-                                                                            : 'bg-blue-100 text-blue-700 group-hover/cell:bg-blue-600 group-hover/cell:text-white'
-                                                                     }`}>
-                                                                        {hours}
-                                                                     </span>
-                                                                     {logs.length > 1 && (
-                                                                         <div className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white"></div>
-                                                                     )}
-                                                                </div>
-                                                            ) : (
-                                                                <span className="text-slate-200 text-xs">•</span>
-                                                            )}
-                                                        </td>
-                                                    );
-                                                })}
-                                                <td className="p-4 border-l border-slate-200 text-center font-bold text-slate-800 bg-white sticky right-0 z-10 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                    {projectTotal.toFixed(1)}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                ) : (
-                                    <tr>
-                                        <td colSpan={daysInMonth.length + 2} className="p-12 text-center text-slate-500 bg-slate-50/50">
-                                            <div className="flex flex-col items-center">
-                                                <Calendar size={48} className="text-slate-300 mb-3" />
-                                                <p className="font-medium">No timesheet entries found</p>
-                                                <p className="text-xs mt-1">Clock in or log work to see data here</p>
+                                        {daysInMonth.map(day => (
+                                            <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[50px] text-center ${['Sat', 'Sun'].includes(format(day, 'EEE')) ? 'bg-slate-100/50' : ''}`}>
+                                                <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
+                                                <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
+                                            </th>
+                                        ))}
+                                        <th className="p-4 border-l border-slate-200 min-w-[80px] font-bold text-center bg-slate-50 sticky right-0 z-10">
+                                            Total
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {/* Attendance Row */}
+                                    <tr className="bg-slate-50/80 border-b border-slate-200">
+                                        <td className="p-4 border-r border-slate-200 font-bold text-slate-700 sticky left-0 bg-slate-50 z-10">
+                                            <div className="flex flex-col">
+                                                <span>Attendance</span>
+                                                <span className="text-[10px] text-slate-400 font-normal uppercase">Check-in / Out</span>
                                             </div>
                                         </td>
-                                    </tr>
-                                )}
-                                
-                                {/* Daily Totals Row */}
-                                <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs uppercase text-slate-700">
-                                    <td className="p-3 border-r border-slate-300 sticky left-0 bg-slate-100 z-20">Daily Total</td>
-                                    {daysInMonth.map(day => {
-                                         const total = getTotalPerDay(day);
-                                         return (
-                                            <td key={day.toString()} className="p-1 border-r border-slate-300 text-center">
-                                                {total > 0 && (
-                                                    <span className={`block py-1 rounded ${total > 9 ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-800'}`}>
-                                                        {total.toFixed(1)}
-                                                    </span>
-                                                )}
-                                            </td>
-                                         );
-                                    })}
-                                    <td className="p-3 border-l border-slate-300 text-center text-white bg-slate-600 sticky right-0 z-10">
-                                         {daysInMonth.reduce((acc, day) => acc + getTotalPerDay(day), 0).toFixed(1)}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                                        {daysInMonth.map(day => {
+                                            const dateKey = format(day, 'yyyy-MM-dd');
+                                            const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateKey);
+                                            const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
 
-                 <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-start space-x-3">
-                    <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
-                        <Calendar size={20} />
-                    </div>
-                    <div>
-                        <h4 className="font-bold text-blue-800">Automated Sync Active</h4>
-                        <p className="text-sm text-blue-600 mt-1">
-                            Your "Attendance" hours are automatically populated from your Attendance (Clock In/Out) duration. 
-                            You can manually add other project entries if enabled.
-                        </p>
-                    </div>
-                </div>
-
-
-
-
-                    </>
-                )}
-            </div>
-
-            {/* Reject Modal */}
-             {showRejectModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                        <div className="p-6">
-                            <h3 className="text-lg font-bold text-slate-800 mb-4">Reject Timesheet</h3>
-                            
-                            <div className="flex space-x-4 mb-4">
-                                <label className="flex items-center space-x-2 cursor-pointer">
-                                    <input 
-                                        type="radio" 
-                                        name="rejectionType" 
-                                        value="FULL" 
-                                        checked={rejectionType === 'FULL'} 
-                                        onChange={(e) => setRejectionType(e.target.value)}
-                                        className="text-red-600 focus:ring-red-500" 
-                                    />
-                                    <span className="text-sm font-medium text-slate-700">Reject Entire Month</span>
-                                </label>
-                                <label className="flex items-center space-x-2 cursor-pointer">
-                                    <input 
-                                        type="radio" 
-                                        name="rejectionType" 
-                                        value="PARTIAL" 
-                                        checked={rejectionType === 'PARTIAL'} 
-                                        onChange={(e) => setRejectionType(e.target.value)}
-                                        className="text-red-600 focus:ring-red-500" 
-                                    />
-                                    <span className="text-sm font-medium text-slate-700">Reject Specific Entries</span>
-                                </label>
-                            </div>
-
-                            {rejectionType === 'PARTIAL' && (
-                                <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-48 overflow-y-auto">
-                                    <div className="text-xs text-slate-500 font-bold uppercase mb-2">Select entries to reject:</div>
-                                    <div className="space-y-2">
-                                        {selectedTimesheet?.entries?.map((entry, idx) => (
-                                            <label key={entry._id || idx} className="flex items-start space-x-2 cursor-pointer hover:bg-slate-100 p-1 rounded">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={rejectedEntryIds.includes(entry._id)} 
-                                                    onChange={() => toggleEntryRejection(entry._id)}
-                                                    className="mt-1 text-red-600 rounded focus:ring-red-500" 
-                                                />
-                                                <div className="text-sm">
-                                                    <div className="font-mono text-xs text-slate-500">
-                                                        {format(new Date(entry.date), 'MMM d, yyyy')} - {entry.hours}h
-                                                    </div>
-                                                    <div className="text-slate-700 font-medium">
-                                                        {entry.project?.name || 'Unknown Project'}
-                                                    </div>
-                                                    {entry.description && (
-                                                        <div className="text-slate-500 text-xs truncate max-w-[250px]">{entry.description}</div>
+                                            return (
+                                                <td
+                                                    key={'att-' + day}
+                                                    onClick={() => handleCellClick({ name: 'Attendance Log' }, day, [], true)}
+                                                    className={`p-1 border-r border-slate-200 text-center text-xs cursor-pointer hover:bg-blue-50 transition-colors ${isWeekend ? 'bg-slate-100/50' : ''
+                                                        }`}
+                                                >
+                                                    {log ? (
+                                                        <div className="flex flex-col items-center justify-center">
+                                                            <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${log.clockOutIST || isSameDay(new Date(log.date), new Date())
+                                                                ? 'bg-slate-200 text-slate-800'
+                                                                : 'bg-red-100 text-red-700'
+                                                                }`}>
+                                                                {log.duration
+                                                                    ? (log.duration / 60).toFixed(1)
+                                                                    : (log.clockOut && log.clockIn
+                                                                        ? ((new Date(log.clockOut) - new Date(log.clockIn)) / 3600000).toFixed(1)
+                                                                        : '-')}
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-300">-</span>
                                                     )}
+                                                </td>
+                                            );
+                                        })}
+                                        <td className="p-4 border-l border-slate-200 font-bold text-center bg-slate-50 sticky right-0 z-10">
+                                            {/* Total Attendance Hours */}
+                                            {(attendanceLogs.reduce((acc, log) => {
+                                                if (log.duration) return acc + (log.duration / 60);
+                                                if (log.clockIn && log.clockOut) {
+                                                    const dur = (new Date(log.clockOut) - new Date(log.clockIn)) / 3600000;
+                                                    return acc + dur;
+                                                }
+                                                return acc;
+                                            }, 0)).toFixed(1)}
+                                        </td>
+                                    </tr>
+                                    {Object.values(projectGroups).length > 0 ? (
+                                        Object.values(projectGroups).map((group, idx) => {
+                                            const projectTotal = Object.values(group.hours).reduce((a, b) => a + b, 0);
+                                            return (
+                                                <tr key={group.project._id || idx} className="hover:bg-blue-50/30 transition-colors group">
+                                                    <td className="p-4 border-r border-slate-200 font-medium text-slate-700 sticky left-0 bg-white group-hover:bg-blue-50/30 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-sm text-slate-800">{group.project.name || 'Unknown Project'}</span>
+                                                            <span className="text-xs text-slate-400 font-normal">{group.project.client?.name || 'Internal'}</span>
+                                                        </div>
+                                                    </td>
+                                                    {daysInMonth.map(day => {
+                                                        const dateKey = format(day, 'yyyy-MM-dd');
+                                                        const hours = group.hours[dateKey];
+                                                        const logs = group.logs[dateKey] || [];
+                                                        const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
+                                                        const isRejected = logs.some(l => l.status === 'REJECTED');
+                                                        return (
+                                                            <td
+                                                                key={day.toString()}
+                                                                onClick={() => handleCellClick(group.project, day, logs)}
+                                                                className={`p-1 border-r border-slate-200 text-center cursor-pointer hover:bg-blue-100 transition-colors ${isWeekend ? 'bg-slate-50/30' : ''}`}
+                                                            >
+                                                                {hours ? (
+                                                                    <div className="flex flex-col items-center justify-center group/cell relative">
+                                                                        <span className={`inline-flex items-center justify-center h-8 w-8 rounded-full font-bold text-xs shadow-sm transition-all ${isRejected
+                                                                            ? 'bg-red-100 text-red-700 ring-1 ring-red-500 group-hover/cell:bg-red-600 group-hover/cell:text-white'
+                                                                            : 'bg-blue-100 text-blue-700 group-hover/cell:bg-blue-600 group-hover/cell:text-white'
+                                                                            }`}>
+                                                                            {hours}
+                                                                        </span>
+                                                                        {logs.length > 1 && (
+                                                                            <div className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white"></div>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-slate-200 text-xs">•</span>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                    <td className="p-4 border-l border-slate-200 text-center font-bold text-slate-800 bg-white sticky right-0 z-10 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                        {projectTotal.toFixed(1)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={daysInMonth.length + 2} className="p-12 text-center text-slate-500 bg-slate-50/50">
+                                                <div className="flex flex-col items-center">
+                                                    <Calendar size={48} className="text-slate-300 mb-3" />
+                                                    <p className="font-medium">No timesheet entries found</p>
+                                                    <p className="text-xs mt-1">Clock in or log work to see data here</p>
                                                 </div>
-                                            </label>
-                                        ))}
-                                        {(!selectedTimesheet?.entries || selectedTimesheet.entries.length === 0) && (
-                                            <div className="text-xs text-slate-400 italic">No entries found.</div>
-                                        )}
-                                    </div>
+                                            </td>
+                                        </tr>
+                                    )}
+
+                                    {/* Daily Totals Row */}
+                                    <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs uppercase text-slate-700">
+                                        <td className="p-3 border-r border-slate-300 sticky left-0 bg-slate-100 z-20">Daily Total</td>
+                                        {daysInMonth.map(day => {
+                                            const total = getTotalPerDay(day);
+                                            return (
+                                                <td key={day.toString()} className="p-1 border-r border-slate-300 text-center">
+                                                    {total > 0 && (
+                                                        <span className={`block py-1 rounded ${total > 9 ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-800'}`}>
+                                                            {total.toFixed(1)}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            );
+                                        })}
+                                        <td className="p-3 border-l border-slate-300 text-center text-white bg-slate-600 sticky right-0 z-10">
+                                            {daysInMonth.reduce((acc, day) => acc + getTotalPerDay(day), 0).toFixed(1)}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-start space-x-3">
+                        <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+                            <Calendar size={20} />
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-blue-800">Automated Sync Active</h4>
+                            <p className="text-sm text-blue-600 mt-1">
+                                Your "Attendance" hours are automatically populated from your Attendance (Clock In/Out) duration.
+                                You can manually add other project entries if enabled.
+                            </p>
+                        </div>
+                    </div>
+
+
+
+
+                </>
+            )}
+        </div>
+
+            {/* Reject Modal */ }
+    {
+        showRejectModal && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                    <div className="p-6">
+                        <h3 className="text-lg font-bold text-slate-800 mb-4">Reject Timesheet</h3>
+
+                        <div className="flex space-x-4 mb-4">
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="rejectionType"
+                                    value="FULL"
+                                    checked={rejectionType === 'FULL'}
+                                    onChange={(e) => setRejectionType(e.target.value)}
+                                    className="text-red-600 focus:ring-red-500"
+                                />
+                                <span className="text-sm font-medium text-slate-700">Reject Entire Month</span>
+                            </label>
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="rejectionType"
+                                    value="PARTIAL"
+                                    checked={rejectionType === 'PARTIAL'}
+                                    onChange={(e) => setRejectionType(e.target.value)}
+                                    className="text-red-600 focus:ring-red-500"
+                                />
+                                <span className="text-sm font-medium text-slate-700">Reject Specific Entries</span>
+                            </label>
+                        </div>
+
+                        {rejectionType === 'PARTIAL' && (
+                            <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-48 overflow-y-auto">
+                                <div className="text-xs text-slate-500 font-bold uppercase mb-2">Select entries to reject:</div>
+                                <div className="space-y-2">
+                                    {selectedTimesheet?.entries?.map((entry, idx) => (
+                                        <label key={entry._id || idx} className="flex items-start space-x-2 cursor-pointer hover:bg-slate-100 p-1 rounded">
+                                            <input
+                                                type="checkbox"
+                                                checked={rejectedEntryIds.includes(entry._id)}
+                                                onChange={() => toggleEntryRejection(entry._id)}
+                                                className="mt-1 text-red-600 rounded focus:ring-red-500"
+                                            />
+                                            <div className="text-sm">
+                                                <div className="font-mono text-xs text-slate-500">
+                                                    {format(new Date(entry.date), 'MMM d, yyyy')} - {entry.hours}h
+                                                </div>
+                                                <div className="text-slate-700 font-medium">
+                                                    {entry.project?.name || 'Unknown Project'}
+                                                </div>
+                                                {entry.description && (
+                                                    <div className="text-slate-500 text-xs truncate max-w-[250px]">{entry.description}</div>
+                                                )}
+                                            </div>
+                                        </label>
+                                    ))}
+                                    {(!selectedTimesheet?.entries || selectedTimesheet.entries.length === 0) && (
+                                        <div className="text-xs text-slate-400 italic">No entries found.</div>
+                                    )}
                                 </div>
-                            )}
-
-                            <p className="text-sm text-slate-500 mb-2">Reason for rejection:</p>
-                            <textarea
-                                className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-none h-24"
-                                placeholder={rejectionType === 'PARTIAL' ? "Reason for rejecting selected entries..." : "Reason for rejecting entire timesheet..."}
-                                value={rejectReason}
-                                onChange={(e) => setRejectReason(e.target.value)}
-                            ></textarea>
-
-                            <div className="flex justify-end space-x-3 mt-4">
-                                <button 
-                                    onClick={() => setShowRejectModal(false)}
-                                    className="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium text-sm"
-                                >
-                                    Cancel
-                                </button>
-                                <button 
-                                    onClick={submitRejection}
-                                    className={`px-4 py-2 text-white rounded-lg font-bold text-sm shadow-sm transition-colors ${
-                                        (!rejectReason.trim() || (rejectionType === 'PARTIAL' && rejectedEntryIds.length === 0))
-                                            ? 'bg-red-300 cursor-not-allowed'
-                                            : 'bg-red-600 hover:bg-red-700'
-                                    }`}
-                                    disabled={!rejectReason.trim() || (rejectionType === 'PARTIAL' && rejectedEntryIds.length === 0)}
-                                >
-                                    {rejectionType === 'PARTIAL' ? `Reject ${rejectedEntryIds.length} Entries` : 'Reject Entire Month'}
-                                </button>
                             </div>
+                        )}
+
+                        <p className="text-sm text-slate-500 mb-2">Reason for rejection:</p>
+                        <textarea
+                            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-none h-24"
+                            placeholder={rejectionType === 'PARTIAL' ? "Reason for rejecting selected entries..." : "Reason for rejecting entire timesheet..."}
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                        ></textarea>
+
+                        <div className="flex justify-end space-x-3 mt-4">
+                            <button
+                                onClick={() => setShowRejectModal(false)}
+                                className="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={submitRejection}
+                                className={`px-4 py-2 text-white rounded-lg font-bold text-sm shadow-sm transition-colors ${(!rejectReason.trim() || (rejectionType === 'PARTIAL' && rejectedEntryIds.length === 0))
+                                    ? 'bg-red-300 cursor-not-allowed'
+                                    : 'bg-red-600 hover:bg-red-700'
+                                    }`}
+                                disabled={!rejectReason.trim() || (rejectionType === 'PARTIAL' && rejectedEntryIds.length === 0)}
+                            >
+                                {rejectionType === 'PARTIAL' ? `Reject ${rejectedEntryIds.length} Entries` : 'Reject Entire Month'}
+                            </button>
                         </div>
                     </div>
                 </div>
-            )}
+            </div>
+        )
+    }
 
-        </div>
+        </div >
     );
 };
 

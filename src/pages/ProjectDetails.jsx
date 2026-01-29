@@ -5,6 +5,7 @@ import { saveAs } from 'file-saver';
 import api from '../api/axios';
 import { Briefcase, Plus, Folder, CheckSquare, User, Calendar, ArrowLeft, Clock, LayoutList, ListTree, GanttChart, ChevronDown, ChevronRight, ListChecks } from 'lucide-react';
 import toast from 'react-hot-toast';
+import Skeleton from '../components/Skeleton';
 import { useAuth } from '../context/AuthContext';
 import { format, differenceInDays, addDays, isValid, parseISO } from 'date-fns';
 
@@ -16,7 +17,7 @@ const ProjectDetails = () => {
     const canUpdateProject = user?.roles?.includes('Admin') || user?.permissions?.includes('project.update');
     const canCreateTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.create');
     const canUpdateTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.update');
-    
+
     const [project, setProject] = useState(null);
     const [modules, setModules] = useState([]);
     const [tasks, setTasks] = useState([]);
@@ -28,7 +29,7 @@ const ProjectDetails = () => {
     const [showModuleModal, setShowModuleModal] = useState(false);
     const [showTaskModal, setShowTaskModal] = useState(false);
     const [showLogModal, setShowLogModal] = useState(false);
-    
+
     // Forms
     const [moduleForm, setModuleForm] = useState({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
     const [taskForm, setTaskForm] = useState({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '' });
@@ -44,10 +45,10 @@ const ProjectDetails = () => {
         try {
             setLoading(true);
             const [projRes, empRes] = await Promise.all([
-                api.get(`/projects/${id}/hierarchy`), 
+                api.get(`/projects/${id}/hierarchy`),
                 api.get('/projects/employees')
             ]);
-            
+
             const projData = projRes.data;
             setProject(projData);
             setModules(projData.modules || []);
@@ -80,7 +81,7 @@ const ProjectDetails = () => {
             setShowModuleModal(false);
             setEditingModuleId(null);
             setModuleForm({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
-            fetchData(); 
+            fetchData();
         } catch (error) {
             toast.error('Failed to save module');
         }
@@ -90,8 +91,8 @@ const ProjectDetails = () => {
         e.preventDefault();
         try {
             if (editingTaskId) {
-                 await api.put(`/projects/tasks/${editingTaskId}`, taskForm);
-                 toast.success('Task Updated');
+                await api.put(`/projects/tasks/${editingTaskId}`, taskForm);
+                toast.success('Task Updated');
             } else {
                 await api.post('/projects/tasks', { ...taskForm, module: activeModuleId });
                 toast.success('Task Created');
@@ -99,7 +100,7 @@ const ProjectDetails = () => {
             setShowTaskModal(false);
             setEditingTaskId(null);
             setTaskForm({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '' });
-            fetchData(); 
+            fetchData();
         } catch (error) {
             toast.error('Failed to save task');
         }
@@ -131,9 +132,9 @@ const ProjectDetails = () => {
     };
 
     const handleEditModule = (module) => {
-        setModuleForm({ 
-            name: module.name, 
-            description: module.description || '', 
+        setModuleForm({
+            name: module.name,
+            description: module.description || '',
             status: module.status,
             startDate: module.startDate ? new Date(module.startDate).toISOString().split('T')[0] : '',
             dueDate: module.dueDate ? new Date(module.dueDate).toISOString().split('T')[0] : ''
@@ -169,7 +170,7 @@ const ProjectDetails = () => {
         <div className="space-y-6">
             {modules.map(module => (
                 <div key={module._id} className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                     <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                    <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
                         <div className="flex items-center space-x-3 cursor-pointer" onClick={() => handleEditModule(module)}>
                             <Folder size={20} className="text-blue-500" />
                             <h3 className="font-bold text-slate-800 text-lg">{module.name}</h3>
@@ -187,7 +188,7 @@ const ProjectDetails = () => {
                                 {module.tasks.map(task => (
                                     <div key={task._id} className="border border-slate-100 rounded p-4 hover:shadow-md transition-shadow bg-white flex flex-col justify-between group relative">
                                         <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                             {canUpdateTask && <button onClick={() => handleEditTask(task, module._id)} className="text-slate-400 hover:text-blue-500 p-1"><CheckSquare size={16} /></button>}
+                                            {canUpdateTask && <button onClick={() => handleEditTask(task, module._id)} className="text-slate-400 hover:text-blue-500 p-1"><CheckSquare size={16} /></button>}
                                         </div>
                                         <div>
                                             <div className="flex justify-between items-start mb-2">
@@ -269,90 +270,91 @@ const ProjectDetails = () => {
                                 {module.tasks?.map(task => {
                                     const isExpanded = expandedTaskIds.has(task._id);
                                     const progress = task.estimatedHours ? Math.min((task.loggedHours / task.estimatedHours) * 100, 100) : 0;
-                                    
+
                                     return (
-                                    <React.Fragment key={task._id}>
-                                        <tr className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-6 py-3 pl-12 text-slate-700">
-                                                <div className="flex items-center gap-3">
-                                                    <div onClick={() => toggleTask(task._id)} className="cursor-pointer text-slate-400 hover:text-slate-600">
-                                                         {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                                    </div>
-                                                    <div className={`w-2 h-2 rounded-full ${task.priority === 'HIGH' ? 'bg-red-500' : task.priority === 'MEDIUM' ? 'bg-orange-500' : 'bg-blue-400'}`}></div>
-                                                    <span className="font-medium">{task.name}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-3">
-                                                <span className={`text-xs px-2 py-0.5 rounded-full ${task.status === 'DONE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                                    {task.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-3">
-                                                <div className="flex -space-x-2">
-                                                    {task.assignees?.map((a, i) => (
-                                                        <div key={a._id} className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] text-blue-600 font-bold" title={`${a.firstName} ${a.lastName}`}>
-                                                            {a.firstName[0]}{a.lastName[0]}
+                                        <React.Fragment key={task._id}>
+                                            <tr className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-6 py-3 pl-12 text-slate-700">
+                                                    <div className="flex items-center gap-3">
+                                                        <div onClick={() => toggleTask(task._id)} className="cursor-pointer text-slate-400 hover:text-slate-600">
+                                                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                                                         </div>
-                                                    ))}
-                                                    {(!task.assignees || task.assignees.length === 0) && <span className="text-xs text-slate-400 italic">Unassigned</span>}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-3 text-xs text-slate-600 font-mono">
-                                                {task.startDate ? format(new Date(task.startDate), 'MMM d') : ''} - {task.dueDate ? format(new Date(task.dueDate), 'MMM d') : ''}
-                                            </td>
-                                            <td className="px-6 py-3">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden w-24">
-                                                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${progress}%` }}></div>
+                                                        <div className={`w-2 h-2 rounded-full ${task.priority === 'HIGH' ? 'bg-red-500' : task.priority === 'MEDIUM' ? 'bg-orange-500' : 'bg-blue-400'}`}></div>
+                                                        <span className="font-medium">{task.name}</span>
                                                     </div>
-                                                    <span className="text-[10px] text-slate-500 whitespace-nowrap">{task.loggedHours || 0} / {task.estimatedHours || '-'}h</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-3 text-right">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    {canUpdateTask && (
-                                                        <>
-                                                            <button onClick={() => openLogModal(task._id)} title="Log Work" className="text-slate-400 hover:text-green-600"><Clock size={16} /></button>
-                                                            <button onClick={() => handleEditTask(task, module._id)} title="Edit" className="text-slate-400 hover:text-blue-600"><CheckSquare size={16} /></button>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        {isExpanded && (
-                                            <tr className="bg-slate-50/50">
-                                                <td colSpan="6" className="px-6 py-4 pl-20">
-                                                    <div className="text-sm">
-                                                        <h5 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><ListChecks size={16} className="text-slate-400"/> Work Logs</h5>
-                                                        {task.workLogs && task.workLogs.length > 0 ? (
-                                                            <div className="space-y-2 max-w-2xl">
-                                                                {task.workLogs.map(log => (
-                                                                    <div key={log._id} className="flex items-start justify-between bg-white p-2 rounded border border-slate-200">
-                                                                        <div className="flex items-center gap-3">
-                                                                             <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
-                                                                                {log.user?.firstName?.[0]}
-                                                                            </div>
-                                                                            <div>
-                                                                                <div className="flex items-baseline gap-2">
-                                                                                    <span className="font-medium text-slate-700">{log.user?.firstName} {log.user?.lastName}</span>
-                                                                                    <span className="text-xs text-slate-400">{format(new Date(log.date), 'MMM d, yyyy')}</span>
-                                                                                </div>
-                                                                                <p className="text-slate-600 text-xs mt-0.5">{log.description}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                        <span className="font-mono font-bold text-slate-700 text-xs">{log.hours}h</span>
-                                                                    </div>
-                                                                ))}
+                                                </td>
+                                                <td className="px-6 py-3">
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full ${task.status === 'DONE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                        {task.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-3">
+                                                    <div className="flex -space-x-2">
+                                                        {task.assignees?.map((a, i) => (
+                                                            <div key={a._id} className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] text-blue-600 font-bold" title={`${a.firstName} ${a.lastName}`}>
+                                                                {a.firstName[0]}{a.lastName[0]}
                                                             </div>
-                                                        ) : (
-                                                            <p className="text-slate-400 italic text-xs">No work logged yet.</p>
+                                                        ))}
+                                                        {(!task.assignees || task.assignees.length === 0) && <span className="text-xs text-slate-400 italic">Unassigned</span>}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-3 text-xs text-slate-600 font-mono">
+                                                    {task.startDate ? format(new Date(task.startDate), 'MMM d') : ''} - {task.dueDate ? format(new Date(task.dueDate), 'MMM d') : ''}
+                                                </td>
+                                                <td className="px-6 py-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden w-24">
+                                                            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${progress}%` }}></div>
+                                                        </div>
+                                                        <span className="text-[10px] text-slate-500 whitespace-nowrap">{task.loggedHours || 0} / {task.estimatedHours || '-'}h</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-3 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {canUpdateTask && (
+                                                            <>
+                                                                <button onClick={() => openLogModal(task._id)} title="Log Work" className="text-slate-400 hover:text-green-600"><Clock size={16} /></button>
+                                                                <button onClick={() => handleEditTask(task, module._id)} title="Edit" className="text-slate-400 hover:text-blue-600"><CheckSquare size={16} /></button>
+                                                            </>
                                                         )}
                                                     </div>
                                                 </td>
                                             </tr>
-                                        )}
-                                    </React.Fragment>
-                                )})}
+                                            {isExpanded && (
+                                                <tr className="bg-slate-50/50">
+                                                    <td colSpan="6" className="px-6 py-4 pl-20">
+                                                        <div className="text-sm">
+                                                            <h5 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><ListChecks size={16} className="text-slate-400" /> Work Logs</h5>
+                                                            {task.workLogs && task.workLogs.length > 0 ? (
+                                                                <div className="space-y-2 max-w-2xl">
+                                                                    {task.workLogs.map(log => (
+                                                                        <div key={log._id} className="flex items-start justify-between bg-white p-2 rounded border border-slate-200">
+                                                                            <div className="flex items-center gap-3">
+                                                                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
+                                                                                    {log.user?.firstName?.[0]}
+                                                                                </div>
+                                                                                <div>
+                                                                                    <div className="flex items-baseline gap-2">
+                                                                                        <span className="font-medium text-slate-700">{log.user?.firstName} {log.user?.lastName}</span>
+                                                                                        <span className="text-xs text-slate-400">{format(new Date(log.date), 'MMM d, yyyy')}</span>
+                                                                                    </div>
+                                                                                    <p className="text-slate-600 text-xs mt-0.5">{log.description}</p>
+                                                                                </div>
+                                                                            </div>
+                                                                            <span className="font-mono font-bold text-slate-700 text-xs">{log.hours}h</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <p className="text-slate-400 italic text-xs">No work logged yet.</p>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    )
+                                })}
                             </React.Fragment>
                         ))}
                     </tbody>
@@ -397,7 +399,7 @@ const ProjectDetails = () => {
 
         const projectStart = new Date(Math.min(...allDates));
         const projectEnd = new Date(Math.max(...allDates));
-        
+
         // Adjust buffer based on scale
         let start, end;
         if (timelineScale === 'WEEK') {
@@ -424,16 +426,16 @@ const ProjectDetails = () => {
             const eDate = e ? new Date(e) : sDate;
             const validS = isValid(sDate) ? sDate : start;
             const validE = isValid(eDate) ? eDate : validS;
-            return Math.max((differenceInDays(validE, validS) / totalDays) * 100, 0.5); 
+            return Math.max((differenceInDays(validE, validS) / totalDays) * 100, 0.5);
         };
 
         // Generate date ticks
         const ticks = [];
         const tickCount = timelineScale === 'WEEK' ? 7 : timelineScale === 'QUARTER' ? 6 : 10;
-        
+
         for (let i = 0; i <= tickCount; i++) {
-             const date = addDays(start, Math.round((totalDays / tickCount) * i));
-             ticks.push({ left: (i / tickCount) * 100, label: format(date, 'MMM d') });
+            const date = addDays(start, Math.round((totalDays / tickCount) * i));
+            ticks.push({ left: (i / tickCount) * 100, label: format(date, 'MMM d') });
         }
 
         const todayPos = getPosition(new Date());
@@ -446,7 +448,7 @@ const ProjectDetails = () => {
                         <span className="text-xs font-bold text-slate-600 uppercase">View:</span>
                         <div className="flex bg-white rounded border border-slate-300 p-0.5">
                             {['WEEK', 'MONTH', 'QUARTER'].map(scale => (
-                                <button 
+                                <button
                                     key={scale}
                                     onClick={() => setTimelineScale(scale)}
                                     className={`px-3 py-1 text-xs font-semibold rounded-sm transition-colors ${timelineScale === scale ? 'bg-slate-700 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
@@ -467,14 +469,14 @@ const ProjectDetails = () => {
 
                 {/* Timeline Header */}
                 <div className="flex border-b border-slate-300 bg-white shadow-sm h-10">
-                     {/* Grid Columns Header */}
-                     <div className="flex w-[500px] flex-shrink-0 border-r border-slate-300 bg-slate-100">
+                    {/* Grid Columns Header */}
+                    <div className="flex w-[500px] flex-shrink-0 border-r border-slate-300 bg-slate-100">
                         <div className="flex-1 p-2 pl-4 font-bold text-slate-700 text-xs uppercase flex items-center">Item Name</div>
                         <div className="w-24 p-2 font-bold text-slate-700 text-xs uppercase flex items-center justify-center border-l border-slate-300">Status</div>
                         <div className="w-20 p-2 font-bold text-slate-700 text-xs uppercase flex items-center justify-center border-l border-slate-300">Owner</div>
                         <div className="w-28 p-2 font-bold text-slate-700 text-xs uppercase flex items-center border-l border-slate-300 pl-4">Progress</div>
                     </div>
-                    
+
                     <div className="flex-1 relative overflow-hidden h-full bg-slate-50">
                         {ticks.map((tick, i) => (
                             <div key={i} className="absolute bottom-0 flex flex-col items-center transform -translate-x-1/2" style={{ left: `${tick.left}%` }}>
@@ -489,21 +491,21 @@ const ProjectDetails = () => {
                 <div className="overflow-y-auto flex-1 relative bg-white custom-scrollbar">
                     {/* Vertical Grid Lines Layer */}
                     <div className="absolute top-0 bottom-0 right-0 left-[500px] pointer-events-none z-0">
-                         {ticks.map((tick, i) => (
-                             <div key={i} className="absolute top-0 bottom-0 border-r border-slate-200" style={{ left: `${tick.left}%` }}></div>
-                         ))}
-                         {todayPos >= 0 && todayPos <= 100 && (
+                        {ticks.map((tick, i) => (
+                            <div key={i} className="absolute top-0 bottom-0 border-r border-slate-200" style={{ left: `${tick.left}%` }}></div>
+                        ))}
+                        {todayPos >= 0 && todayPos <= 100 && (
                             <div className="absolute top-0 bottom-0 border-l-2 border-red-500 z-0" style={{ left: `${todayPos}%` }}>
                                 <div className="absolute top-0 -translate-x-1/2 bg-red-100 text-red-700 text-[9px] font-bold px-1 py-0.5 border border-red-300">Today</div>
                             </div>
-                         )}
+                        )}
                     </div>
 
-                     {/* Project Row */}
-                     <div className="flex border-b border-slate-300 bg-slate-50 group z-10 relative">
+                    {/* Project Row */}
+                    <div className="flex border-b border-slate-300 bg-slate-50 group z-10 relative">
                         {/* Grid Columns */}
                         <div className="w-[500px] flex-shrink-0 flex bg-slate-50 z-20 sticky left-0 border-r border-slate-300 shadow-[4px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                             <div className="flex-1 p-2 flex items-center gap-2 truncate pr-4">
+                            <div className="flex-1 p-2 flex items-center gap-2 truncate pr-4">
                                 <div className="flex items-center justify-center text-blue-700">
                                     <Briefcase size={14} />
                                 </div>
@@ -518,11 +520,11 @@ const ProjectDetails = () => {
 
                         {/* Gantt Bar */}
                         <div className="flex-1 relative h-10 my-auto">
-                            <div 
+                            <div
                                 className="absolute top-1/2 -translate-y-1/2 h-6 bg-blue-700 rounded-sm shadow-sm flex items-center px-2 text-white text-xs font-bold z-10 cursor-default"
-                                style={{ 
-                                    left: `${getPosition(project.startDate)}%`, 
-                                    width: `${getWidth(project.startDate, project.dueDate)}%` 
+                                style={{
+                                    left: `${getPosition(project.startDate)}%`,
+                                    width: `${getWidth(project.startDate, project.dueDate)}%`
                                 }}
                             >
                                 <span className="sticky left-2 truncate">{project.name}</span>
@@ -532,7 +534,7 @@ const ProjectDetails = () => {
 
                     {modules.map(module => (
                         <React.Fragment key={module._id}>
-                             {/* Module Row */}
+                            {/* Module Row */}
                             <div className="flex border-b border-slate-200 hover:bg-slate-50 transition-colors z-10 relative">
                                 {/* Grid Columns */}
                                 <div className="w-[500px] flex-shrink-0 flex bg-white group-hover:bg-slate-50 z-20 sticky left-0 border-r border-slate-300">
@@ -547,18 +549,18 @@ const ProjectDetails = () => {
                                     <div className="w-20 p-2 flex items-center justify-center border-l border-slate-300 text-slate-300">-</div>
                                     <div className="w-28 p-2 flex items-center justify-center border-l border-slate-300 text-slate-300">-</div>
                                 </div>
-                                
+
                                 <div className="flex-1 relative h-9 my-auto">
                                     {module.startDate && module.dueDate && (
-                                        <div 
+                                        <div
                                             className="absolute top-1/2 -translate-y-1/2 h-4 bg-cyan-600 rounded-sm flex items-center px-2 text-white text-[10px] font-semibold z-10 cursor-default"
-                                            style={{ 
-                                                left: `${getPosition(module.startDate)}%`, 
-                                                width: `${getWidth(module.startDate, module.dueDate)}%` 
+                                            style={{
+                                                left: `${getPosition(module.startDate)}%`,
+                                                width: `${getWidth(module.startDate, module.dueDate)}%`
                                             }}
                                             title={`Module: ${module.name}`}
                                         >
-                                           <span className="truncate">{module.name}</span>
+                                            <span className="truncate">{module.name}</span>
                                         </div>
                                     )}
                                 </div>
@@ -568,101 +570,101 @@ const ProjectDetails = () => {
                             {expandedModules.has(module._id) && module.tasks?.map(task => {
                                 const progress = task.estimatedHours ? Math.min((task.loggedHours / task.estimatedHours) * 100, 100) : 0;
                                 const hasLogs = task.workLogs && task.workLogs.length > 0;
-                                
-                                return (
-                                <React.Fragment key={task._id}>
-                                <div className="flex border-b border-slate-200 hover:bg-slate-50 transition-colors group z-10 relative">
-                                    {/* Grid Columns */}
-                                    <div className="w-[500px] flex-shrink-0 flex bg-white group-hover:bg-slate-50 z-20 sticky left-0 border-r border-slate-300">
-                                         <div className="flex-1 p-2 pl-12 flex items-center gap-2 truncate pr-4">
-                                            {hasLogs ? (
-                                                <button onClick={() => toggleTask(task._id)} className="w-4 h-4 flex items-center justify-center rounded hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors focus:outline-none -ml-5 mr-1">
-                                                     {expandedTasks.has(task._id) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                                </button>
-                                            ) : <div className="w-4 -ml-5 mr-1"></div>}
-                                            <div className={`w-2 h-2 rounded-sm flex-shrink-0 border border-black/10 ${task.priority === 'HIGH' ? 'bg-red-500' : task.priority === 'MEDIUM' ? 'bg-orange-400' : 'bg-blue-400'}`} title={`Priority: ${task.priority}`}></div>
-                                            <span className="text-slate-700 text-xs truncate" title={task.name}>{task.name}</span>
-                                        </div>
-                                        <div className="w-24 p-2 flex items-center justify-center border-l border-slate-300">
-                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm border ${task.status === 'DONE' ? 'bg-emerald-100 border-emerald-300 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>{task.status}</span>
-                                        </div>
-                                        <div className="w-20 p-2 flex items-center justify-center border-l border-slate-300">
-                                             <div className="flex -space-x-1">
-                                                {task.assignees?.length > 0 ? task.assignees.slice(0, 3).map(a => (
-                                                    <div key={a._id} className="w-5 h-5 rounded bg-white border border-slate-300 flex items-center justify-center text-[9px] font-bold text-slate-700" title={`${a.firstName} ${a.lastName}`}>
-                                                        {a.firstName[0]}
-                                                    </div>
-                                                )) : <span className="text-[10px] text-slate-400">-</span>}
-                                            </div>
-                                        </div>
-                                         <div className="w-28 p-2 flex items-center gap-2 border-l border-slate-300 pl-3">
-                                            <div className="flex-1 h-2 bg-slate-200 rounded-sm overflow-hidden border border-slate-300">
-                                                <div className={`h-full rounded-sm ${progress === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`} style={{ width: `${progress}%` }}></div>
-                                            </div>
-                                            <span className="text-[10px] font-mono text-slate-600 w-8 text-right">{Math.round(progress)}%</span>
-                                        </div>
-                                    </div>
 
-                                    <div className="flex-1 relative h-8 my-auto">
-                                        {task.startDate && task.dueDate && (
-                                            <div 
-                                                className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-sm flex items-center px-1 truncate transition-all hover:bg-opacity-90 cursor-pointer border ${
-                                                    task.status === 'DONE' ? 'bg-emerald-600 border-emerald-700 text-white' : 
-                                                    task.priority === 'HIGH' ? 'bg-red-100 border-red-300 text-red-700' :
-                                                    'bg-slate-200 border-slate-300 text-slate-700'
-                                                }`}
-                                                style={{ 
-                                                    left: `${getPosition(task.startDate)}%`, 
-                                                    width: `${getWidth(task.startDate, task.dueDate)}%` 
-                                                }}
-                                                title={`Task: ${task.name}`}
-                                            >
-                                                <div className={`absolute top-0 bottom-0 left-0 bg-black/10`} style={{ width: `${progress}%` }}></div>
-                                                <span className="relative z-10 text-[9px] font-semibold truncate px-1">{task.name}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                                {/* Work Logs Expansion */}
-                                {expandedTasks.has(task._id) && task.workLogs?.map(log => (
-                                    <div key={log._id} className="flex border-b border-slate-200 bg-amber-50/30 hover:bg-amber-50 relative">
-                                        {/* Grid Columns */}
-                                        <div className="w-[500px] flex-shrink-0 flex bg-amber-50/10 z-20 sticky left-0 border-r border-slate-300">
-                                            <div className="flex-1 p-2 pl-20 flex items-center gap-2 truncate pr-4">
-                                                <div className="w-px h-full bg-slate-300 absolute left-[3.25rem] top-0"></div>
-                                                <span className="text-slate-500 text-[10px] truncate flex items-center gap-1">
-                                                    <Clock size={10} className="text-amber-600"/>
-                                                    <span className="font-medium text-slate-700">{log.hours}h</span> by {log.user?.firstName}
-                                                </span>
-                                            </div>
-                                            <div className="w-24 p-2 flex items-center justify-center border-l border-slate-300">
-                                                <span className="text-[9px] text-slate-400 italic">Logged</span>
-                                            </div>
-                                            <div className="w-20 p-2 flex items-center justify-center border-l border-slate-300">
-                                                <div className="w-4 h-4 rounded-sm bg-slate-100 border border-slate-300 flex items-center justify-center text-[8px] font-bold text-slate-500">
-                                                    {log.user?.firstName?.[0]}
+                                return (
+                                    <React.Fragment key={task._id}>
+                                        <div className="flex border-b border-slate-200 hover:bg-slate-50 transition-colors group z-10 relative">
+                                            {/* Grid Columns */}
+                                            <div className="w-[500px] flex-shrink-0 flex bg-white group-hover:bg-slate-50 z-20 sticky left-0 border-r border-slate-300">
+                                                <div className="flex-1 p-2 pl-12 flex items-center gap-2 truncate pr-4">
+                                                    {hasLogs ? (
+                                                        <button onClick={() => toggleTask(task._id)} className="w-4 h-4 flex items-center justify-center rounded hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors focus:outline-none -ml-5 mr-1">
+                                                            {expandedTasks.has(task._id) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                                        </button>
+                                                    ) : <div className="w-4 -ml-5 mr-1"></div>}
+                                                    <div className={`w-2 h-2 rounded-sm flex-shrink-0 border border-black/10 ${task.priority === 'HIGH' ? 'bg-red-500' : task.priority === 'MEDIUM' ? 'bg-orange-400' : 'bg-blue-400'}`} title={`Priority: ${task.priority}`}></div>
+                                                    <span className="text-slate-700 text-xs truncate" title={task.name}>{task.name}</span>
+                                                </div>
+                                                <div className="w-24 p-2 flex items-center justify-center border-l border-slate-300">
+                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm border ${task.status === 'DONE' ? 'bg-emerald-100 border-emerald-300 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>{task.status}</span>
+                                                </div>
+                                                <div className="w-20 p-2 flex items-center justify-center border-l border-slate-300">
+                                                    <div className="flex -space-x-1">
+                                                        {task.assignees?.length > 0 ? task.assignees.slice(0, 3).map(a => (
+                                                            <div key={a._id} className="w-5 h-5 rounded bg-white border border-slate-300 flex items-center justify-center text-[9px] font-bold text-slate-700" title={`${a.firstName} ${a.lastName}`}>
+                                                                {a.firstName[0]}
+                                                            </div>
+                                                        )) : <span className="text-[10px] text-slate-400">-</span>}
+                                                    </div>
+                                                </div>
+                                                <div className="w-28 p-2 flex items-center gap-2 border-l border-slate-300 pl-3">
+                                                    <div className="flex-1 h-2 bg-slate-200 rounded-sm overflow-hidden border border-slate-300">
+                                                        <div className={`h-full rounded-sm ${progress === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`} style={{ width: `${progress}%` }}></div>
+                                                    </div>
+                                                    <span className="text-[10px] font-mono text-slate-600 w-8 text-right">{Math.round(progress)}%</span>
                                                 </div>
                                             </div>
-                                            <div className="w-28 p-2 flex items-center gap-2 border-l border-slate-300">
-                                                 <span className="text-[10px] font-mono text-slate-600">{format(new Date(log.date), 'MM/dd')}</span>
-                                            </div>
-                                        </div>
 
-                                        <div className="flex-1 relative h-7 my-auto">
-                                            <div 
-                                                className="absolute top-1/2 -translate-y-1/2 h-3 bg-amber-500 rounded-sm flex items-center justify-center border border-amber-600 hover:bg-amber-600 cursor-help"
-                                                style={{ 
-                                                    left: `${getPosition(log.date)}%`, 
-                                                    width: `max(1.5%, 20px)` 
-                                                }}
-                                                title={`Work Logged: ${log.hours}h\n${log.description}\nBy: ${log.user?.firstName}`}
-                                            >
+                                            <div className="flex-1 relative h-8 my-auto">
+                                                {task.startDate && task.dueDate && (
+                                                    <div
+                                                        className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-sm flex items-center px-1 truncate transition-all hover:bg-opacity-90 cursor-pointer border ${task.status === 'DONE' ? 'bg-emerald-600 border-emerald-700 text-white' :
+                                                            task.priority === 'HIGH' ? 'bg-red-100 border-red-300 text-red-700' :
+                                                                'bg-slate-200 border-slate-300 text-slate-700'
+                                                            }`}
+                                                        style={{
+                                                            left: `${getPosition(task.startDate)}%`,
+                                                            width: `${getWidth(task.startDate, task.dueDate)}%`
+                                                        }}
+                                                        title={`Task: ${task.name}`}
+                                                    >
+                                                        <div className={`absolute top-0 bottom-0 left-0 bg-black/10`} style={{ width: `${progress}%` }}></div>
+                                                        <span className="relative z-10 text-[9px] font-semibold truncate px-1">{task.name}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
-                                </React.Fragment>
-                            )})}
+                                        {/* Work Logs Expansion */}
+                                        {expandedTasks.has(task._id) && task.workLogs?.map(log => (
+                                            <div key={log._id} className="flex border-b border-slate-200 bg-amber-50/30 hover:bg-amber-50 relative">
+                                                {/* Grid Columns */}
+                                                <div className="w-[500px] flex-shrink-0 flex bg-amber-50/10 z-20 sticky left-0 border-r border-slate-300">
+                                                    <div className="flex-1 p-2 pl-20 flex items-center gap-2 truncate pr-4">
+                                                        <div className="w-px h-full bg-slate-300 absolute left-[3.25rem] top-0"></div>
+                                                        <span className="text-slate-500 text-[10px] truncate flex items-center gap-1">
+                                                            <Clock size={10} className="text-amber-600" />
+                                                            <span className="font-medium text-slate-700">{log.hours}h</span> by {log.user?.firstName}
+                                                        </span>
+                                                    </div>
+                                                    <div className="w-24 p-2 flex items-center justify-center border-l border-slate-300">
+                                                        <span className="text-[9px] text-slate-400 italic">Logged</span>
+                                                    </div>
+                                                    <div className="w-20 p-2 flex items-center justify-center border-l border-slate-300">
+                                                        <div className="w-4 h-4 rounded-sm bg-slate-100 border border-slate-300 flex items-center justify-center text-[8px] font-bold text-slate-500">
+                                                            {log.user?.firstName?.[0]}
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-28 p-2 flex items-center gap-2 border-l border-slate-300">
+                                                        <span className="text-[10px] font-mono text-slate-600">{format(new Date(log.date), 'MM/dd')}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex-1 relative h-7 my-auto">
+                                                    <div
+                                                        className="absolute top-1/2 -translate-y-1/2 h-3 bg-amber-500 rounded-sm flex items-center justify-center border border-amber-600 hover:bg-amber-600 cursor-help"
+                                                        style={{
+                                                            left: `${getPosition(log.date)}%`,
+                                                            width: `max(1.5%, 20px)`
+                                                        }}
+                                                        title={`Work Logged: ${log.hours}h\n${log.description}\nBy: ${log.user?.firstName}`}
+                                                    >
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </React.Fragment>
+                                )
+                            })}
                         </React.Fragment>
                     ))}
                 </div>
@@ -670,7 +672,32 @@ const ProjectDetails = () => {
         );
     };
 
-    if (loading) return <div className="p-8 text-center">Loading...</div>;
+    if (loading) return (
+        <div className="min-h-screen bg-slate-100 font-sans flex flex-col">
+            <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-30">
+                <div className="flex items-center space-x-4">
+                    <Skeleton className="w-8 h-8 rounded-full" />
+                    <div>
+                        <Skeleton className="h-6 w-48 mb-1" />
+                        <Skeleton className="h-4 w-32" />
+                    </div>
+                </div>
+            </header>
+            <div className="flex-1 p-6 md:p-8 overflow-hidden flex flex-col">
+                <div className="max-w-7xl mx-auto w-full h-full flex flex-col space-y-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2 space-y-4">
+                            <Skeleton className="h-40 w-full" />
+                            <Skeleton className="h-40 w-full" />
+                        </div>
+                        <div className="space-y-4">
+                            <Skeleton className="h-64 w-full" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
     if (!project) return <div className="p-8 text-center">Project not found</div>;
 
     const handleExport = async () => {
@@ -755,11 +782,11 @@ const ProjectDetails = () => {
                     taskRow.outlineLevel = 2;
                     taskRow.font = { bold: false };
                     taskRow.getCell('name').alignment = { indent: 2 };
-                    
+
                     // Task Logged Hours formatting
                     const loggedCell = taskRow.getCell('loggedHours');
-                    if(task.loggedHours > (task.estimatedHours || 0) && task.estimatedHours > 0) {
-                         loggedCell.font = { color: { argb: 'FFFF0000' } }; // Red if over budget
+                    if (task.loggedHours > (task.estimatedHours || 0) && task.estimatedHours > 0) {
+                        loggedCell.font = { color: { argb: 'FFFF0000' } }; // Red if over budget
                     }
 
                     if (task.workLogs && task.workLogs.length > 0) {
@@ -816,21 +843,21 @@ const ProjectDetails = () => {
                         </h1>
                         <p className="text-slate-500 mt-1">{project.description || 'No description provided.'}</p>
                         <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
-                             <div className="flex items-center gap-1"><User size={14}/> Manager: {project.manager ? `${project.manager.firstName} ${project.manager.lastName}` : 'N/A'}</div>
-                             <div className="flex items-center gap-1"><Briefcase size={14}/> Client: {project.client?.name || 'Internal'}</div>
+                            <div className="flex items-center gap-1"><User size={14} /> Manager: {project.manager ? `${project.manager.firstName} ${project.manager.lastName}` : 'N/A'}</div>
+                            <div className="flex items-center gap-1"><Briefcase size={14} /> Client: {project.client?.name || 'Internal'}</div>
                         </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-3">
                         {(user?.roles?.includes('Admin') || user?.permissions?.includes('project.export_report')) && (
                             <button onClick={handleExport} className="zoho-btn-secondary flex items-center space-x-2 bg-white text-green-700 border-green-200 hover:bg-green-50 hover:border-green-300">
                                 <ListChecks size={18} /> <span>Export Excel</span>
                             </button>
                         )}
-                         <div className="flex bg-white rounded-lg shadow-sm p-1 border border-slate-200">
-                            <button onClick={() => setViewMode('overview')} className={`p-2 rounded ${viewMode === 'overview' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Overview"><LayoutList size={20}/></button>
-                            <button onClick={() => setViewMode('hierarchy')} className={`p-2 rounded ${viewMode === 'hierarchy' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Hierarchy"><ListTree size={20}/></button>
-                         </div>
+                        <div className="flex bg-white rounded-lg shadow-sm p-1 border border-slate-200">
+                            <button onClick={() => setViewMode('overview')} className={`p-2 rounded ${viewMode === 'overview' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Overview"><LayoutList size={20} /></button>
+                            <button onClick={() => setViewMode('hierarchy')} className={`p-2 rounded ${viewMode === 'hierarchy' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Hierarchy"><ListTree size={20} /></button>
+                        </div>
                         {canUpdateProject && (
                             <button onClick={openCreateModuleModal} className="zoho-btn-primary flex items-center space-x-2">
                                 <Plus size={18} /> <span>Add Module</span>
@@ -845,8 +872,8 @@ const ProjectDetails = () => {
 
             </div>
 
-             {/* Modals Reuse (Simplified for brevity in diff, but must include full modal code) */}
-             {showModuleModal && (
+            {/* Modals Reuse (Simplified for brevity in diff, but must include full modal code) */}
+            {showModuleModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
@@ -854,28 +881,28 @@ const ProjectDetails = () => {
                             <button onClick={() => setShowModuleModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
                         </div>
                         <form onSubmit={handleCreateModule} className="p-6 space-y-4">
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Module Name</label><input required className="zoho-input" value={moduleForm.name} onChange={e => setModuleForm({...moduleForm, name: e.target.value})} /></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label><select className="zoho-input" value={moduleForm.status} onChange={e => setModuleForm({...moduleForm, status: e.target.value})}><option value="PLANNED">Planned</option><option value="IN_PROGRESS">In Progress</option><option value="COMPLETED">Completed</option></select></div>
+                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Module Name</label><input required className="zoho-input" value={moduleForm.name} onChange={e => setModuleForm({ ...moduleForm, name: e.target.value })} /></div>
+                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label><select className="zoho-input" value={moduleForm.status} onChange={e => setModuleForm({ ...moduleForm, status: e.target.value })}><option value="PLANNED">Planned</option><option value="IN_PROGRESS">In Progress</option><option value="COMPLETED">Completed</option></select></div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Date</label><input type="date" className="zoho-input" value={moduleForm.startDate} onChange={e => setModuleForm({...moduleForm, startDate: e.target.value})} /></div>
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label><input type="date" className="zoho-input" value={moduleForm.dueDate} onChange={e => setModuleForm({...moduleForm, dueDate: e.target.value})} /></div>
+                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Date</label><input type="date" className="zoho-input" value={moduleForm.startDate} onChange={e => setModuleForm({ ...moduleForm, startDate: e.target.value })} /></div>
+                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label><input type="date" className="zoho-input" value={moduleForm.dueDate} onChange={e => setModuleForm({ ...moduleForm, dueDate: e.target.value })} /></div>
                             </div>
                             <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowModuleModal(false)} className="zoho-btn-secondary">Cancel</button><button type="submit" className="zoho-btn-primary">{editingModuleId ? 'Update' : 'Create'}</button></div>
                         </form>
                     </div>
                 </div>
             )}
-            
+
             {showTaskModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
                             <h3 className="font-bold text-slate-800">{editingTaskId ? 'Edit Task' : 'New Task'}</h3>
                             <button onClick={() => setShowTaskModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
                         </div>
                         <form onSubmit={handleCreateTask} className="p-6 space-y-4">
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task Name</label><input required className="zoho-input" value={taskForm.name} onChange={e => setTaskForm({...taskForm, name: e.target.value})} /></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label><textarea className="zoho-input" value={taskForm.description} onChange={e => setTaskForm({...taskForm, description: e.target.value})} rows="2" /></div>
+                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task Name</label><input required className="zoho-input" value={taskForm.name} onChange={e => setTaskForm({ ...taskForm, name: e.target.value })} /></div>
+                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label><textarea className="zoho-input" value={taskForm.description} onChange={e => setTaskForm({ ...taskForm, description: e.target.value })} rows="2" /></div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Assignees</label>
@@ -891,20 +918,20 @@ const ProjectDetails = () => {
                                         ))}
                                     </div>
                                 </div>
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Priority</label><select className="zoho-input" value={taskForm.priority} onChange={e => setTaskForm({...taskForm, priority: e.target.value})}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="CRITICAL">Critical</option></select></div>
+                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Priority</label><select className="zoho-input" value={taskForm.priority} onChange={e => setTaskForm({ ...taskForm, priority: e.target.value })}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="CRITICAL">Critical</option></select></div>
                             </div>
                             <div className="grid grid-cols-3 gap-4">
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Date</label><input type="date" className="zoho-input" value={taskForm.startDate} onChange={e => setTaskForm({...taskForm, startDate: e.target.value})} /></div>
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label><input type="date" className="zoho-input" value={taskForm.dueDate} onChange={e => setTaskForm({...taskForm, dueDate: e.target.value})} /></div>
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Est. Hours</label><input type="number" className="zoho-input" value={taskForm.estimatedHours} onChange={e => setTaskForm({...taskForm, estimatedHours: e.target.value})} /></div>
+                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Date</label><input type="date" className="zoho-input" value={taskForm.startDate} onChange={e => setTaskForm({ ...taskForm, startDate: e.target.value })} /></div>
+                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label><input type="date" className="zoho-input" value={taskForm.dueDate} onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })} /></div>
+                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Est. Hours</label><input type="number" className="zoho-input" value={taskForm.estimatedHours} onChange={e => setTaskForm({ ...taskForm, estimatedHours: e.target.value })} /></div>
                             </div>
                             <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowTaskModal(false)} className="zoho-btn-secondary">Cancel</button><button type="submit" className="zoho-btn-primary">{editingTaskId ? 'Update' : 'Save'}</button></div>
                         </form>
                     </div>
                 </div>
             )}
-             {/* Log Work Modal - Simplified for brevity but functionality preserved by not removing it hopefully? No i need to include it */}
-             {showLogModal && (
+            {/* Log Work Modal - Simplified for brevity but functionality preserved by not removing it hopefully? No i need to include it */}
+            {showLogModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -912,9 +939,9 @@ const ProjectDetails = () => {
                             <button onClick={() => setShowLogModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
                         </div>
                         <form onSubmit={handleLogWork} className="p-6 space-y-4">
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label><input type="date" required className="zoho-input" value={logForm.date} onChange={e => setLogForm({...logForm, date: e.target.value})} /></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hours Spent</label><input type="number" step="0.1" required className="zoho-input" value={logForm.hours} onChange={e => setLogForm({...logForm, hours: e.target.value})} placeholder="e.g. 2.5"/></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label><textarea className="zoho-input" value={logForm.description} onChange={e => setLogForm({...logForm, description: e.target.value})} rows="3" /></div>
+                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label><input type="date" required className="zoho-input" value={logForm.date} onChange={e => setLogForm({ ...logForm, date: e.target.value })} /></div>
+                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hours Spent</label><input type="number" step="0.1" required className="zoho-input" value={logForm.hours} onChange={e => setLogForm({ ...logForm, hours: e.target.value })} placeholder="e.g. 2.5" /></div>
+                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label><textarea className="zoho-input" value={logForm.description} onChange={e => setLogForm({ ...logForm, description: e.target.value })} rows="3" /></div>
                             <div className="flex justify-end space-x-3 pt-2"><button type="button" onClick={() => setShowLogModal(false)} className="zoho-btn-secondary">Cancel</button><button type="submit" className="zoho-btn-primary bg-green-600 hover:bg-green-700">Log Time</button></div>
                         </form>
                     </div>

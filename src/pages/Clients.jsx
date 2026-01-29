@@ -69,11 +69,11 @@ const Clients = () => {
     };
 
     const handleEdit = (client) => {
-        setFormData({ 
-            name: client.name, 
-            businessUnit: client.businessUnit?._id || '', 
-            location: client.location || '', 
-            email: client.email || '' 
+        setFormData({
+            name: client.name,
+            businessUnit: client.businessUnit?._id || '',
+            location: client.location || '',
+            email: client.email || ''
         });
         setEditingId(client._id);
         setShowModal(true);
@@ -85,20 +85,57 @@ const Clients = () => {
         setShowModal(true);
     };
 
-    if (loading) return <div className="p-8 text-center">Loading...</div>;
+    if (loading) return (
+        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
+            <div className="max-w-6xl mx-auto space-y-6">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <Skeleton className="h-8 w-48 mb-2" />
+                        <Skeleton className="h-4 w-64" />
+                    </div>
+                    <Skeleton className="h-10 w-32 rounded-lg" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[1, 2, 3, 4, 5, 6].map(i => (
+                        <div key={i} className="zoho-card p-5 relative">
+                            <div className="flex justify-between items-start">
+                                <div className="flex items-center space-x-3">
+                                    <Skeleton className="h-10 w-10 rounded-lg" />
+                                    <div className="space-y-1">
+                                        <Skeleton className="h-5 w-32" />
+                                        <Skeleton className="h-3 w-24" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
+                                <div className="flex justify-between">
+                                    <Skeleton className="h-3 w-20" />
+                                    <Skeleton className="h-3 w-24" />
+                                </div>
+                                <div className="flex justify-between">
+                                    <Skeleton className="h-3 w-16" />
+                                    <Skeleton className="h-3 w-32" />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-6xl mx-auto space-y-6">
-                
+
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800">Clients</h1>
                         <p className="text-sm text-slate-500">External customers and partners</p>
                     </div>
                     {canCreate && (
-                        <button 
-                            onClick={openCreateModal} 
+                        <button
+                            onClick={openCreateModal}
                             className="flex items-center space-x-2 zoho-btn-primary"
                         >
                             <Plus size={18} />
@@ -160,19 +197,19 @@ const Clients = () => {
                         <form onSubmit={handleSubmit} className="p-6 space-y-4">
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Client Name</label>
-                                <input 
-                                    required 
-                                    className="zoho-input" 
+                                <input
+                                    required
+                                    className="zoho-input"
                                     value={formData.name}
-                                    onChange={e => setFormData({...formData, name: e.target.value})}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
                                 />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Business Unit</label>
-                                <select 
+                                <select
                                     className="zoho-input"
                                     value={formData.businessUnit}
-                                    onChange={e => setFormData({...formData, businessUnit: e.target.value})}
+                                    onChange={e => setFormData({ ...formData, businessUnit: e.target.value })}
                                 >
                                     <option value="">Select Unit</option>
                                     {businessUnits.map(bu => (
@@ -183,19 +220,19 @@ const Clients = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-                                    <input 
+                                    <input
                                         type="email"
-                                        className="zoho-input" 
+                                        className="zoho-input"
                                         value={formData.email}
-                                        onChange={e => setFormData({...formData, email: e.target.value})}
+                                        onChange={e => setFormData({ ...formData, email: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Location</label>
-                                    <input 
-                                        className="zoho-input" 
+                                    <input
+                                        className="zoho-input"
                                         value={formData.location}
-                                        onChange={e => setFormData({...formData, location: e.target.value})}
+                                        onChange={e => setFormData({ ...formData, location: e.target.value })}
                                     />
                                 </div>
                             </div>

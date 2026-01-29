@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { Briefcase, Plus, Search, Building } from 'lucide-react';
 import toast from 'react-hot-toast';
+import Skeleton from '../components/Skeleton';
 
 import { useAuth } from '../context/AuthContext';
 
@@ -20,8 +21,8 @@ const Projects = () => {
             setLoading(true);
             // Fetch Projects (Main Data)
             try {
-                 const projRes = await api.get('/projects');
-                 setProjects(projRes.data);
+                const projRes = await api.get('/projects');
+                setProjects(projRes.data);
             } catch (err) {
                 console.error("Failed to load projects", err);
                 toast.error('Failed to load projects');
@@ -68,10 +69,10 @@ const Projects = () => {
     };
 
     const handleEdit = (proj) => {
-        setFormData({ 
-            name: proj.name, 
-            client: proj.client?._id || '', 
-            description: proj.description || '', 
+        setFormData({
+            name: proj.name,
+            client: proj.client?._id || '',
+            description: proj.description || '',
             status: proj.isActive ? 'Active' : 'Inactive',
             startDate: proj.startDate ? new Date(proj.startDate).toISOString().split('T')[0] : '',
             dueDate: proj.dueDate ? new Date(proj.dueDate).toISOString().split('T')[0] : ''
@@ -86,20 +87,20 @@ const Projects = () => {
         setShowModal(true);
     };
 
-    if (loading) return <div className="p-8 text-center">Loading...</div>;
+    // if (loading) return <div className="p-8 text-center">Loading...</div>;
 
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-6xl mx-auto space-y-6">
-                
+
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800">Projects</h1>
                         <p className="text-sm text-slate-500">Track initiatives and jobs</p>
                     </div>
                     {canCreate && (
-                        <button 
-                            onClick={openCreateModal} 
+                        <button
+                            onClick={openCreateModal}
                             className="flex items-center space-x-2 zoho-btn-primary"
                         >
                             <Plus size={18} />
@@ -121,34 +122,45 @@ const Projects = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {projects.map((project) => (
-                                    <tr key={project._id} className="hover:bg-slate-50/50">
-                                        <td className="px-6 py-3 font-medium text-slate-800">
-                                            <div className="flex items-center space-x-2">
-                                                <div className="p-1.5 bg-blue-100 text-blue-600 rounded">
-                                                    <Briefcase size={16} />
+                                {loading ? (
+                                    Array.from({ length: 5 }).map((_, i) => (
+                                        <tr key={i}>
+                                            <td className="px-6 py-3"><Skeleton className="h-8 w-48" /></td>
+                                            <td className="px-6 py-3"><Skeleton className="h-6 w-32" /></td>
+                                            <td className="px-6 py-3"><Skeleton className="h-6 w-32" /></td>
+                                            <td className="px-6 py-3"><Skeleton className="h-6 w-16" /></td>
+                                            <td className="px-6 py-3"><Skeleton className="h-6 w-24 ml-auto" /></td>
+                                        </tr>
+                                    ))
+                                ) : projects.length > 0 ? (
+                                    projects.map((project) => (
+                                        <tr key={project._id} className="hover:bg-slate-50/50">
+                                            <td className="px-6 py-3 font-medium text-slate-800">
+                                                <div className="flex items-center space-x-2">
+                                                    <div className="p-1.5 bg-blue-100 text-blue-600 rounded">
+                                                        <Briefcase size={16} />
+                                                    </div>
+                                                    <span>{project.name}</span>
                                                 </div>
-                                                <span>{project.name}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-3 text-slate-600">
-                                            {project.client?.name || <span className="text-slate-400 italic">Internal</span>}
-                                        </td>
-                                        <td className="px-6 py-3 text-slate-600">
-                                            {project.manager ? `${project.manager.firstName} ${project.manager.lastName}` : '-'}
-                                        </td>
-                                        <td className="px-6 py-3">
-                                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${project.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                                                {project.isActive ? 'Active' : 'Inactive'}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-3 text-right space-x-3">
-                                            {canUpdate && <button onClick={() => handleEdit(project)} className="text-slate-500 hover:text-blue-600 text-xs font-medium">Edit</button>}
-                                            <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">View Modules</a>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {projects.length === 0 && (
+                                            </td>
+                                            <td className="px-6 py-3 text-slate-600">
+                                                {project.client?.name || <span className="text-slate-400 italic">Internal</span>}
+                                            </td>
+                                            <td className="px-6 py-3 text-slate-600">
+                                                {project.manager ? `${project.manager.firstName} ${project.manager.lastName}` : '-'}
+                                            </td>
+                                            <td className="px-6 py-3">
+                                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${project.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                                                    {project.isActive ? 'Active' : 'Inactive'}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-3 text-right space-x-3">
+                                                {canUpdate && <button onClick={() => handleEdit(project)} className="text-slate-500 hover:text-blue-600 text-xs font-medium">Edit</button>}
+                                                <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">View Modules</a>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
                                     <tr>
                                         <td colSpan="5" className="p-8 text-center text-slate-500">
                                             No Projects found.
@@ -174,19 +186,19 @@ const Projects = () => {
                             {/* ... inputs same ... */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Project Name</label>
-                                <input 
-                                    required 
-                                    className="zoho-input" 
+                                <input
+                                    required
+                                    className="zoho-input"
                                     value={formData.name}
-                                    onChange={e => setFormData({...formData, name: e.target.value})}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
                                 />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Client</label>
-                                <select 
+                                <select
                                     className="zoho-input"
                                     value={formData.client}
-                                    onChange={e => setFormData({...formData, client: e.target.value})}
+                                    onChange={e => setFormData({ ...formData, client: e.target.value })}
                                 >
                                     <option value="">Internal / No Client</option>
                                     {clients.map(c => (
@@ -196,30 +208,30 @@ const Projects = () => {
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
-                                <textarea 
-                                    className="zoho-input" 
+                                <textarea
+                                    className="zoho-input"
                                     value={formData.description}
-                                    onChange={e => setFormData({...formData, description: e.target.value})}
+                                    onChange={e => setFormData({ ...formData, description: e.target.value })}
                                     rows="3"
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Date</label>
-                                    <input 
+                                    <input
                                         type="date"
-                                        className="zoho-input" 
+                                        className="zoho-input"
                                         value={formData.startDate}
-                                        onChange={e => setFormData({...formData, startDate: e.target.value})}
+                                        onChange={e => setFormData({ ...formData, startDate: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label>
-                                    <input 
+                                    <input
                                         type="date"
-                                        className="zoho-input" 
+                                        className="zoho-input"
                                         value={formData.dueDate}
-                                        onChange={e => setFormData({...formData, dueDate: e.target.value})}
+                                        onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
                                     />
                                 </div>
                             </div>
@@ -227,10 +239,10 @@ const Projects = () => {
                             {editingId && (
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label>
-                                    <select 
+                                    <select
                                         className="zoho-input"
                                         value={formData.status}
-                                        onChange={e => setFormData({...formData, status: e.target.value})}
+                                        onChange={e => setFormData({ ...formData, status: e.target.value })}
                                     >
                                         <option value="Active">Active</option>
                                         <option value="Inactive">Inactive</option>

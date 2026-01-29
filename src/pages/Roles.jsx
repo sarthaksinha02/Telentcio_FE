@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { Plus, Check, Shield } from 'lucide-react';
+import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 
 const Roles = () => {
@@ -100,20 +101,55 @@ const Roles = () => {
         setShowModal(true);
     };
 
-    if (loading) return <div className="p-8 text-center">Loading...</div>;
+    if (loading) return (
+        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
+            <div className="max-w-6xl mx-auto space-y-6">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <Skeleton className="h-8 w-48 mb-2" />
+                        <Skeleton className="h-4 w-64" />
+                    </div>
+                    <Skeleton className="h-10 w-32 rounded-lg" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[1, 2, 3, 4, 5, 6].map(i => (
+                        <div key={i} className="zoho-card p-6 border-t-4 border-slate-200 flex flex-col justify-between h-48">
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-start">
+                                    <div className="space-y-2">
+                                        <Skeleton className="h-6 w-32" />
+                                        <Skeleton className="h-3 w-24" />
+                                    </div>
+                                    <Skeleton className="h-5 w-12" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Skeleton className="h-3 w-full" />
+                                    <Skeleton className="h-3 w-3/4" />
+                                </div>
+                            </div>
+                            <div className="pt-4 border-t border-slate-100 flex justify-end space-x-3">
+                                <Skeleton className="h-4 w-12" />
+                                <Skeleton className="h-4 w-20" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-6xl mx-auto space-y-6">
-                
+
                 {/* Header */}
-                 <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800">Role Management</h1>
                         <p className="text-sm text-slate-500">Define roles and permission levels</p>
                     </div>
-                    <button 
-                        onClick={openCreateModal} 
+                    <button
+                        onClick={openCreateModal}
                         className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-all"
                     >
                         <Shield size={18} />
@@ -141,14 +177,14 @@ const Roles = () => {
                             </div>
                             <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end space-x-3">
                                 {!role.isSystem && (
-                                    <button 
-                                        onClick={() => handleEdit(role, false)} 
+                                    <button
+                                        onClick={() => handleEdit(role, false)}
                                         className="text-slate-500 hover:text-blue-600 text-sm font-medium"
                                     >
                                         Edit
                                     </button>
                                 )}
-                                <button 
+                                <button
                                     onClick={() => handleEdit(role, true)}
                                     className="text-blue-600 text-sm font-medium hover:underline"
                                 >
@@ -161,8 +197,8 @@ const Roles = () => {
 
             </div>
 
-             {/* Create/Edit Role Modal */}
-             {showModal && (
+            {/* Create/Edit Role Modal */}
+            {showModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden animate-blob">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
@@ -171,16 +207,16 @@ const Roles = () => {
                             </h3>
                             <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
                         </div>
-                        
+
                         <div className="flex-1 overflow-auto p-6">
                             <div className="mb-6">
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Role Name</label>
-                                <input 
-                                    value={roleName} 
-                                    onChange={(e) => setRoleName(e.target.value)} 
+                                <input
+                                    value={roleName}
+                                    onChange={(e) => setRoleName(e.target.value)}
                                     className={`zoho-input text-lg font-semibold ${viewOnly ? 'bg-slate-50' : ''}`}
                                     placeholder="e.g. HR Manager"
-                                    disabled={viewOnly || (editingId && roles.find(r => r._id === editingId)?.isSystem)} 
+                                    disabled={viewOnly || (editingId && roles.find(r => r._id === editingId)?.isSystem)}
                                 />
                             </div>
 
@@ -193,8 +229,8 @@ const Roles = () => {
                                                 {module}
                                             </h4>
                                             {!viewOnly && (
-                                                <button 
-                                                    type="button" 
+                                                <button
+                                                    type="button"
                                                     onClick={() => toggleGroup(perms)}
                                                     className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline"
                                                 >
@@ -208,9 +244,9 @@ const Roles = () => {
                                                     <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors mt-0.5 ${selectedPerms.includes(p._id) ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'}`}>
                                                         {selectedPerms.includes(p._id) && <Check size={12} className="text-white" />}
                                                     </div>
-                                                    <input 
-                                                        type="checkbox" 
-                                                        className="hidden" 
+                                                    <input
+                                                        type="checkbox"
+                                                        className="hidden"
                                                         checked={selectedPerms.includes(p._id)}
                                                         onChange={() => togglePermission(p._id)}
                                                         disabled={viewOnly}
@@ -239,7 +275,7 @@ const Roles = () => {
                         </div>
                     </div>
                 </div>
-             )}
+            )}
         </div>
     );
 };

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2 } from 'lucide-react';
+import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -11,10 +12,10 @@ import AttendanceCalendar from '../components/AttendanceCalendar';
 const Attendance = () => {
     const { user } = useAuth();
     const [status, setStatus] = useState(null);
-    const [history, setHistory] = useState([]); 
+    const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
-    
+
     // Task Integration
     const [assignedTasks, setAssignedTasks] = useState([]);
     const [recentLogs, setRecentLogs] = useState([]);
@@ -26,7 +27,7 @@ const Attendance = () => {
     const [editingLogId, setEditingLogId] = useState(null);
 
     const fetchApprovals = async () => {
-       // Removed for move to Timesheet page
+        // Removed for move to Timesheet page
     };
 
     useEffect(() => {
@@ -38,7 +39,7 @@ const Attendance = () => {
         try {
             const res = await api.get('/attendance/today');
             setStatus(res.data);
-            
+
             // If clocked in, fetch tasks
             if (res.data?.clockIn && !res.data?.clockOut && user) {
                 fetchAssignedTasks();
@@ -54,7 +55,7 @@ const Attendance = () => {
             // Fetch tasks assigned to current user
             const res = await api.get(`/projects/tasks?assignees=${user._id}`);
             // Filter out completed tasks if backend doesn't
-            const activeTasks = res.data.filter(t => t.module?.status !== 'COMPLETED' && (!t.status || t.status !== 'COMPLETED')); 
+            const activeTasks = res.data.filter(t => t.module?.status !== 'COMPLETED' && (!t.status || t.status !== 'COMPLETED'));
             setAssignedTasks(activeTasks);
         } catch (error) {
             console.error('Error fetching tasks', error);
@@ -90,9 +91,9 @@ const Attendance = () => {
     // Check if a task has a log for today
     const getTodayLogForTask = (taskId) => {
         const today = new Date().toISOString().split('T')[0];
-        return recentLogs.find(log => 
+        return recentLogs.find(log =>
             log.task &&
-            log.task._id === taskId && 
+            log.task._id === taskId &&
             new Date(log.date).toISOString().split('T')[0] === today
         );
     };
@@ -102,7 +103,7 @@ const Attendance = () => {
             await api.post('/attendance/clock-in');
             toast.success('Clocked In Successfully');
             await fetchTodayStatus();
-            
+
             const now = new Date();
             fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
         } catch (error) {
@@ -133,15 +134,15 @@ const Attendance = () => {
             setExpandedLogTaskId(taskId);
             setLoggingTaskId(taskId);
             if (existingLog) {
-                 setEditingLogId(existingLog._id);
-                 setLogForm({
-                     date: new Date(existingLog.date).toISOString().split('T')[0],
-                     hours: existingLog.hours,
-                     description: existingLog.description
-                 });
+                setEditingLogId(existingLog._id);
+                setLogForm({
+                    date: new Date(existingLog.date).toISOString().split('T')[0],
+                    hours: existingLog.hours,
+                    description: existingLog.description
+                });
             } else {
-                 setEditingLogId(null);
-                 setLogForm({ date: new Date().toISOString().split('T')[0], hours: '', description: '' });
+                setEditingLogId(null);
+                setLogForm({ date: new Date().toISOString().split('T')[0], hours: '', description: '' });
             }
         }
     };
@@ -167,7 +168,7 @@ const Attendance = () => {
                 await api.post(`/projects/tasks/${loggingTaskId}/log`, logForm);
                 toast.success('Work Logged Successfully');
             }
-            
+
             setExpandedLogTaskId(null);
             setLoggingTaskId(null);
             setEditingLogId(null);
@@ -180,19 +181,19 @@ const Attendance = () => {
 
     const formatTime = (dateString, istString) => {
         if (istString && istString.includes(',')) {
-             return istString.split(',')[1]?.trim() || '';
-        } 
+            return istString.split(',')[1]?.trim() || '';
+        }
         if (!dateString) return '--:--';
-        return new Date(dateString).toLocaleTimeString('en-US', { 
-            hour: '2-digit', minute: '2-digit' 
+        return new Date(dateString).toLocaleTimeString('en-US', {
+            hour: '2-digit', minute: '2-digit'
         });
     };
 
     const calculateDuration = (start, end) => {
         if (!start) return '--';
         const startTime = new Date(start);
-        const endTime = end ? new Date(end) : currentTime; 
-        
+        const endTime = end ? new Date(end) : currentTime;
+
         // Prevent negative duration if system time somehow lags (rare but possible)
         if (endTime < startTime) return '0h 0m';
 
@@ -210,14 +211,14 @@ const Attendance = () => {
 
         // 1. Header Info (Rows 1-4)
         const titleStyle = { font: { bold: true, size: 12 }, alignment: { vertical: 'middle', horizontal: 'left' } };
-        
+
         sheet.mergeCells('A1:C1');
         sheet.getCell('A1').value = `User Name: ${user.firstName} ${user.lastName || ''}`;
         sheet.getCell('A1').font = { bold: true, size: 14 };
 
         sheet.mergeCells('A2:C2');
         sheet.getCell('A2').value = `Joining Date: ${user.joiningDate ? new Date(user.joiningDate).toLocaleDateString() : 'N/A'}`;
-        
+
         sheet.mergeCells('A3:C3');
         sheet.getCell('A3').value = `Supervisor: ${user.reportingManager?.firstName ? `${user.reportingManager.firstName} ${user.reportingManager.lastName}` : (user.reportingManager?.name || '')}`;
 
@@ -231,12 +232,12 @@ const Attendance = () => {
 
         // 3. Data Generation
         const currentYear = new Date().getFullYear(); // Or use a selected date state if calendar navigation is tracked
-        const currentMonth = new Date().getMonth(); 
+        const currentMonth = new Date().getMonth();
         // Note: Ideally we should use the month currently displayed in 'history', but 'history' only gives us data, not the month itself explicitly unless we track it.
         // Assuming 'history' contains records for the *displayed* month. If 'history' is empty, we default to current month.
         // Let's infer month from the first history record or fallback to current.
         const referenceDate = history.length > 0 ? new Date(history[0].date) : new Date();
-        
+
         const start = startOfMonth(referenceDate);
         const end = endOfMonth(referenceDate);
         const days = eachDayOfInterval({ start, end });
@@ -252,7 +253,7 @@ const Attendance = () => {
 
             const joiningDate = user.joiningDate ? new Date(user.joiningDate) : null;
             // Normalize joining date to start of day for comparison
-            if (joiningDate) joiningDate.setHours(0,0,0,0);
+            if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
 
             if (record) {
                 status = 'Present';
@@ -296,14 +297,62 @@ const Attendance = () => {
         saveAs(new Blob([buffer]), fileName);
     };
 
-    if (loading) return <div className="p-8 text-center">Loading...</div>;
+    if (loading) return (
+        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
+            <div className="max-w-7xl mx-auto space-y-8">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <Skeleton className="h-8 w-48 mb-2" />
+                        <Skeleton className="h-4 w-32" />
+                    </div>
+                    <div className="hidden sm:block">
+                        <Skeleton className="h-10 w-32 mb-1" />
+                        <Skeleton className="h-3 w-40" />
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+                    <div className="xl:col-span-1 space-y-6">
+                        <div className="bg-white p-6 rounded-lg shadow-sm border-t-4 border-t-slate-200 flex flex-col items-center">
+                            <Skeleton className="w-36 h-36 rounded-full mb-6" />
+                            <Skeleton className="h-6 w-24 mb-2" />
+                            <Skeleton className="h-8 w-32 mb-6" />
+                            <Skeleton className="h-10 w-full mb-3" />
+                        </div>
+                        <div className="bg-white p-5 rounded-lg shadow-sm">
+                            <Skeleton className="h-4 w-32 mb-4" />
+                            <div className="space-y-4">
+                                <Skeleton className="h-12 w-full" />
+                                <Skeleton className="h-12 w-full" />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="xl:col-span-3">
+                        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 h-[500px]">
+                            <div className="flex justify-between mb-6">
+                                <Skeleton className="h-8 w-48" />
+                                <div className="flex space-x-2">
+                                    <Skeleton className="h-8 w-8 rounded" />
+                                    <Skeleton className="h-8 w-8 rounded" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-7 gap-4">
+                                {[...Array(35)].map((_, i) => (
+                                    <Skeleton key={i} className="h-24 w-full rounded" />
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
     const isClockedIn = status?.clockIn && !status?.clockOut;
     const isClockedOut = status?.clockIn && status?.clockOut;
 
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-7xl mx-auto space-y-8">
-                
+
                 {/* Header */}
                 <div className="flex justify-between items-center">
                     <div>
@@ -320,20 +369,20 @@ const Attendance = () => {
                             </div>
                         </div>
                         {/* Export Button - Permission Check */
-                        (user?.role === 'Admin' || user?.permissions?.includes('attendance.export')) && (
-                            <button 
-                                onClick={handleExportAttendance}
-                                className="bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 p-2 rounded-lg shadow-sm transition-colors"
-                                title="Download Monthly Report"
-                            >
-                                <Download size={20} />
-                            </button>
-                        )}
+                            (user?.role === 'Admin' || user?.permissions?.includes('attendance.export')) && (
+                                <button
+                                    onClick={handleExportAttendance}
+                                    className="bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 p-2 rounded-lg shadow-sm transition-colors"
+                                    title="Download Monthly Report"
+                                >
+                                    <Download size={20} />
+                                </button>
+                            )}
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-                    
+
                     {/* Widget Column */}
                     <div className="xl:col-span-1 space-y-6">
                         {/* Clock Widget */}
@@ -348,7 +397,7 @@ const Attendance = () => {
                                     </div>
                                 )}
                             </div>
-                            
+
                             <div className="space-y-1 mb-6">
                                 <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Status</div>
                                 <div className={`text-xl font-bold ${isClockedIn ? 'text-emerald-600' : isClockedOut ? 'text-slate-500' : 'text-slate-700'}`}>
@@ -362,7 +411,7 @@ const Attendance = () => {
                                         Check In
                                     </button>
                                 )}
-                                
+
                                 {isClockedIn && (
                                     <button onClick={handleClockOut} className="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white rounded font-semibold shadow-md active:scale-95 transition-all">
                                         Check Out
@@ -398,7 +447,7 @@ const Attendance = () => {
                             </div>
                         </div>
 
-                         <div className="zoho-card p-5 mt-6">
+                        <div className="zoho-card p-5 mt-6">
                             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Recent Activity</h4>
                             {recentLogs.length > 0 ? (
                                 <div className="space-y-4">
@@ -423,7 +472,7 @@ const Attendance = () => {
                                         </div>
                                     ))}
                                     <div className="pt-2 text-center">
-                                       <a href="/timesheet" className="text-xs text-blue-600 hover:underline">View All in Timesheet</a>
+                                        <a href="/timesheet" className="text-xs text-blue-600 hover:underline">View All in Timesheet</a>
                                     </div>
                                 </div>
                             ) : (
@@ -469,22 +518,22 @@ const Attendance = () => {
 
                     {/* Main Content Column with Tabs */}
                     <div className="xl:col-span-3">
-                         {/* Tab Navigation */}
-                         <div className="flex border-b border-slate-200 bg-white rounded-t-lg px-4 pt-2 mb-0">
-                            <button 
+                        {/* Tab Navigation */}
+                        <div className="flex border-b border-slate-200 bg-white rounded-t-lg px-4 pt-2 mb-0">
+                            <button
                                 onClick={() => setActiveTab('history')}
                                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'history' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                             >
                                 <Calendar size={16} /> Attendance History
                             </button>
-                            <button 
+                            <button
                                 onClick={() => setActiveTab('tasks')}
                                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'tasks' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                             >
                                 <Briefcase size={16} /> Assigned to Me <span className="bg-slate-100 text-slate-600 text-xs py-0.5 px-2 rounded-full ml-1">{assignedTasks.length}</span>
                             </button>
                         </div>
-                        
+
                         <div className="bg-white rounded-b-lg shadow-sm border border-t-0 border-slate-200 p-6 min-h-[500px]">
                             {activeTab === 'history' ? (
                                 <AttendanceCalendar history={history} onMonthChange={fetchMonthHistory} user={user} />
@@ -494,7 +543,7 @@ const Attendance = () => {
                                         <h3 className="text-lg font-bold text-slate-800">My Assigned Tasks</h3>
                                         {!isClockedIn && <span className="text-xs text-amber-600 font-medium bg-amber-50 px-3 py-1 rounded-full border border-amber-200">⚠️ Clock in to log work</span>}
                                     </div>
-                                    
+
                                     {assignedTasks.length > 0 ? (
                                         <div className="overflow-x-auto border border-slate-200 rounded-lg">
                                             <table className="w-full text-sm text-left">
@@ -520,14 +569,14 @@ const Attendance = () => {
                                                                     <td className="px-4 py-3 text-right">
                                                                         {existingLog ? (
                                                                             <div className="flex items-center justify-end gap-2">
-                                                                                <button 
+                                                                                <button
                                                                                     onClick={() => toggleLogForm(task._id, existingLog)}
                                                                                     className={`p-1.5 rounded hover:bg-slate-200 text-slate-500 hover:text-blue-600 ${expandedLogTaskId === task._id ? 'bg-blue-100 text-blue-600' : ''}`}
                                                                                     title="Edit Log"
                                                                                 >
                                                                                     <Edit2 size={14} />
                                                                                 </button>
-                                                                                <button 
+                                                                                <button
                                                                                     onClick={() => handleDeleteLog(existingLog._id)}
                                                                                     className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"
                                                                                     title="Delete Log"
@@ -536,7 +585,7 @@ const Attendance = () => {
                                                                                 </button>
                                                                             </div>
                                                                         ) : (
-                                                                            <button 
+                                                                            <button
                                                                                 onClick={() => toggleLogForm(task._id)}
                                                                                 disabled={!isClockedIn}
                                                                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${isClockedIn ? (expandedLogTaskId === task._id ? 'bg-slate-200 text-slate-700' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200') : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
@@ -552,24 +601,24 @@ const Attendance = () => {
                                                                             <form onSubmit={handleLogWork} className="flex flex-col sm:flex-row gap-4 items-end bg-white p-4 rounded border border-slate-200 shadow-sm">
                                                                                 <div className="flex-1 w-full">
                                                                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
-                                                                                    <input 
+                                                                                    <input
                                                                                         required
                                                                                         className="zoho-input w-full"
                                                                                         placeholder="What did you work on?"
                                                                                         value={logForm.description}
-                                                                                        onChange={e => setLogForm({...logForm, description: e.target.value})}
+                                                                                        onChange={e => setLogForm({ ...logForm, description: e.target.value })}
                                                                                     />
                                                                                 </div>
                                                                                 <div className="w-32">
                                                                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hours</label>
-                                                                                    <input 
+                                                                                    <input
                                                                                         type="number"
                                                                                         step="0.1"
                                                                                         required
                                                                                         className="zoho-input w-full"
                                                                                         placeholder="0.0"
                                                                                         value={logForm.hours}
-                                                                                        onChange={e => setLogForm({...logForm, hours: e.target.value})}
+                                                                                        onChange={e => setLogForm({ ...logForm, hours: e.target.value })}
                                                                                     />
                                                                                 </div>
                                                                                 <button type="submit" className="zoho-btn-primary bg-emerald-600 hover:bg-emerald-700 h-[38px] px-6">

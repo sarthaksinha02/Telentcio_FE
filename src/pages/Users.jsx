@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { UserPlus, Search, Edit2, Shield, Calendar } from 'lucide-react';
+import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 
 const Users = () => {
@@ -9,7 +10,7 @@ const Users = () => {
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [editingUser, setEditingUser] = useState(null);
-    
+
     // Form State
     const [formData, setFormData] = useState({
         firstName: '',
@@ -38,7 +39,7 @@ const Users = () => {
                 console.log('Admin users fetch failed', err.response?.status);
                 if (err.response && err.response.status === 403) {
                     console.log('Attempting to fetch my team...');
-                    toast('Viewing My Team (Not Admin)', { icon: '👥' }); 
+                    toast('Viewing My Team (Not Admin)', { icon: '👥' });
                     const teamRes = await api.get('/admin/users/team');
                     console.log('Team fetch success', teamRes.data);
                     usersData = teamRes.data;
@@ -80,12 +81,12 @@ const Users = () => {
         setEditingUser(user);
         // Find users who currently report to this user
         const currentReports = users.filter(u => u.reportingManager === user._id || (u.reportingManager?._id === user._id)).map(u => u._id);
-        
+
         setFormData({
             firstName: user.firstName,
             lastName: user.lastName || '',
             email: user.email,
-            password: '', 
+            password: '',
             roleId: user.roles[0]?._id || '',
             department: user.department || '',
             employeeCode: user.employeeCode || '',
@@ -127,12 +128,47 @@ const Users = () => {
         }
     };
 
-    if (loading) return <div className="p-8 text-center">Loading...</div>;
+    if (loading) return (
+        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
+            <div className="max-w-6xl mx-auto space-y-6">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <Skeleton className="h-8 w-48 mb-2" />
+                        <Skeleton className="h-4 w-64" />
+                    </div>
+                    <Skeleton className="h-10 w-32 rounded-lg" />
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                        <Skeleton className="h-9 w-64 rounded-md" />
+                        <Skeleton className="h-4 w-24" />
+                    </div>
+                    <div className="p-0">
+                        {[1, 2, 3, 4, 5].map(i => (
+                            <div key={i} className="flex items-center justify-between px-6 py-4 border-b border-slate-50 last:border-0">
+                                <div className="flex items-center space-x-3 w-1/4">
+                                    <Skeleton className="h-9 w-9 rounded-full" />
+                                    <div className="space-y-1">
+                                        <Skeleton className="h-4 w-32" />
+                                        <Skeleton className="h-3 w-20" />
+                                    </div>
+                                </div>
+                                <Skeleton className="h-4 w-1/6" />
+                                <Skeleton className="h-6 w-20 rounded" />
+                                <Skeleton className="h-4 w-1/6" />
+                                <Skeleton className="h-4 w-1/6" />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-             <div className="max-w-6xl mx-auto space-y-6">
-                
+            <div className="max-w-6xl mx-auto space-y-6">
+
                 {/* Header */}
                 <div className="flex justify-between items-center">
                     <div>
@@ -140,8 +176,8 @@ const Users = () => {
                         <p className="text-sm text-slate-500">{canEdit ? 'Manage employees and their access roles' : 'View your direct reports'}</p>
                     </div>
                     {canEdit && (
-                        <button 
-                            onClick={handleAdd} 
+                        <button
+                            onClick={handleAdd}
                             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-all"
                         >
                             <UserPlus size={18} />
@@ -153,17 +189,17 @@ const Users = () => {
                 {/* Users List */}
                 <div className="zoho-card overflow-hidden">
                     <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                         <div className="relative">
+                        <div className="relative">
                             <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                            <input 
-                                type="text" 
-                                placeholder="Search employees..." 
+                            <input
+                                type="text"
+                                placeholder="Search employees..."
                                 className="pl-9 pr-4 py-1.5 w-64 bg-white border border-slate-200 rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500"
                             />
-                         </div>
-                         <div className="text-sm text-slate-500">
-                             Total Users: <strong>{users.length}</strong>
-                         </div>
+                        </div>
+                        <div className="text-sm text-slate-500">
+                            Total Users: <strong>{users.length}</strong>
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
@@ -222,7 +258,7 @@ const Users = () => {
                                             )}
                                             {/* View Timesheet Action (Visible if user reports to me or if I am Admin) */}
                                             {(!canEdit || canEdit) && (user.reportingManager?._id !== user._id) && (
-                                                <button 
+                                                <button
                                                     onClick={() => {
                                                         // Navigate to timesheet with user context
                                                         window.location.href = `/timesheet?userId=${user._id}&name=${user.firstName} ${user.lastName}`;
@@ -241,10 +277,10 @@ const Users = () => {
                     </div>
                 </div>
 
-             </div>
+            </div>
 
-             {/* Modal */}
-             {showModal && (
+            {/* Modal */}
+            {showModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden animate-blob">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -272,7 +308,7 @@ const Users = () => {
                                     <input name="password" type="password" required={!editingUser} onChange={handleChange} className="zoho-input" />
                                 </div>
                             </div>
-                             <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Department</label>
                                     <input name="department" value={formData.department} onChange={handleChange} className="zoho-input" />
@@ -295,15 +331,15 @@ const Users = () => {
                                     ))}
                                 </select>
                             </div>
-                            
+
                             {/* Direct Reports Multi-Select */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Subordinates (Direct Reports)</label>
                                 <div className="h-40 overflow-y-auto border border-slate-200 rounded p-2 bg-slate-50 grid grid-cols-2 gap-2">
                                     {users.filter(u => !editingUser || u._id !== editingUser._id).map(user => (
                                         <label key={user._id} className="flex items-center space-x-2 text-sm bg-white p-2 rounded border border-slate-100 shadow-sm cursor-pointer hover:border-blue-300">
-                                            <input 
-                                                type="checkbox" 
+                                            <input
+                                                type="checkbox"
                                                 value={user._id}
                                                 checked={formData.directReports?.includes(user._id)}
                                                 onChange={(e) => {
@@ -318,8 +354,8 @@ const Users = () => {
                                                 className="rounded text-blue-600 focus:ring-blue-500"
                                             />
                                             <div className="flex flex-col">
-                                                 <span className="font-medium text-slate-700">{user.firstName} {user.lastName}</span>
-                                                 <span className="text-[10px] text-slate-400">{user.email}</span>
+                                                <span className="font-medium text-slate-700">{user.firstName} {user.lastName}</span>
+                                                <span className="text-[10px] text-slate-400">{user.email}</span>
                                             </div>
                                         </label>
                                     ))}
@@ -333,7 +369,7 @@ const Users = () => {
                         </form>
                     </div>
                 </div>
-             )}
+            )}
         </div>
     );
 };
