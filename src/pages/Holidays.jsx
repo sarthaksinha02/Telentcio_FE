@@ -180,8 +180,8 @@ const Holidays = () => {
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide border ${holiday.isOptional
-                                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                                            : 'bg-green-50 text-green-700 border-green-200'
+                                                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                        : 'bg-green-50 text-green-700 border-green-200'
                                                         }`}>
                                                         {holiday.isOptional ? 'Optional' : 'Fixed'}
                                                     </span>
@@ -211,7 +211,7 @@ const Holidays = () => {
                     {holidays.length > 0 && (
                         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex justify-between uppercase tracking-wider font-semibold">
                             <span>Total: {totalHolidays}</span>
-                            <span>Powered by HRCODE</span>
+                            {/* <span>Powered by HRCODE</span> */}
                         </div>
                     )}
                 </div>

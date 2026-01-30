@@ -19,10 +19,12 @@ const Sidebar = () => {
 
       <div className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
         <div className="px-3 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Main</div>
-        <Link to="/" className={isActive('/')}>
-          <Users size={18} />
-          <span>Dashboard</span>
-        </Link>
+        {user?.roles?.includes('Admin') && (
+          <Link to="/" className={isActive('/')}>
+            <Users size={18} />
+            <span>Dashboard</span>
+          </Link>
+        )}
         <Link to="/attendance" className={isActive('/attendance')}>
           <Clock size={18} />
           <span>Attendance</span>
@@ -31,10 +33,7 @@ const Sidebar = () => {
           <Calendar size={18} />
           <span>Timesheet</span>
         </Link>
-        <Link to="/holidays" className={isActive('/holidays')}>
-          <CalendarDays size={18} />
-          <span>Holidays</span>
-        </Link>
+
 
         <div className="px-3 mt-8 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Organization</div>
         <Link to="/users" className={isActive('/users')}>

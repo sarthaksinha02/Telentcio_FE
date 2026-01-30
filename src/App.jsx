@@ -17,6 +17,7 @@ import Profile from './pages/Profile';
 import Holidays from './pages/Holidays';
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleRoute from './components/RoleRoute';
+import SystemRoute from './components/SystemRoute';
 import Layout from './components/Layout';
 
 function App() {
@@ -31,7 +32,11 @@ function App() {
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/" element={
+                <SystemRoute>
+                  <Dashboard />
+                </SystemRoute>
+              } />
               <Route path="/attendance" element={<Attendance />} />
               <Route path="/timesheet" element={<Timesheet />} />
               <Route path="/profile" element={<Profile />} />

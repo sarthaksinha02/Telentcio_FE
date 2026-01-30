@@ -179,8 +179,8 @@ const Dashboard = () => {
                                                         </td>
                                                         <td className="px-6 py-3">
                                                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${record.status === 'PRESENT' ? 'bg-emerald-100 text-emerald-800' :
-                                                                    record.status === 'HALF_DAY' ? 'bg-yellow-100 text-yellow-800' :
-                                                                        'bg-slate-100 text-slate-800'
+                                                                record.status === 'HALF_DAY' ? 'bg-yellow-100 text-yellow-800' :
+                                                                    'bg-slate-100 text-slate-800'
                                                                 }`}>
                                                                 {record.status}
                                                             </span>
