@@ -15,6 +15,7 @@ const Attendance = () => {
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
+    const [holidays, setHolidays] = useState([]);
 
     // Task Integration
     const [assignedTasks, setAssignedTasks] = useState([]);
@@ -82,9 +83,19 @@ const Attendance = () => {
         }
     };
 
+    const fetchHolidays = async () => {
+        try {
+            const res = await api.get('/holidays');
+            setHolidays(res.data);
+        } catch (error) {
+            console.error('Error fetching holidays', error);
+        }
+    };
+
     useEffect(() => {
         fetchTodayStatus();
         fetchRecentLogs();
+        fetchHolidays();
         setLoading(false);
     }, [user]);
 
@@ -257,18 +268,23 @@ const Attendance = () => {
             // Normalize joining date to start of day for comparison
             if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
 
-            if (record) {
-                status = 'Present';
-                rowColor = 'FFEBF1DE'; // Green
-            } else if (isSunday) {
-                status = 'Weekoff';
-                rowColor = 'FFF2F2F2'; // Gray
-            } else if (joiningDate && day < joiningDate) {
+            const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+
+            if (joiningDate && day < joiningDate) {
                 status = 'Not Applicable';
                 rowColor = 'FFFFFFFF'; // White
             } else if (isFuture) {
                 status = '-';
                 rowColor = 'FFFFFFFF'; // White
+            } else if (holiday) {
+                status = holiday.name;
+                rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB'; // Light Orange for Optional, Light Teal for Regular
+            } else if (record) {
+                status = 'Present';
+                rowColor = 'FFEBF1DE'; // Green
+            } else if (isSunday) {
+                status = 'Weekoff';
+                rowColor = 'FFF2F2F2'; // Gray
             }
 
             const row = sheet.addRow([
@@ -538,7 +554,7 @@ const Attendance = () => {
 
                         <div className="bg-white rounded-b-lg shadow-sm border border-t-0 border-slate-200 p-6 min-h-[500px]">
                             {activeTab === 'history' ? (
-                                <AttendanceCalendar history={history} onMonthChange={fetchMonthHistory} user={user} />
+                                <AttendanceCalendar history={history} onMonthChange={fetchMonthHistory} user={user} holidays={holidays} />
                             ) : (
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center mb-4">

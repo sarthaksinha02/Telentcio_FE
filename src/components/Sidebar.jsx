@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Users, Clock, Calendar, LogOut, Shield, Building, Briefcase } from 'lucide-react';
+import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase } from 'lucide-react';
 
 const Sidebar = () => {
   const { user, logout } = useAuth();
@@ -31,6 +31,10 @@ const Sidebar = () => {
           <Calendar size={18} />
           <span>Timesheet</span>
         </Link>
+        <Link to="/holidays" className={isActive('/holidays')}>
+          <CalendarDays size={18} />
+          <span>Holidays</span>
+        </Link>
 
         <div className="px-3 mt-8 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Organization</div>
         <Link to="/users" className={isActive('/users')}>
@@ -42,17 +46,7 @@ const Sidebar = () => {
           <>
             <div className="px-3 mt-8 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Admin</div>
 
-            {(user?.permissions?.includes('user.read') || user?.roles?.includes('Admin')) && (
-              <Link to="/users" className={isActive('/users') + (isActive('/users').includes('active') ? '' : ' hidden md:flex')}>
-                {/* This link is technically redundant with Employees above but labeled Manage Users. 
-                             We can keep it or hide it. Let's keep it for explicit Admin feel or remove. 
-                             Actually, let's keep it as is from Dashboard but maybe de-duplicate in future.
-                             For now, matching dashboard logic.
-                         */}
-                <Users size={18} />
-                <span>Manage Users</span>
-              </Link>
-            )}
+
 
             {(user?.permissions?.includes('role.read') || user?.roles?.includes('Admin')) && (
               <Link to="/roles" className={isActive('/roles')}>
@@ -100,7 +94,7 @@ const Sidebar = () => {
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-white truncate">{user?.firstName}</div>
-            <div className="text-xs text-slate-400 truncate">{user?.company}</div>
+
             {user?.reportingManagers && user.reportingManagers.length > 0 && (
               <div className="text-[10px] text-blue-400 truncate mt-0.5">
                 Reports to: {user.reportingManagers.map(m => m.firstName).join(', ')}

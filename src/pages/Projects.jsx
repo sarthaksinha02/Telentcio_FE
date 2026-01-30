@@ -14,7 +14,7 @@ const Projects = () => {
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
-    const [formData, setFormData] = useState({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '' });
+    const [formData, setFormData] = useState({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
 
     const fetchData = async () => {
         try {
@@ -43,6 +43,22 @@ const Projects = () => {
         }
     };
 
+    // Fetch Employees Helper
+    const [employees, setEmployees] = useState([]);
+    useEffect(() => {
+        const fetchEmployees = async () => {
+            try {
+                const res = await api.get('/projects/employees');
+                setEmployees(res.data);
+            } catch (err) {
+                console.warn("Failed to load employees for assignment", err);
+            }
+        };
+        if (canCreate || canUpdate) {
+            fetchEmployees();
+        }
+    }, [canCreate, canUpdate]);
+
     useEffect(() => {
         fetchData();
     }, []);
@@ -60,7 +76,7 @@ const Projects = () => {
                 toast.success('Project Created');
             }
             setShowModal(false);
-            setFormData({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '' });
+            setFormData({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
             setEditingId(null);
             fetchData();
         } catch (error) {
@@ -75,14 +91,15 @@ const Projects = () => {
             description: proj.description || '',
             status: proj.isActive ? 'Active' : 'Inactive',
             startDate: proj.startDate ? new Date(proj.startDate).toISOString().split('T')[0] : '',
-            dueDate: proj.dueDate ? new Date(proj.dueDate).toISOString().split('T')[0] : ''
+            dueDate: proj.dueDate ? new Date(proj.dueDate).toISOString().split('T')[0] : '',
+            members: proj.members?.map(m => m._id) || []
         });
         setEditingId(proj._id);
         setShowModal(true);
     };
 
     const openCreateModal = () => {
-        setFormData({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '' });
+        setFormData({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
         setEditingId(null);
         setShowModal(true);
     };
@@ -250,15 +267,47 @@ const Projects = () => {
                                 </div>
                             )}
 
+                            {/* Assign Members */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Project Members (Visibility)</label>
+                                <div className="h-32 overflow-y-auto border border-slate-200 rounded p-2 bg-slate-50 grid grid-cols-2 gap-2">
+                                    {employees.map(emp => (
+                                        <label key={emp._id} className="flex items-center space-x-2 text-sm bg-white p-2 rounded border border-slate-100 shadow-sm cursor-pointer hover:border-blue-300">
+                                            <input
+                                                type="checkbox"
+                                                value={emp._id}
+                                                checked={formData.members?.includes(emp._id)}
+                                                onChange={(e) => {
+                                                    const checked = e.target.checked;
+                                                    const id = emp._id;
+                                                    setFormData(prev => {
+                                                        const current = prev.members || [];
+                                                        if (checked) return { ...prev, members: [...current, id] };
+                                                        return { ...prev, members: current.filter(x => x !== id) };
+                                                    });
+                                                }}
+                                                className="rounded text-blue-600 focus:ring-blue-500"
+                                            />
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-slate-700">{emp.firstName} {emp.lastName}</span>
+                                                <span className="text-[10px] text-slate-400">{emp.email}</span>
+                                            </div>
+                                        </label>
+                                    ))}
+                                    {employees.length === 0 && <div className="col-span-2 text-xs text-slate-400 italic text-center p-4">No employees found</div>}
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-1">Select users who should have access to this project.</p>
+                            </div>
+
                             <div className="flex justify-end space-x-3 pt-4">
                                 <button type="button" onClick={() => setShowModal(false)} className="zoho-btn-secondary">Cancel</button>
                                 <button type="submit" className="zoho-btn-primary">{editingId ? 'Update' : 'Create'}</button>
                             </div>
                         </form>
                     </div>
-                </div>
+                </div >
             )}
-        </div>
+        </div >
     );
 };
 

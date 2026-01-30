@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-const AttendanceCalendar = ({ history, onMonthChange, user }) => {
+const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [] }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     useEffect(() => {
@@ -14,10 +14,6 @@ const AttendanceCalendar = ({ history, onMonthChange, user }) => {
         const days = new Date(year, month + 1, 0).getDate();
         return Array.from({ length: days }, (_, i) => new Date(year, month, i + 1));
     };
-
-
-
-
 
     const normalizeDate = (d) => new Date(d).toDateString();
 
@@ -81,6 +77,8 @@ const AttendanceCalendar = ({ history, onMonthChange, user }) => {
 
                 {days.map((day) => {
                     const record = history.find(h => normalizeDate(h.date) === normalizeDate(day));
+                    const holiday = holidays.find(h => normalizeDate(h.date) === normalizeDate(day));
+
                     const isToday = normalizeDate(day) === normalizeDate(new Date());
                     const isSunday = day.getDay() === 0;
                     const joiningDate = user?.joiningDate ? new Date(user.joiningDate) : null;
@@ -95,6 +93,12 @@ const AttendanceCalendar = ({ history, onMonthChange, user }) => {
                             <div className={`text-right mb-2 font-medium ${isToday ? 'text-blue-600' : 'text-slate-400'}`}>
                                 {day.getDate()}
                             </div>
+
+                            {holiday && (
+                                <div className={`mb-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} truncate`} title={holiday.name}>
+                                    {holiday.name}
+                                </div>
+                            )}
 
                             {record ? (
                                 <div className="space-y-1">
@@ -116,7 +120,7 @@ const AttendanceCalendar = ({ history, onMonthChange, user }) => {
                                         <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title="Not Applicable (Before Joining)">N/A</span>
                                     </div>
                                 ) : (
-                                    !isSunday && day < new Date() && (
+                                    !isSunday && !holiday && day < new Date() && (
                                         <div className="flex justify-center mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <span className="text-[10px] text-red-400 bg-red-50 px-1.5 py-0.5 rounded">Absent</span>
                                         </div>
