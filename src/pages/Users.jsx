@@ -21,7 +21,8 @@ const Users = () => {
         department: '',
         employeeCode: '',
         joiningDate: '',
-        directReports: []
+        directReports: [],
+        reportingManagers: []
     });
 
     const fetchData = async () => {
@@ -80,7 +81,8 @@ const Users = () => {
     const handleEdit = (user) => {
         setEditingUser(user);
         // Find users who currently report to this user
-        const currentReports = users.filter(u => u.reportingManager === user._id || (u.reportingManager?._id === user._id)).map(u => u._id);
+        // Find users who currently report to this user
+        const currentReports = users.filter(u => u.reportingManagers?.some(rm => rm._id === user._id || rm === user._id)).map(u => u._id);
 
         setFormData({
             firstName: user.firstName,
@@ -91,7 +93,8 @@ const Users = () => {
             department: user.department || '',
             employeeCode: user.employeeCode || '',
             joiningDate: user.joiningDate ? new Date(user.joiningDate).toISOString().split('T')[0] : '',
-            directReports: currentReports
+            directReports: currentReports,
+            reportingManagers: user.reportingManagers?.map(rm => rm._id) || []
         });
         setShowModal(true);
     };
@@ -238,10 +241,14 @@ const Users = () => {
                                         </td>
                                         <td className="px-6 py-3 text-slate-600">{user.department || '-'}</td>
                                         <td className="px-6 py-3 text-slate-600">
-                                            {user.reportingManager ? (
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium text-xs text-slate-700">{user.reportingManager.firstName} {user.reportingManager.lastName}</span>
-                                                    <span className="text-[10px] text-slate-400">{user.reportingManager.email}</span>
+                                            {user.reportingManagers && user.reportingManagers.length > 0 ? (
+                                                <div className="flex flex-col space-y-1">
+                                                    {user.reportingManagers.map(mgr => (
+                                                        <div key={mgr._id} className="flex flex-col border-l-2 border-slate-200 pl-2">
+                                                            <span className="font-medium text-xs text-slate-700">{mgr.firstName} {mgr.lastName}</span>
+                                                            <span className="text-[10px] text-slate-400">{mgr.email}</span>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             ) : (
                                                 <span className="text-xs text-slate-400 italic">None</span>
@@ -257,7 +264,7 @@ const Users = () => {
                                                 <button onClick={() => handleEdit(user)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"><Edit2 size={16} /></button>
                                             )}
                                             {/* View Timesheet Action (Visible if user reports to me or if I am Admin) */}
-                                            {(!canEdit || canEdit) && (user.reportingManager?._id !== user._id) && (
+                                            {(!canEdit || canEdit) && (!user.reportingManagers?.some(rm => rm._id === user._id)) && (
                                                 <button
                                                     onClick={() => {
                                                         // Navigate to timesheet with user context
@@ -282,7 +289,7 @@ const Users = () => {
             {/* Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden animate-blob">
+                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden animate-blob max-h-[90vh] overflow-y-auto">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                             <h3 className="font-bold text-slate-800">{editingUser ? 'Edit Employee' : 'Add New Employee'}</h3>
                             <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
@@ -332,10 +339,12 @@ const Users = () => {
                                 </select>
                             </div>
 
+                            {/* Reporting Managers Multi-Select Removed per User Request */}
+
                             {/* Direct Reports Multi-Select */}
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Subordinates (Direct Reports)</label>
-                                <div className="h-40 overflow-y-auto border border-slate-200 rounded p-2 bg-slate-50 grid grid-cols-2 gap-2">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Subordinates (Inverse: Who reports to this user)</label>
+                                <div className="h-32 overflow-y-auto border border-slate-200 rounded p-2 bg-slate-50 grid grid-cols-2 gap-2">
                                     {users.filter(u => !editingUser || u._id !== editingUser._id).map(user => (
                                         <label key={user._id} className="flex items-center space-x-2 text-sm bg-white p-2 rounded border border-slate-100 shadow-sm cursor-pointer hover:border-blue-300">
                                             <input

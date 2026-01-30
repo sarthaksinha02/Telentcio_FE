@@ -220,7 +220,9 @@ const Attendance = () => {
         sheet.getCell('A2').value = `Joining Date: ${user.joiningDate ? new Date(user.joiningDate).toLocaleDateString() : 'N/A'}`;
 
         sheet.mergeCells('A3:C3');
-        sheet.getCell('A3').value = `Supervisor: ${user.reportingManager?.firstName ? `${user.reportingManager.firstName} ${user.reportingManager.lastName}` : (user.reportingManager?.name || '')}`;
+        const managers = user.reportingManagers || [];
+        const mgrNames = managers.length > 0 ? managers.map(m => `${m.firstName} ${m.lastName}`).join(', ') : 'N/A';
+        sheet.getCell('A3').value = `Supervisor(s): ${mgrNames}`;
 
         sheet.addRow([]); // Row 4 Empty Buffer
 

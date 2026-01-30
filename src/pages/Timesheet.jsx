@@ -329,7 +329,7 @@ const Timesheet = () => {
         // --- 0. SUMMARY ROW (Inserted at top) ---
         // Debugging: Check what we received
         const u = timesheet.userDetails || timesheet.user || {};
-        const mgr = u.reportingManager || {};
+        const managers = u.reportingManagers || [];
         console.log('Export Debug - User:', u);
 
         wsLogs.insertRow(1, { name: 'Timesheet Report' });
@@ -337,7 +337,7 @@ const Timesheet = () => {
             name: `Employee: ${u.firstName || u.email || 'Unknown'} ${u.lastName || ''}`
         });
         wsLogs.insertRow(3, {
-            name: `Supervisor: ${mgr.firstName ? `${mgr.firstName} ${mgr.lastName}` : 'N/A'}`
+            name: `Supervisor(s): ${managers.length > 0 ? managers.map(m => `${m.firstName} ${m.lastName}`).join(', ') : 'N/A'}`
         });
         wsLogs.insertRow(4, { name: '' }); // Spacer
 

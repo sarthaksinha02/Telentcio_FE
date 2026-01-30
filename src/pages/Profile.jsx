@@ -28,7 +28,7 @@ const Profile = () => {
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-4xl mx-auto space-y-6">
-                
+
                 {/* Header Card */}
                 <div className="bg-white rounded-xl shadow-md overflow-hidden border border-slate-200">
                     <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-700"></div>
@@ -92,15 +92,19 @@ const Profile = () => {
                             <div className="space-y-4">
                                 <div>
                                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Reporting To</label>
-                                    {profile.reportingManager ? (
-                                        <div className="flex items-center mt-2 p-2 bg-blue-50 rounded border border-blue-100">
-                                            <div className="h-8 w-8 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center font-bold text-xs mr-2">
-                                                {profile.reportingManager.firstName.charAt(0)}
-                                            </div>
-                                            <div>
-                                                <div className="text-sm font-bold text-slate-800">{profile.reportingManager.firstName} {profile.reportingManager.lastName}</div>
-                                                <div className="text-xs text-slate-500">{profile.reportingManager.email}</div>
-                                            </div>
+                                    {profile.reportingManagers && profile.reportingManagers.length > 0 ? (
+                                        <div className="space-y-2 mt-2">
+                                            {profile.reportingManagers.map(manager => (
+                                                <div key={manager._id} className="flex items-center p-2 bg-blue-50 rounded border border-blue-100">
+                                                    <div className="h-8 w-8 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center font-bold text-xs mr-2">
+                                                        {manager.firstName.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-sm font-bold text-slate-800">{manager.firstName} {manager.lastName}</div>
+                                                        <div className="text-xs text-slate-500">{manager.email}</div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     ) : (
                                         <div className="mt-1 text-slate-400 text-sm italic">No Reporting Manager</div>

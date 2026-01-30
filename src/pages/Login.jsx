@@ -19,7 +19,7 @@ const Login = () => {
     } catch (error) {
       toast.error(error.response?.data?.message || 'Login Failed');
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -27,10 +27,10 @@ const Login = () => {
     <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
       <div className="max-w-md w-full bg-white rounded-lg shadow-md border border-slate-200 overflow-hidden">
         <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
-           <h2 className="text-xl font-semibold text-slate-800">Sign in to HRCODE</h2>
-           <p className="text-sm text-slate-500 mt-1">Access your employee portal</p>
+          <h2 className="text-xl font-semibold text-slate-800">Sign in to HRCODE</h2>
+          <p className="text-sm text-slate-500 mt-1">Access your employee portal</p>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="p-8 space-y-5">
           <div>
             <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Email Address</label>
@@ -54,7 +54,7 @@ const Login = () => {
               placeholder="••••••••"
             />
           </div>
-          
+
           <button
             type="submit"
             disabled={isLoading}
@@ -63,11 +63,11 @@ const Login = () => {
             {isLoading ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
-        
+
         <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 text-center">
-            <p className="text-sm text-slate-600">
-                New company? <Link to="/register" className="text-blue-600 font-medium hover:underline">Create account</Link>
-            </p>
+          <p className="text-sm text-slate-600">
+            New company? <Link to="/register" className="text-blue-600 font-medium hover:underline">Create account</Link>
+          </p>
         </div>
       </div>
     </div>

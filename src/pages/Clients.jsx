@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { Users, Plus, Building } from 'lucide-react';
 import toast from 'react-hot-toast';
+import Skeleton from '../components/Skeleton';
 
 import { useAuth } from '../context/AuthContext';
 
