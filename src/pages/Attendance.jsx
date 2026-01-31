@@ -396,10 +396,16 @@ const Attendance = () => {
             const attendanceMap = {};
             attendanceRecords.forEach(record => {
                 const userId = record.user.toString();
-                const dateStr = new Date(record.date).toISOString().split('T')[0];
+                // Use IST time for date mapping to fix mismatch
+                const dateStr = new Date(record.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
                 if (!attendanceMap[userId]) attendanceMap[userId] = {};
                 attendanceMap[userId][dateStr] = record;
             });
+
+            // Freeze first row and first column
+            worksheet.views = [
+                { state: 'frozen', xSplit: 1, ySplit: 1 }
+            ];
 
             // 3. Add Data Rows (Grouped)
             teamMembers.forEach(user => {
@@ -407,7 +413,7 @@ const Attendance = () => {
 
                 // --- PARENT ROW (Employee Name) ---
                 const parentRow = worksheet.addRow({
-                    name: `${user.firstName} ${user.lastName || ''} (${user.employeeCode || 'N/A'})`
+                    name: `${user.firstName} ${user.lastName || ''}${user.employeeCode ? ` (${user.employeeCode})` : ''}`
                 });
                 parentRow.font = { bold: true, size: 11, color: { argb: 'FF1E293B' } };
                 parentRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Light Slate
@@ -418,7 +424,10 @@ const Attendance = () => {
                 const durationRow = { name: '   ↳ Duration' };
 
                 for (let d = 1; d <= daysInMonth; d++) {
-                    const dateStr = new Date(Date.UTC(currentYear, currentMonth - 1, d)).toISOString().split('T')[0];
+                    // Create date for column (Year, Month, Day)
+                    // We need a formatted YYYY-MM-DD string to match the map key
+                    const colDate = new Date(currentYear, currentMonth - 1, d);
+                    const dateStr = format(colDate, 'yyyy-MM-dd');
                     const record = userLogs[dateStr];
                     const colKey = `day_${d}`;
 
