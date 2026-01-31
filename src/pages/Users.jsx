@@ -25,6 +25,8 @@ const Users = () => {
         duration: true,
         leaves: true
     });
+    const [exportMonth, setExportMonth] = useState(format(new Date(), 'yyyy-MM'));
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Helpers for Export
     const formatTime = (dateString, istString) => {
@@ -152,9 +154,7 @@ const Users = () => {
     const handleExportTeamAttendance = async () => {
         const toastId = toast.loading('Generating Team Report...');
         try {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth() + 1;
+            const [year, month] = exportMonth.split('-');
 
             // Fetch data
             const res = await api.get(`/attendance/team-report?year=${year}&month=${month}`);
@@ -227,7 +227,12 @@ const Users = () => {
             const formatTimeSimple = (date) => new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
             // 3. Add Data Rows (Grouped)
-            teamMembers.forEach(user => {
+            // Filter teamMembers based on current filteredUsers
+            const usersToExport = teamMembers.filter(tm =>
+                filteredUsers.some(fu => fu._id === tm._id)
+            );
+
+            usersToExport.forEach(user => {
                 const userLogs = attendanceMap[user._id] || {};
                 const userLeaves = leaveMap[user._id] || {};
 
@@ -398,7 +403,7 @@ const Users = () => {
             };
 
             const buffer = await workbook.xlsx.writeBuffer();
-            const fileName = `Team_Attendance_Matrix_${format(now, 'MMM_yyyy')}.xlsx`;
+            const fileName = `Team_Attendance_${format(new Date(year, month - 1), 'MMMM_yyyy')}.xlsx`;
             saveAs(new Blob([buffer]), fileName);
             toast.success('Downloaded', { id: toastId });
 
@@ -469,6 +474,13 @@ const Users = () => {
             setLoading(false);
         }
     };
+
+    const filteredUsers = users.filter(user =>
+    (user.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.employeeCode?.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
 
     useEffect(() => {
         fetchData();
@@ -598,6 +610,20 @@ const Users = () => {
                                     <button onClick={() => setShowExportModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
                                 </div>
                                 <div className="p-4 space-y-3">
+                                    <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">Settings:</p>
+
+                                    <div className="mb-3">
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">Select Month</label>
+                                        <input
+                                            type="month"
+                                            value={exportMonth}
+                                            onChange={(e) => setExportMonth(e.target.value)}
+                                            className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                        />
+                                    </div>
+
+                                    <div className="h-px bg-slate-100 my-2"></div>
+
                                     <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">Include Columns:</p>
 
                                     <label className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition">
@@ -670,6 +696,8 @@ const Users = () => {
                             <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
                             <input
                                 type="text"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
                                 placeholder="Search employees..."
                                 className="pl-9 pr-4 py-1.5 w-64 bg-white border border-slate-200 rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500"
                             />
@@ -693,7 +721,7 @@ const Users = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {users.map((user) => (
+                                {filteredUsers.map((user) => (
                                     <tr key={user._id} className="hover:bg-slate-50/50">
                                         <td className="px-6 py-3">
                                             <div className="flex items-center space-x-3">
