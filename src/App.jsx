@@ -1,8 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
 import Login from './pages/Login';
+import Unauthorized from './pages/Unauthorized';
 
 import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
@@ -58,7 +59,10 @@ function App() {
               </Route>
 
               {/* Users Management (Internal access control) */}
-              <Route path="/users" element={<Users />} />
+              {/* Users Management */}
+              <Route path="/users" element={<UsersAccessWrapper />} />
+
+              <Route path="/unauthorized" element={<Unauthorized />} />
             </Route>
           </Route>
 
@@ -71,3 +75,15 @@ function App() {
 }
 
 export default App;
+
+const UsersAccessWrapper = () => {
+  const { user } = useAuth();
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('user.read') ||
+    user.directReportsCount > 0;
+
+  return canAccess ? <Users /> : <Navigate to="/unauthorized" />;
+};

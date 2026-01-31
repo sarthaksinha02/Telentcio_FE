@@ -41,10 +41,12 @@ const Sidebar = () => {
 
 
         <div className="px-3 mt-8 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Organization</div>
-        <Link to="/users" className={isActive('/users')}>
-          <Users size={18} />
-          <span>Employees</span>
-        </Link>
+        {(user?.roles?.includes('Admin') || user?.permissions?.includes('user.read') || user?.directReportsCount > 0) && (
+          <Link to="/users" className={isActive('/users')}>
+            <Users size={18} />
+            <span>Employees</span>
+          </Link>
+        )}
 
         {(user?.permissions?.includes('user.read') || user?.permissions?.includes('role.read') || user?.roles?.includes('Admin')) && (
           <>

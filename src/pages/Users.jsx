@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 import { UserPlus, Search, Edit2, Shield, Calendar, Download } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
@@ -8,6 +9,7 @@ import { saveAs } from 'file-saver';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 
 const Users = () => {
+    const { user } = useAuth();
     const [users, setUsers] = useState([]);
     const [roles, setRoles] = useState([]);
     const [showModal, setShowModal] = useState(false);
@@ -313,35 +315,39 @@ const Users = () => {
 
     const fetchData = async () => {
         try {
-            // Try fetching all users (Admin)
-            // If 403, try fetching team
+            const isAdmin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
+            const canReadUsers = user?.permissions?.includes('user.read');
+            const canReadRoles = user?.permissions?.includes('role.read') || isAdmin;
+
             let usersData = [];
             let rolesData = [];
 
-            try {
-                const res = await api.get('/admin/users');
-                console.log('Admin users fetch success');
-                usersData = res.data;
-            } catch (err) {
-                console.log('Admin users fetch failed', err.response?.status);
-                if (err.response && err.response.status === 403) {
-                    console.log('Attempting to fetch my team...');
-                    // toast('Viewing My Team (Not Admin)', { icon: '👥' });
+            // 1. Fetch Users
+            if (isAdmin || canReadUsers) {
+                try {
+                    const res = await api.get('/admin/users');
+                    usersData = res.data;
+                } catch (err) {
+                    console.error('Admin users fetch failed', err);
+                }
+            } else {
+                // Fallback for Managers/Team View
+                try {
                     const teamRes = await api.get('/admin/users/team');
-                    console.log('Team fetch success', teamRes.data);
                     usersData = teamRes.data;
-                } else {
-                    throw err;
+                } catch (err) {
+                    console.log('Team fetch failed or empty');
                 }
             }
 
-            // Try fetching roles (Admin only)
-            try {
-                const rolesRes = await api.get('/admin/roles');
-                rolesData = rolesRes.data;
-            } catch (err) {
-                // If 403, just ignore roles (read-only view)
-                console.log('Roles access denied, switching to view-only');
+            // 2. Fetch Roles (Admin only)
+            if (canReadRoles) {
+                try {
+                    const rolesRes = await api.get('/admin/roles');
+                    rolesData = rolesRes.data;
+                } catch (err) {
+                    console.log('Roles fetch silenced');
+                }
             }
 
             setUsers(usersData);
