@@ -17,6 +17,15 @@ const Users = () => {
     const [editingUser, setEditingUser] = useState(null);
     const [holidays, setHolidays] = useState([]);
 
+    // Export Options State
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportOptions, setExportOptions] = useState({
+        status: true,
+        checkInOut: true,
+        duration: true,
+        leaves: true
+    });
+
     // Helpers for Export
     const formatTime = (dateString, istString) => {
         if (istString && istString.includes(',')) return istString.split(',')[1]?.trim() || '';
@@ -140,8 +149,6 @@ const Users = () => {
         }
     };
 
-
-
     const handleExportTeamAttendance = async () => {
         const toastId = toast.loading('Generating Team Report...');
         try {
@@ -149,147 +156,249 @@ const Users = () => {
             const year = now.getFullYear();
             const month = now.getMonth() + 1;
 
+            // Fetch data
             const res = await api.get(`/attendance/team-report?year=${year}&month=${month}`);
-            const { teamMembers, attendanceRecords } = res.data;
+            const { teamMembers, attendanceRecords, leaveRecords, holidays } = res.data;
 
             if (!teamMembers || teamMembers.length === 0) {
                 toast.error('No team members found', { id: toastId });
                 return;
             }
 
-            const start = startOfMonth(now);
-            const end = endOfMonth(now);
-            const daysOfMonth = eachDayOfInterval({ start, end });
-
-            // Helpers
-            const fmtTime = (d) => {
-                if (!d) return '--:--';
-                return new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-            };
-
             const workbook = new ExcelJS.Workbook();
-            const sheet = workbook.addWorksheet('Team Attendance');
+            const worksheet = workbook.addWorksheet('Team Attendance');
 
-            // Iterate over each team member to create their own section
-            teamMembers.forEach((member, index) => {
-                // Add Space between users (except the first one)
-                if (index > 0) {
-                    sheet.addRow([]);
-                    sheet.addRow([]);
+            // 1. Generate Date Columns (Horizontal)
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const dateColumns = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+                const date = new Date(year, month - 1, d);
+                const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                dateColumns.push({ header: `${String(d).padStart(2, '0')}-${dayName}`, key: `day_${d}`, width: 15 });
+            }
+
+            // Set Columns: Employee Name + Date Columns
+            worksheet.columns = [
+                { header: 'Employee / Details', key: 'name', width: 35 },
+                ...dateColumns
+            ];
+
+            // Style Header
+            const headerRow = worksheet.getRow(1);
+            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } }; // Dark Slate
+
+            // 2. Prepare Data Map
+            const attendanceMap = {};
+            attendanceRecords.forEach(record => {
+                const userId = record.user.toString();
+                const dateStr = new Date(record.date).toISOString().split('T')[0];
+                if (!attendanceMap[userId]) attendanceMap[userId] = {};
+                attendanceMap[userId][dateStr] = record;
+            });
+
+            // 3. Prepare Leave Map
+            const leaveMap = {};
+            if (leaveRecords && leaveRecords.length > 0) {
+                leaveRecords.forEach(leave => {
+                    const userId = leave.user.toString();
+                    if (!leaveMap[userId]) leaveMap[userId] = {};
+
+                    const start = new Date(leave.startDate);
+                    const end = new Date(leave.endDate);
+                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                        const dStr = d.toISOString().split('T')[0];
+                        leaveMap[userId][dStr] = leave.leaveType;
+                    }
+                });
+            }
+
+            // 4. Prepare Holiday Map
+            const holidayMap = {};
+            if (holidays && holidays.length > 0) {
+                holidays.forEach(h => {
+                    const dateStr = new Date(h.date).toISOString().split('T')[0];
+                    holidayMap[dateStr] = h.name;
+                });
+            }
+
+            // Helpers for this export
+            const extractTime = (istString) => istString.split(',')[1]?.trim() || istString;
+            const formatTimeSimple = (date) => new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+            // 3. Add Data Rows (Grouped)
+            teamMembers.forEach(user => {
+                const userLogs = attendanceMap[user._id] || {};
+                const userLeaves = leaveMap[user._id] || {};
+
+                // --- PARENT ROW (Employee Name) ---
+                const parentRow = worksheet.addRow({
+                    name: `${user.firstName} ${user.lastName || ''} (${user.employeeCode || 'N/A'})`
+                });
+                parentRow.font = { bold: true, size: 11, color: { argb: 'FF1E293B' } };
+                parentRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Light Slate
+
+                // --- CHILD ROWS ---
+                const rowsToAdd = [];
+                const statusRow = { name: '   ↳ Status' };
+                const checkInRow = { name: '   ↳ Check In' };
+                const checkOutRow = { name: '   ↳ Check Out' };
+                const durationRow = { name: '   ↳ Duration' };
+                const leavesRow = { name: '   ↳ Leaves' };
+
+                // Color Map for Cells
+                const cellRefMap = {}; // store cell refs to apply color later (or apply directly if possible)
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateObj = new Date(year, month - 1, d);
+                    const dateStr = new Date(Date.UTC(year, month - 1, d)).toISOString().split('T')[0];
+                    const record = userLogs[dateStr];
+                    const colKey = `day_${d}`;
+
+                    const isSunday = dateObj.getDay() === 0;
+                    const isFuture = dateObj > new Date();
+                    const leaveType = userLeaves[dateStr];
+                    const holidayName = holidayMap[dateStr];
+
+                    // -- Calculate Duration First --
+                    let durationHours = 0;
+                    if (record && record.clockIn && record.clockOut) {
+                        const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
+                        durationHours = dur / 3600000; // milliseconds to hours
+                    }
+
+                    // -- 1. Status Logic --
+                    let statusShort = 'Absent'; // Default
+                    let cellColor = 'FFF2DCDB'; // Red (Absent)
+
+                    if (isFuture) {
+                        statusShort = '-';
+                        cellColor = 'FFFFFFFF'; // White
+                    }
+                    else if (leaveType) {
+                        statusShort = `L (${leaveType})`; // Show Leave Type
+                        cellColor = 'FFFFE0B2'; // Orange/Yellowish
+                    }
+                    else if (holidayName) {
+                        statusShort = holidayName; // Show Holiday Name
+                        cellColor = 'FFD1F2EB'; // Light Cyan/Greenish
+                    }
+                    else if (record) {
+                        statusShort = 'Present';
+                        cellColor = 'FFEBF1DE'; // Light Green
+                    }
+                    else if (isSunday) {
+                        statusShort = 'Sunday';
+                        cellColor = 'FFF2F2F2'; // Light Grey
+                    }
+
+                    if (exportOptions.status) {
+                        statusRow[colKey] = statusShort;
+                        // We need row index to style specific cells, but here we only have row object *before* adding to sheet.
+                        // Solution: Store needed colors in a parallel structure or style after adding.
+                        // Better: Apply check and style *after* adding logic below.
+                    }
+
+                    // -- 2. Leaves Logic --
+                    if (exportOptions.leaves) {
+                        leavesRow[colKey] = leaveType || '-';
+                    }
+
+                    // -- 3. Time/Duration Data --
+                    if (record) {
+                        // Check In
+                        if (record.clockInIST) checkInRow[colKey] = extractTime(record.clockInIST);
+                        else if (record.clockIn) checkInRow[colKey] = formatTimeSimple(record.clockIn);
+                        else checkInRow[colKey] = '-';
+
+                        // Check Out
+                        if (record.clockOutIST) checkOutRow[colKey] = extractTime(record.clockOutIST);
+                        else if (record.clockOut) checkOutRow[colKey] = formatTimeSimple(record.clockOut);
+                        else checkOutRow[colKey] = '-';
+
+                        // Duration
+                        if (record.clockIn && record.clockOut) {
+                            const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
+                            const hrs = Math.floor(dur / 3600000);
+                            const mins = Math.floor((dur % 3600000) / 60000);
+
+                            let durationSuffix = '';
+                            if (durationHours >= 5 && durationHours < 8) {
+                                durationSuffix = ' (Half Day)';
+                            }
+
+                            durationRow[colKey] = `${hrs}h ${mins}m${durationSuffix}`;
+                        } else {
+                            durationRow[colKey] = '-';
+                        }
+                    } else {
+                        checkInRow[colKey] = '-';
+                        checkOutRow[colKey] = '-';
+                        durationRow[colKey] = '-';
+                    }
                 }
 
-                // --- User Metadata Section ---
-                const metaStartRow = sheet.rowCount + 1;
+                // Push selected rows to array in specific order
+                if (exportOptions.status) rowsToAdd.push(statusRow);
+                if (exportOptions.checkInOut) {
+                    rowsToAdd.push(checkInRow);
+                    rowsToAdd.push(checkOutRow);
+                }
+                if (exportOptions.duration) rowsToAdd.push(durationRow);
+                if (exportOptions.leaves) rowsToAdd.push(leavesRow);
 
-                // Name
-                const nameRow = sheet.addRow(['Employee Name:', `${member.firstName} ${member.lastName}`]);
-                nameRow.font = { bold: true, size: 11 };
-
-                // Joining Date
-                const joinDateStr = member.joiningDate ? new Date(member.joiningDate).toLocaleDateString() : 'N/A';
-                const joinRow = sheet.addRow(['Joining Date:', joinDateStr]);
-                joinRow.font = { bold: true };
-
-                // Email
-                const emailRow = sheet.addRow(['Email:', member.email]);
-                emailRow.font = { bold: true };
-
-                sheet.addRow([]); // Blank row before table
-
-                // --- Table Header ---
-                const headerRow = sheet.addRow([
-                    'Date', 'Day', 'Status', 'In Time', 'Out Time', 'Duration (Hrs)'
-                ]);
-                headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } }; // Blue Header
-                headerRow.alignment = { horizontal: 'center' };
-
-                // --- Attendance Rows ---
-                daysOfMonth.forEach(day => {
-                    const dateStr = format(day, 'yyyy-MM-dd');
-                    const record = attendanceRecords.find(r =>
-                        r.user === member._id &&
-                        format(new Date(r.date), 'yyyy-MM-dd') === dateStr
-                    );
-
-                    const isSunday = day.getDay() === 0;
-                    const isFuture = day > new Date();
-                    const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-
-                    let status = 'Absent';
-                    let rowColor = 'FFF2DCDB'; // default Red
-
-                    const joiningDate = member.joiningDate ? new Date(member.joiningDate) : null;
-                    if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
-
-                    if (joiningDate && day < joiningDate) {
-                        status = 'N/A';
-                        rowColor = 'FFFFFFFF'; // White
-                    } else if (isFuture) {
-                        status = '-';
-                        rowColor = 'FFFFFFFF'; // White
-                    } else if (holiday) {
-                        status = holiday.name;
-                        rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
-                    } else if (record) {
-                        status = 'Present';
-                        rowColor = 'FFEBF1DE'; // Green
-                    } else if (isSunday) {
-                        status = 'Weekoff';
-                        rowColor = 'FFF2F2F2'; // Light Gray
-                    }
-
-                    let inTime = record ? fmtTime(record.clockIn) : '-';
-                    let outTime = record ? fmtTime(record.clockOut) : '-';
-
-                    let duration = '-';
-                    if (record) {
-                        if (record.duration) duration = (record.duration / 60).toFixed(2);
-                        else if (record.clockIn && record.clockOut) {
-                            duration = ((new Date(record.clockOut) - new Date(record.clockIn)) / 3600000).toFixed(2);
-                        }
-                    }
-
-                    const row = sheet.addRow([
-                        format(day, 'dd-MMM-yyyy'),
-                        format(day, 'EEEE'),
-                        status,
-                        inTime,
-                        outTime,
-                        duration
-                    ]);
-
-                    row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
+                // Add to Worksheet and Style
+                rowsToAdd.forEach(rowData => {
+                    const row = worksheet.addRow(rowData);
+                    row.outlineLevel = 1; // Grouping
+                    row.getCell('name').font = { italic: true, color: { argb: 'FF64748B' } };
                     row.alignment = { horizontal: 'center' };
+                    row.getCell('name').alignment = { horizontal: 'left' };
 
-                    // Borders for table cells
-                    row.eachCell((cell) => {
-                        cell.border = {
-                            top: { style: 'thin' },
-                            left: { style: 'thin' },
-                            bottom: { style: 'thin' },
-                            right: { style: 'thin' }
-                        };
-                    });
+                    // Apply Color Logic for Status Row
+                    if (rowData.name === '   ↳ Status') {
+                        for (let d = 1; d <= daysInMonth; d++) {
+                            const dateObj = new Date(year, month - 1, d);
+                            const dateStr = new Date(Date.UTC(year, month - 1, d)).toISOString().split('T')[0];
+                            const record = userLogs[dateStr];
+                            const leaveType = userLeaves[dateStr];
+                            const holidayName = holidayMap[dateStr];
+                            const isSunday = dateObj.getDay() === 0;
+                            const isFuture = dateObj > new Date();
 
-                    if (status === 'Absent' || status === 'N/A' || status === '-') {
-                        row.font = { color: { argb: 'FF888888' } };
+                            // -- Apply Same Logic for Coloring --
+                            let durationHours = 0;
+                            if (record && record.clockIn && record.clockOut) {
+                                const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
+                                durationHours = dur / 3600000;
+                            }
+
+                            let cellColor = 'FFF2DCDB'; // Red
+
+                            if (isFuture) cellColor = 'FFFFFFFF';
+                            else if (leaveType) cellColor = 'FFFFE0B2';
+                            else if (holidayName) cellColor = 'FFD1F2EB';
+                            else if (record) cellColor = 'FFEBF1DE';
+                            else if (isSunday) cellColor = 'FFF2F2F2';
+
+                            const colKey = `day_${d}`;
+                            // This library might not support key-based cell access directly on 'row' object efficiently if strictly column indexed?
+                            // Actually row.getCell(colKey) works if columns defined.
+                            const cell = row.getCell(colKey);
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: cellColor } };
+                        }
                     }
                 });
             });
 
-            // Set Column Widths
-            sheet.columns = [
-                { width: 15 }, // Date
-                { width: 15 }, // Day
-                { width: 20 }, // Status
-                { width: 15 }, // In
-                { width: 15 }, // Out
-                { width: 15 }  // Duration
-            ];
+            // Enable Outline Property
+            worksheet.properties.outlineProperties = {
+                summaryBelow: false,
+                summaryRight: false,
+            };
 
             const buffer = await workbook.xlsx.writeBuffer();
-            const fileName = `Team_Attendance_${format(now, 'MMM_yyyy')}.xlsx`;
+            const fileName = `Team_Attendance_Matrix_${format(now, 'MMM_yyyy')}.xlsx`;
             saveAs(new Blob([buffer]), fileName);
             toast.success('Downloaded', { id: toastId });
 
@@ -310,7 +419,8 @@ const Users = () => {
         employeeCode: '',
         joiningDate: '',
         directReports: [],
-        reportingManagers: []
+        reportingManagers: [],
+        employmentType: 'Full Time'
     });
 
     const fetchData = async () => {
@@ -373,7 +483,6 @@ const Users = () => {
     const handleEdit = (user) => {
         setEditingUser(user);
         // Find users who currently report to this user
-        // Find users who currently report to this user
         const currentReports = users.filter(u => u.reportingManagers?.some(rm => rm._id === user._id || rm === user._id)).map(u => u._id);
 
         setFormData({
@@ -385,6 +494,7 @@ const Users = () => {
             department: user.department || '',
             employeeCode: user.employeeCode || '',
             joiningDate: user.joiningDate ? new Date(user.joiningDate).toISOString().split('T')[0] : '',
+            employmentType: user.employmentType || 'Full Time',
             directReports: currentReports,
             reportingManagers: user.reportingManagers?.map(rm => rm._id) || []
         });
@@ -401,7 +511,8 @@ const Users = () => {
             roleId: '',
             department: '',
             employeeCode: '',
-            joiningDate: ''
+            joiningDate: '',
+            employmentType: 'Full Time'
         });
         setShowModal(true);
     };
@@ -470,14 +581,74 @@ const Users = () => {
                         <h1 className="text-2xl font-bold text-slate-800">{canEdit ? 'User Management' : 'My Team'}</h1>
                         <p className="text-sm text-slate-500">{canEdit ? 'Manage employees and their access roles' : 'View your direct reports'}</p>
                     </div>
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-2 relative">
                         <button
-                            onClick={handleExportTeamAttendance}
+                            onClick={() => setShowExportModal(!showExportModal)}
                             className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow transition-all"
                         >
                             <Download size={18} />
                             <span>Export Attendance</span>
                         </button>
+
+                        {/* Export Options Popover */}
+                        {showExportModal && (
+                            <div className="absolute top-12 right-0 w-80 bg-white rounded-lg shadow-2xl border border-slate-200 z-50 animate-fade-in-down">
+                                <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
+                                    <h3 className="font-bold text-slate-800 text-sm">Export Options</h3>
+                                    <button onClick={() => setShowExportModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
+                                </div>
+                                <div className="p-4 space-y-3">
+                                    <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">Include Columns:</p>
+
+                                    <label className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition">
+                                        <input
+                                            type="checkbox"
+                                            checked={exportOptions.status}
+                                            onChange={e => setExportOptions({ ...exportOptions, status: e.target.checked })}
+                                            className="h-4 w-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300"
+                                        />
+                                        <span className="text-sm font-medium text-slate-700">Status (Present/Absent)</span>
+                                    </label>
+
+                                    <label className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition">
+                                        <input
+                                            type="checkbox"
+                                            checked={exportOptions.checkInOut}
+                                            onChange={e => setExportOptions({ ...exportOptions, checkInOut: e.target.checked })}
+                                            className="h-4 w-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300"
+                                        />
+                                        <span className="text-sm font-medium text-slate-700">Check-In & Check-Out</span>
+                                    </label>
+
+                                    <label className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition">
+                                        <input
+                                            type="checkbox"
+                                            checked={exportOptions.duration}
+                                            onChange={e => setExportOptions({ ...exportOptions, duration: e.target.checked })}
+                                            className="h-4 w-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300"
+                                        />
+                                        <span className="text-sm font-medium text-slate-700">Total Duration</span>
+                                    </label>
+
+                                    <label className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition">
+                                        <input
+                                            type="checkbox"
+                                            checked={exportOptions.leaves}
+                                            onChange={e => setExportOptions({ ...exportOptions, leaves: e.target.checked })}
+                                            className="h-4 w-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300"
+                                        />
+                                        <span className="text-sm font-medium text-slate-700">Leaves (SL, CL)</span>
+                                    </label>
+                                </div>
+                                <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-end space-x-2 rounded-b-lg">
+                                    <button onClick={() => setShowExportModal(false)} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800">Close</button>
+                                    <button onClick={handleExportTeamAttendance} className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 shadow-sm flex items-center gap-1.5">
+                                        <Download size={14} /> Download
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {canEdit && (
                             <button
                                 onClick={handleAdd}
@@ -489,6 +660,8 @@ const Users = () => {
                         )}
                     </div>
                 </div>
+
+                {/* Removed Global Modal */}
 
                 {/* Users List */}
                 <div className="zoho-card overflow-hidden">
@@ -513,6 +686,7 @@ const Users = () => {
                                     <th className="px-6 py-3">Email</th>
                                     <th className="px-6 py-3">Role</th>
                                     <th className="px-6 py-3">Department</th>
+                                    <th className="px-6 py-3">Type</th>
                                     <th className="px-6 py-3">Reporting To</th>
                                     <th className="px-6 py-3">Status</th>
                                     <th className="px-6 py-3 text-right">Actions</th>
@@ -541,6 +715,11 @@ const Users = () => {
                                             ))}
                                         </td>
                                         <td className="px-6 py-3 text-slate-600">{user.department || '-'}</td>
+                                        <td className="px-6 py-3">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                                {user.employmentType || 'Full Time'}
+                                            </span>
+                                        </td>
                                         <td className="px-6 py-3 text-slate-600">
                                             {user.reportingManagers && user.reportingManagers.length > 0 ? (
                                                 <div className="flex flex-col space-y-1">
@@ -629,9 +808,23 @@ const Users = () => {
                                     <input name="employeeCode" value={formData.employeeCode} onChange={handleChange} className="zoho-input" />
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date of Joining</label>
-                                <input name="joiningDate" type="date" value={formData.joiningDate} onChange={handleChange} className="zoho-input" />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date of Joining</label>
+                                    <input name="joiningDate" type="date" value={formData.joiningDate} onChange={handleChange} className="zoho-input" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employment Type</label>
+                                    <select name="employmentType" value={formData.employmentType} onChange={handleChange} className="zoho-input">
+                                        <option value="Full Time">Full Time</option>
+                                        <option value="Part Time">Part Time</option>
+                                        <option value="Contract">Contract</option>
+                                        <option value="Intern">Intern</option>
+                                        <option value="Consultant">Consultant</option>
+                                        <option value="Freelance">Freelance</option>
+                                        <option value="Probation">Probation</option>
+                                    </select>
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Role</label>

@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
-import { format, startOfWeek, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
+import { format, startOfWeek, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -85,6 +85,12 @@ const Timesheet = () => {
     const [editDescription, setEditDescription] = useState('');
     const [editStartTime, setEditStartTime] = useState('');
     const [editEndTime, setEditEndTime] = useState('');
+    // Enhanced Edit State
+    const [editProjectId, setEditProjectId] = useState('');
+    const [editModuleId, setEditModuleId] = useState('');
+    const [editTaskId, setEditTaskId] = useState('');
+    const [editFilteredModules, setEditFilteredModules] = useState([]);
+    const [editFilteredTasks, setEditFilteredTasks] = useState([]);
 
     // New Entry State
     const [isAddingEntry, setIsAddingEntry] = useState(false);
@@ -135,10 +141,63 @@ const Timesheet = () => {
                 setEditEndTime('');
             }
         }
+
+        // Initialize Hierarchy Selectors for Edit
+        if (entry.type !== 'ATTENDANCE' && entry.type !== 'ATTENDANCE_CREATE') {
+            const pid = entry.project?._id || entry.project;
+            const mid = entry.module?._id || entry.module;
+            const tid = entry.task?._id || entry.task;
+
+            setEditProjectId(pid || '');
+            setEditModuleId(mid || '');
+            setEditTaskId(tid || '');
+
+            // Fetch dependent dropdowns
+            if (pid) {
+                api.get(`/projects/${pid}/modules`).then(res => setEditFilteredModules(res.data));
+            }
+            if (mid) {
+                api.get(`/projects/tasks?moduleId=${mid}`).then(res => setEditFilteredTasks(res.data));
+            }
+        }
+    };
+
+    const handleEditProjectChange = async (projectId) => {
+        setEditProjectId(projectId);
+        setEditModuleId('');
+        setEditTaskId('');
+        setEditFilteredModules([]);
+        setEditFilteredTasks([]);
+        if (projectId) {
+            try {
+                const res = await api.get(`/projects/${projectId}/modules`);
+                setEditFilteredModules(res.data);
+            } catch (error) { console.error(error); }
+        }
+    };
+
+    const handleEditModuleChange = async (moduleId) => {
+        setEditModuleId(moduleId);
+        setEditTaskId('');
+        setEditFilteredTasks([]);
+        if (moduleId) {
+            try {
+                const res = await api.get(`/projects/tasks?moduleId=${moduleId}`);
+                setEditFilteredTasks(res.data);
+            } catch (error) { console.error(error); }
+        }
     };
 
     const submitEdit = async () => {
         try {
+            // Validation: Check Joining Date
+            const targetDate = startOfDay(new Date(entryToEdit.date));
+            const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
+            if (joiningDate && targetDate < joiningDate) {
+                toast.error('Cannot edit timesheet before joining date');
+                return;
+            }
+
             if (entryToEdit.type === 'ATTENDANCE_CREATE') {
                 if (!editStartTime || !editEndTime) {
                     toast.error('Both Check-In and Check-Out times are required');
@@ -146,12 +205,19 @@ const Timesheet = () => {
                 }
                 // Create New
                 const baseDate = format(new Date(entryToEdit.date), 'yyyy-MM-dd');
-                const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}`) : null;
-                const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}`) : null;
+
+                // Construct Dates
+                const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}:00`) : null; // Append seconds
+                const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}:00`) : null;
+
+                if ((editStartTime && isNaN(inTime.getTime())) || (editEndTime && isNaN(outTime.getTime()))) {
+                    toast.error('Invalid time format');
+                    return;
+                }
 
                 await api.post('/attendance', {
                     date: entryToEdit.date,
-                    clockIn: inTime,
+                    clockIn: inTime, // Axios will serialize to ISO string
                     clockOut: outTime
                 });
                 toast.success('Attendance created');
@@ -160,8 +226,14 @@ const Timesheet = () => {
                 // Update Existing
                 // Formatting dates back to ISO with correct date
                 const baseDate = format(new Date(entryToEdit.date), 'yyyy-MM-dd');
-                const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}`) : null;
-                const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}`) : null;
+
+                const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}:00`) : null;
+                const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}:00`) : null;
+
+                if ((editStartTime && isNaN(inTime.getTime())) || (editEndTime && isNaN(outTime.getTime()))) {
+                    toast.error('Invalid time format');
+                    return;
+                }
 
                 await api.put(`/attendance/${entryToEdit._id}`, {
                     clockIn: inTime,
@@ -173,7 +245,11 @@ const Timesheet = () => {
                     hours: Number(editHours),
                     description: editDescription,
                     startTime: editStartTime,
-                    endTime: editEndTime
+                    endTime: editEndTime,
+                    // Send hierarchy updates
+                    projectId: editProjectId,
+                    moduleId: editModuleId,
+                    taskId: editTaskId
                 });
                 toast.success('Entry updated');
             }
@@ -181,7 +257,7 @@ const Timesheet = () => {
             fetchData();
         } catch (error) {
             console.error(error);
-            toast.error('Failed to update entry');
+            toast.error(error.response?.data?.message || 'Failed to update entry');
         }
     };
 
@@ -831,29 +907,7 @@ const Timesheet = () => {
                                         </div>
 
                                         <div className="flex space-x-3 items-center">
-                                            {/* User Selection Dropdown */}
-                                            {usersList.length > 0 && (
-                                                <div className="relative">
-                                                    <select
-                                                        value={targetUserId || user._id} // Default to self if not set
-                                                        onChange={handleUserChange}
-                                                        className="appearance-none bg-white border border-slate-300 text-slate-700 py-2 pl-3 pr-8 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-slate-500 text-sm font-medium"
-                                                    >
-                                                        {/* Option for Self if not in list (though usually will be for Admin taking self) */}
-                                                        {!usersList.find(u => u._id === user._id) && (
-                                                            <option value={user._id}>Me ({user.firstName})</option>
-                                                        )}
-                                                        {usersList.map(u => (
-                                                            <option key={u._id} value={u._id}>
-                                                                {u.firstName} {u.lastName}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-700">
-                                                        <ChevronLeft className="fill-current h-4 w-4 transform -rotate-90" />
-                                                    </div>
-                                                </div>
-                                            )}
+
 
                                             <button onClick={() => setViewDate(d => addDays(d, -30))} className="zoho-btn-secondary flex items-center space-x-2">
                                                 <ChevronLeft size={16} /> <span>Prev</span>
@@ -1266,6 +1320,49 @@ const Timesheet = () => {
                                                 // INLINE EDIT FORM
                                                 <div className="bg-white border border-blue-200 rounded-lg p-3 shadow-sm animate-in fade-in zoom-in-95 duration-150">
                                                     <div className="grid grid-cols-4 gap-3 mb-3">
+                                                        <div className="col-span-4 grid grid-cols-3 gap-2">
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Project</label>
+                                                                <select
+                                                                    value={editProjectId}
+                                                                    onChange={(e) => handleEditProjectChange(e.target.value)}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                >
+                                                                    <option value="">Select Project</option>
+                                                                    {availableProjects.map(p => (
+                                                                        <option key={p._id} value={p._id}>{p.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Module</label>
+                                                                <select
+                                                                    value={editModuleId}
+                                                                    onChange={(e) => handleEditModuleChange(e.target.value)}
+                                                                    disabled={!editProjectId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                                >
+                                                                    <option value="">Select Module</option>
+                                                                    {editFilteredModules.map(m => (
+                                                                        <option key={m._id} value={m._id}>{m.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task</label>
+                                                                <select
+                                                                    value={editTaskId}
+                                                                    onChange={(e) => setEditTaskId(e.target.value)}
+                                                                    disabled={!editModuleId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                                >
+                                                                    <option value="">Select Task</option>
+                                                                    {editFilteredTasks.map(t => (
+                                                                        <option key={t._id} value={t._id}>{t.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        </div>
                                                         <div className="col-span-1">
                                                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hours</label>
                                                             <input
@@ -1316,7 +1413,7 @@ const Timesheet = () => {
                                                             </span>
                                                             {(timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED') && !targetUserId && (
                                                                 <button
-                                                                    onClick={() => { setSelectedCell(null); handleEditClick(log); }}
+                                                                    onClick={() => { handleEditClick(log); }}
                                                                     className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
                                                                 >
                                                                     Edit
@@ -1353,12 +1450,21 @@ const Timesheet = () => {
                                             <th className="p-4 border-r border-slate-200 min-w-[200px] sticky left-0 z-20 bg-slate-50 font-bold">
                                                 Project / Task
                                             </th>
-                                            {daysInMonth.map(day => (
-                                                <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[50px] text-center ${['Sat', 'Sun'].includes(format(day, 'EEE')) ? 'bg-slate-100/50' : ''}`}>
-                                                    <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
-                                                    <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
-                                                </th>
-                                            ))}
+                                            {daysInMonth.map(day => {
+                                                const dateKey = format(day, 'yyyy-MM-dd');
+                                                const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
+                                                return (
+                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[50px] text-center ${holiday ? 'bg-green-50' : ['Sat', 'Sun'].includes(format(day, 'EEE')) ? 'bg-slate-100/50' : ''}`}>
+                                                        <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
+                                                        <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
+                                                        {holiday && (
+                                                            <div className="text-[8px] text-green-600 font-bold truncate max-w-[50px] mt-1" title={holiday.name}>
+                                                                {holiday.name}
+                                                            </div>
+                                                        )}
+                                                    </th>
+                                                );
+                                            })}
                                             <th className="p-4 border-l border-slate-200 min-w-[80px] font-bold text-center bg-slate-50 sticky right-0 z-10">
                                                 Total
                                             </th>
@@ -1378,14 +1484,29 @@ const Timesheet = () => {
                                                 const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateKey);
                                                 const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
 
+                                                // Joining Date Check
+                                                const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
+                                                const isBeforeJoining = joiningDate && day < joiningDate;
+
                                                 return (
                                                     <td
                                                         key={'att-' + day}
-                                                        onClick={() => handleCellClick({ name: 'Attendance Log' }, day, [], true)}
-                                                        className={`p-1 border-r border-slate-200 text-center text-xs cursor-pointer hover:bg-blue-50 transition-colors ${isWeekend ? 'bg-slate-100/50' : ''
+                                                        onClick={() => {
+                                                            if (isBeforeJoining) {
+                                                                toast.error('Cannot edit attendance before joining date');
+                                                                return;
+                                                            }
+                                                            handleCellClick({ name: 'Attendance Log' }, day, [], true);
+                                                        }}
+                                                        className={`p-1 border-r border-slate-200 text-center text-xs transition-colors ${isBeforeJoining
+                                                            ? 'bg-slate-50 cursor-not-allowed opacity-50'
+                                                            : `cursor-pointer hover:bg-blue-50 ${isWeekend ? 'bg-slate-100/50' : ''}`
                                                             }`}
+                                                        title={isBeforeJoining ? 'Before Joining Date' : ''}
                                                     >
-                                                        {log ? (
+                                                        {isBeforeJoining ? (
+                                                            <span className="text-slate-200 select-none text-[10px]">N/A</span>
+                                                        ) : log ? (
                                                             <div className="flex flex-col items-center justify-center">
                                                                 <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${log.clockOutIST || isSameDay(new Date(log.date), new Date())
                                                                     ? 'bg-slate-200 text-slate-800'
@@ -1433,13 +1554,39 @@ const Timesheet = () => {
                                                             const logs = group.logs[dateKey] || [];
                                                             const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
                                                             const isRejected = logs.some(l => l.status === 'REJECTED');
+                                                            const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
+
+                                                            // Joining Date Check
+                                                            const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
+                                                            const isBeforeJoining = joiningDate && day < joiningDate;
+
                                                             return (
                                                                 <td
                                                                     key={day.toString()}
-                                                                    onClick={() => handleCellClick(group.project, day, logs)}
-                                                                    className={`p-1 border-r border-slate-200 text-center cursor-pointer hover:bg-blue-100 transition-colors ${isWeekend ? 'bg-slate-50/30' : ''}`}
+                                                                    onClick={() => {
+                                                                        if (holiday) {
+                                                                            toast.error(`Cannot edit on holiday: ${holiday.name}`);
+                                                                            return;
+                                                                        }
+                                                                        if (isBeforeJoining) {
+                                                                            toast.error('Cannot edit timesheet before joining date');
+                                                                            return;
+                                                                        }
+                                                                        handleCellClick(group.project, day, logs);
+                                                                    }}
+                                                                    className={`p-1 border-r border-slate-200 text-center transition-colors ${holiday ? 'bg-green-50/30 cursor-not-allowed'
+                                                                        : isBeforeJoining ? 'bg-slate-50 cursor-not-allowed opacity-50'
+                                                                            : `cursor-pointer hover:bg-blue-100 ${isWeekend ? 'bg-slate-50/30' : ''}`
+                                                                        }`}
+                                                                    title={isBeforeJoining ? 'Before Joining Date' : ''}
                                                                 >
-                                                                    {hours ? (
+                                                                    {holiday ? (
+                                                                        <div className="flex justify-center items-center h-full">
+                                                                            <span className="text-[10px] font-bold text-green-300 select-none" title={holiday.name}>HOL</span>
+                                                                        </div>
+                                                                    ) : isBeforeJoining ? (
+                                                                        <span className="text-slate-200 text-[10px] select-none">N/A</span>
+                                                                    ) : hours ? (
                                                                         <div className="flex flex-col items-center justify-center group/cell relative">
                                                                             <span className={`inline-flex items-center justify-center h-8 w-8 rounded-full font-bold text-xs shadow-sm transition-all ${isRejected
                                                                                 ? 'bg-red-100 text-red-700 ring-1 ring-red-500 group-hover/cell:bg-red-600 group-hover/cell:text-white'

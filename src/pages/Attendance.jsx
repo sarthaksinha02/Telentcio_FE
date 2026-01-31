@@ -110,6 +110,23 @@ const Attendance = () => {
         setLoading(false);
     }, [user]);
 
+    // Fetch Users (Admin/Manager)
+    useEffect(() => {
+        const fetchUsers = async () => {
+            if (user && (user.roles?.includes('Admin') || user.roles?.includes('Manager'))) {
+                try {
+                    // Use correct admin endpoint
+                    const res = await api.get('/admin/users/team');
+                    setUsersList(res.data);
+                } catch (error) {
+                    // Fallback or ignore if not found (though /admin/users/team should exist)
+                    console.error("Error fetching users list", error);
+                }
+            }
+        };
+        fetchUsers();
+    }, [user]);
+
     // Refetch history when selected user changes
     useEffect(() => {
         const now = new Date();
@@ -339,6 +356,131 @@ const Attendance = () => {
         saveAs(new Blob([buffer]), fileName);
     };
 
+    const handleExportTeamReport = async () => {
+        try {
+            const currentYear = new Date().getFullYear(); // Or based on selected navigation if implemented
+            const currentMonth = new Date().getMonth() + 1;
+
+            const res = await api.get(`/attendance/team-report?month=${currentMonth}&year=${currentYear}`);
+            const { teamMembers, attendanceRecords } = res.data; // Note: Controller returns { teamMembers, attendanceRecords }
+
+            if (!teamMembers || teamMembers.length === 0) {
+                toast.error('No team members found');
+                return;
+            }
+
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Team Attendance');
+
+            // 1. Generate Date Columns
+            const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+            const dateColumns = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+                const date = new Date(currentYear, currentMonth - 1, d);
+                const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                dateColumns.push({ header: `${String(d).padStart(2, '0')}-${dayName}`, key: `day_${d}`, width: 12 });
+            }
+
+            // Set Columns
+            worksheet.columns = [
+                { header: 'Employee / Details', key: 'name', width: 35 },
+                ...dateColumns
+            ];
+
+            // Style Header
+            const headerRow = worksheet.getRow(1);
+            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } }; // Dark Slate
+
+            // 2. Prepare Data Map
+            const attendanceMap = {};
+            attendanceRecords.forEach(record => {
+                const userId = record.user.toString();
+                const dateStr = new Date(record.date).toISOString().split('T')[0];
+                if (!attendanceMap[userId]) attendanceMap[userId] = {};
+                attendanceMap[userId][dateStr] = record;
+            });
+
+            // 3. Add Data Rows (Grouped)
+            teamMembers.forEach(user => {
+                const userLogs = attendanceMap[user._id] || {};
+
+                // --- PARENT ROW (Employee Name) ---
+                const parentRow = worksheet.addRow({
+                    name: `${user.firstName} ${user.lastName || ''} (${user.employeeCode || 'N/A'})`
+                });
+                parentRow.font = { bold: true, size: 11, color: { argb: 'FF1E293B' } };
+                parentRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Light Slate
+
+                // --- CHILD ROWS ---
+                const checkInRow = { name: '   ↳ Check In' };
+                const checkOutRow = { name: '   ↳ Check Out' };
+                const durationRow = { name: '   ↳ Duration' };
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateStr = new Date(Date.UTC(currentYear, currentMonth - 1, d)).toISOString().split('T')[0];
+                    const record = userLogs[dateStr];
+                    const colKey = `day_${d}`;
+
+                    if (record) {
+                        checkInRow[colKey] = record.clockInIST ? extractTime(record.clockInIST) : (record.clockIn ? formatTimeSimple(record.clockIn) : '-');
+                        checkOutRow[colKey] = record.clockOutIST ? extractTime(record.clockOutIST) : (record.clockOut ? formatTimeSimple(record.clockOut) : '-');
+
+                        // Calculate duration
+                        if (record.clockIn && record.clockOut) {
+                            const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
+                            const hrs = Math.floor(dur / 3600000);
+                            const mins = Math.floor((dur % 3600000) / 60000);
+                            durationRow[colKey] = `${hrs}h ${mins}m`;
+                        } else {
+                            durationRow[colKey] = '-';
+                        }
+                    } else {
+                        checkInRow[colKey] = '-';
+                        checkOutRow[colKey] = '-';
+                        durationRow[colKey] = '-';
+                    }
+                }
+
+                const r1 = worksheet.addRow(checkInRow);
+                const r2 = worksheet.addRow(checkOutRow);
+                const r3 = worksheet.addRow(durationRow);
+
+                // Grouping Logic - This makes them collapsible
+                r1.outlineLevel = 1;
+                r2.outlineLevel = 1;
+                r3.outlineLevel = 1;
+
+                // Child Row Styling
+                [r1, r2, r3].forEach(row => {
+                    row.getCell('name').font = { italic: true, color: { argb: 'FF64748B' } };
+                    row.alignment = { horizontal: 'center' };
+                    row.getCell('name').alignment = { horizontal: 'left' };
+                });
+            });
+
+            // Enable Outline Property
+            worksheet.properties.outlineProperties = {
+                summaryBelow: false,
+                summaryRight: false,
+            };
+
+            // Save File
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            saveAs(blob, `Team_Attendance_Report_${currentYear}_${currentMonth}.xlsx`);
+            toast.success('Team Report Exported Successfully');
+
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to export team report');
+        }
+    };
+
+    // Helper for formatting time from IST string or Date
+    const extractTime = (istString) => istString.split(',')[1]?.trim() || istString;
+    const formatTimeSimple = (date) => new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
     if (loading) return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-7xl mx-auto space-y-8">
@@ -413,12 +555,14 @@ const Attendance = () => {
 
 
 
+
+
                         {/* Export Button - Permission Check */
                             (user?.roles?.includes('Admin') || user?.roles?.includes('Manager') || user?.role === 'Admin' || usersList.length > 0 || user?.permissions?.includes('attendance.export')) && (
                                 <button
                                     onClick={handleExportAttendance}
                                     className="bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 p-2 rounded-lg shadow-sm transition-colors"
-                                    title="Download Monthly Report"
+                                    title="Download Personal Report"
                                 >
                                     <Download size={20} />
                                 </button>

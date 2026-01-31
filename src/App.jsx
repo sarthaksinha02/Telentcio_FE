@@ -16,6 +16,9 @@ import Projects from './pages/Projects';
 import ProjectDetails from './pages/ProjectDetails';
 import Profile from './pages/Profile';
 import Holidays from './pages/Holidays';
+import LeaveConfig from './pages/LeaveConfig';
+import Leaves from './pages/Leaves';
+import LeaveApprovals from './pages/LeaveApprovals';
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleRoute from './components/RoleRoute';
 import SystemRoute from './components/SystemRoute';
@@ -40,6 +43,8 @@ function App() {
               } />
               <Route path="/attendance" element={<Attendance />} />
               <Route path="/timesheet" element={<Timesheet />} />
+              <Route path="/leaves" element={<Leaves />} />
+              <Route path="/leave-approvals" element={<LeaveApprovals />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/holidays" element={<Holidays />} />
 
@@ -56,6 +61,7 @@ function App() {
               {/* Admin Only Routes */}
               <Route element={<RoleRoute requiredPermissions={['role.read']} requiredRoles={['Admin']} />}>
                 <Route path="/roles" element={<Roles />} />
+                <Route path="/leave-config" element={<LeaveConfig />} />
               </Route>
 
               {/* Users Management (Internal access control) */}

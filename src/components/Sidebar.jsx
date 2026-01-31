@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase } from 'lucide-react';
+import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase, Settings, FileText, Check } from 'lucide-react';
 
 const Sidebar = () => {
   const { user, logout } = useAuth();
@@ -29,6 +29,16 @@ const Sidebar = () => {
           <Clock size={18} />
           <span>Attendance</span>
         </Link>
+        <Link to="/leaves" className={isActive('/leaves')}>
+          <FileText size={18} />
+          <span>My Leaves</span>
+        </Link>
+        {(user?.directReportsCount > 0 || user?.roles?.includes('Admin')) && (
+          <Link to="/leave-approvals" className={isActive('/leave-approvals')}>
+            <Check size={18} />
+            <span>Approvals</span>
+          </Link>
+        )}
         <Link to="/timesheet" className={isActive('/timesheet')}>
           <Calendar size={18} />
           <span>Timesheet</span>
@@ -58,6 +68,12 @@ const Sidebar = () => {
               <Link to="/roles" className={isActive('/roles')}>
                 <Shield size={18} />
                 <span>Roles & Permissions</span>
+              </Link>
+            )}
+            {user?.roles?.includes('Admin') && (
+              <Link to="/leave-config" className={isActive('/leave-config')}>
+                <Settings size={18} />
+                <span>Leave Policies</span>
               </Link>
             )}
           </>
