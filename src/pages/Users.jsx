@@ -183,6 +183,11 @@ const Users = () => {
                 ...dateColumns
             ];
 
+            // Freeze first row and first column
+            worksheet.views = [
+                { state: 'frozen', xSplit: 1, ySplit: 1 }
+            ];
+
             // Style Header
             const headerRow = worksheet.getRow(1);
             headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -192,7 +197,8 @@ const Users = () => {
             const attendanceMap = {};
             attendanceRecords.forEach(record => {
                 const userId = record.user.toString();
-                const dateStr = new Date(record.date).toISOString().split('T')[0];
+                // Use IST time for date mapping to fix mismatch
+                const dateStr = new Date(record.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
                 if (!attendanceMap[userId]) attendanceMap[userId] = {};
                 attendanceMap[userId][dateStr] = record;
             });
@@ -238,7 +244,7 @@ const Users = () => {
 
                 // --- PARENT ROW (Employee Name) ---
                 const parentRow = worksheet.addRow({
-                    name: `${user.firstName} ${user.lastName || ''} (${user.employeeCode || 'N/A'})`
+                    name: `${user.firstName} ${user.lastName || ''}${user.employeeCode ? ` (${user.employeeCode})` : ''}`
                 });
                 parentRow.font = { bold: true, size: 11, color: { argb: 'FF1E293B' } };
                 parentRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Light Slate
@@ -256,7 +262,8 @@ const Users = () => {
 
                 for (let d = 1; d <= daysInMonth; d++) {
                     const dateObj = new Date(year, month - 1, d);
-                    const dateStr = new Date(Date.UTC(year, month - 1, d)).toISOString().split('T')[0];
+                    // Match the key format used in map (YYYY-MM-DD in IST/Local)
+                    const dateStr = dateObj.toLocaleDateString('en-CA');
                     const record = userLogs[dateStr];
                     const colKey = `day_${d}`;
 
@@ -364,7 +371,8 @@ const Users = () => {
                     if (rowData.name === '   ↳ Status') {
                         for (let d = 1; d <= daysInMonth; d++) {
                             const dateObj = new Date(year, month - 1, d);
-                            const dateStr = new Date(Date.UTC(year, month - 1, d)).toISOString().split('T')[0];
+                            // Match the key format
+                            const dateStr = dateObj.toLocaleDateString('en-CA');
                             const record = userLogs[dateStr];
                             const leaveType = userLeaves[dateStr];
                             const holidayName = holidayMap[dateStr];
