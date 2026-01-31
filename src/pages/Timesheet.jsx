@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
-import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import { format, startOfWeek, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import AttendanceCalendar from '../components/AttendanceCalendar';
 
 const Timesheet = () => {
     const { user } = useAuth();
@@ -15,6 +16,10 @@ const Timesheet = () => {
     const [attendanceLogs, setAttendanceLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [projects, setProjects] = useState([]);
+    const [viewUser, setViewUser] = useState(user);
+    const [holidays, setHolidays] = useState([]);
+    const [usersList, setUsersList] = useState([]); // List of users for dropdown
+
 
     // Approval Logic
     const [activeTab, setActiveTab] = useState('timesheet');
@@ -80,6 +85,20 @@ const Timesheet = () => {
     const [editDescription, setEditDescription] = useState('');
     const [editStartTime, setEditStartTime] = useState('');
     const [editEndTime, setEditEndTime] = useState('');
+
+    // New Entry State
+    const [isAddingEntry, setIsAddingEntry] = useState(false);
+    const [newEntry, setNewEntry] = useState({
+        projectId: '',
+        moduleId: '',
+        taskId: '',
+        hours: '',
+        description: ''
+    });
+    const [filteredModules, setFilteredModules] = useState([]);
+    const [filteredTasks, setFilteredTasks] = useState([]);
+    const [availableProjects, setAvailableProjects] = useState([]);
+
 
     const calculateHours = (start, end) => {
         if (start && end) {
@@ -208,20 +227,137 @@ const Timesheet = () => {
     const fetchData = async () => {
         try {
             const formattedMonth = format(viewDate, 'yyyy-MM');
-            const [tsRes, projRes] = await Promise.all([
+            const [tsRes, projRes, holRes] = await Promise.all([
                 targetUserId
                     ? api.get(`/timesheet/user/${targetUserId}?month=${formattedMonth}`)
-                    : api.get('/timesheet/current'),
-                api.get('/timesheet/projects')
+                    : api.get(`/timesheet/current?month=${formattedMonth}`),
+                api.get('/timesheet/projects'),
+                api.get('/holidays')
             ]);
+            if (targetUserId) {
+                // Fetch target user details for correct joining date/etc
+                try {
+                    const userRes = await api.get(`/admin/users/${targetUserId}`);
+                    setViewUser(userRes.data);
+                } catch (e) {
+                    console.error("Failed to fetch user details", e);
+                    // Fallback to basic info if needed or handling error
+                }
+            } else {
+                setViewUser(user);
+            }
+
             setTimesheet(tsRes.data);
             setAttendanceLogs(tsRes.data.attendanceLog || []);
             setProjects(projRes.data);
+            setAvailableProjects(projRes.data); // Store for dropdowns
+            setHolidays(holRes.data || []);
         } catch (error) {
             console.error(error);
             toast.error('Failed to load timesheet');
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Load Modules/Tasks when Project Changes for New Entry
+    const handleProjectChange = async (projectId) => {
+        setNewEntry(prev => ({ ...prev, projectId, moduleId: '', taskId: '' }));
+        if (!projectId) {
+            setFilteredModules([]);
+            return;
+        }
+        try {
+            const res = await api.get(`/projects/${projectId}/modules`);
+            setFilteredModules(res.data);
+        } catch (error) {
+            console.error("Failed to fetch modules", error);
+        }
+    };
+
+    const handleModuleChange = async (moduleId) => {
+        setNewEntry(prev => ({ ...prev, moduleId, taskId: '' }));
+        if (!moduleId) {
+            setFilteredTasks([]);
+            return;
+        }
+        try {
+            // Check getTasks API signature in projectController.
+            // It accepts moduleId query param.
+            const res = await api.get(`/projects/tasks?moduleId=${moduleId}`);
+            setFilteredTasks(res.data);
+        } catch (error) {
+            console.error("Failed to fetch tasks", error);
+        }
+    };
+
+    const submitNewEntry = async () => {
+        if (!newEntry.projectId || !newEntry.hours || !newEntry.date) {
+            toast.error("Project, Hours and Date (internal error) are required");
+            return;
+        }
+        if (!newEntry.taskId && !newEntry.moduleId) {
+            // toast.warning("Task is recommended");
+        }
+
+        try {
+            await api.post('/timesheet/entry', {
+                date: newEntry.date,
+                hours: newEntry.hours,
+                description: newEntry.description,
+                projectId: newEntry.projectId,
+                moduleId: newEntry.moduleId,
+                taskId: newEntry.taskId
+            });
+            toast.success("Work Log Added");
+            setIsAddingEntry(false);
+            setNewEntry({ projectId: '', moduleId: '', taskId: '', hours: '', description: '' });
+            fetchData(); // Refresh
+            // Update selected cell logs? fetchData will update timesheet, but we might need to locally update selectedCell or close it.
+            // Closing it is easiest to ensure consistency.
+            setSelectedCell(null);
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || "Failed to add entry");
+        }
+    };
+
+    // Fetch Users List for Dropdown (Admin/Manager)
+    useEffect(() => {
+        const fetchUsers = async () => {
+            try {
+                if (user.roles.includes('Admin')) {
+                    const res = await api.get('/admin/users');
+                    setUsersList(res.data);
+                } else if (user.roles.includes('Manager')) {
+                    const res = await api.get('/admin/users/team');
+                    setUsersList(res.data);
+                }
+            } catch (error) {
+                console.error("Failed to fetch users list", error);
+            }
+        };
+
+        if (user && (user.roles.includes('Admin') || user.roles.includes('Manager'))) {
+            fetchUsers();
+        }
+    }, [user]);
+
+    const handleUserChange = (e) => {
+        const selectedId = e.target.value;
+        if (!selectedId) return;
+
+        const selectedUser = usersList.find(u => u._id === selectedId);
+        if (selectedUser) {
+            // Update URL and reload (or trigger re-render if handled via state)
+            const url = new URL(window.location);
+            url.searchParams.set('userId', selectedId);
+            url.searchParams.set('name', `${selectedUser.firstName} ${selectedUser.lastName}`);
+            window.history.pushState({}, '', url);
+            // We need to force a re-fetch since our main fetch depends on window.location.search which might not react to pushState immediately in this component structure
+            // Or better, we can reload or use a navigation hook if available.
+            // For now, reloading is safe to ensure clean state.
+            window.location.reload();
         }
     };
 
@@ -236,6 +372,132 @@ const Timesheet = () => {
 
     // State for Details Modal
     const [selectedCell, setSelectedCell] = useState(null); // { date: Date, project: ProjectObj, logs: [] }
+
+    const handleExportAttendance = async () => {
+        const queryParams = new URLSearchParams(window.location.search);
+        const targetUserId = queryParams.get('userId');
+        // If targetUserId exists, use it. Otherwise use logged-in user._id
+        const exportUserId = targetUserId || user?._id;
+
+        if (!exportUserId) {
+            toast.error('User not identified');
+            return;
+        }
+
+        const toastId = toast.loading('Generating Attendance Report...');
+        try {
+            // Fetch User Details
+            let userDetails;
+            if (exportUserId === user._id) {
+                // Fetch self details using profile endpoint
+                const res = await api.get('/auth/profile');
+                userDetails = res.data;
+            } else {
+                // Fetch other user details (Admin/Manager)
+                const res = await api.get(`/admin/users/${exportUserId}`);
+                userDetails = res.data;
+            }
+
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('Attendance Report');
+
+            // Header Info
+            sheet.mergeCells('A1:C1');
+            sheet.getCell('A1').value = `User Name: ${userDetails.firstName} ${userDetails.lastName || ''}`;
+            sheet.getCell('A1').font = { bold: true, size: 14 };
+
+            sheet.mergeCells('A2:C2');
+            sheet.getCell('A2').value = `Joining Date: ${userDetails.joiningDate ? new Date(userDetails.joiningDate).toLocaleDateString() : 'N/A'}`;
+
+            sheet.mergeCells('A3:C3');
+            const managers = userDetails.reportingManagers || [];
+            const mgrNames = managers.length > 0 ? managers.map(m => `${m.firstName} ${m.lastName}`).join(', ') : 'N/A';
+            sheet.getCell('A3').value = `Supervisor(s): ${mgrNames}`;
+
+            sheet.addRow([]);
+
+            // Table Header
+            const headerRow = sheet.addRow(['Date', 'Day', 'Status', 'In Time', 'Out Time', 'Duration']);
+            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+            headerRow.alignment = { horizontal: 'center' };
+
+            const start = startOfMonth(viewDate);
+            const end = endOfMonth(viewDate);
+            const days = eachDayOfInterval({ start, end });
+
+            // Helpers
+            const formatTime = (dateString, istString) => {
+                // Use istString if available and formatted, else dateString
+                if (istString && istString.includes(',')) return istString.split(',')[1]?.trim() || '';
+                if (!dateString) return '--:--';
+                return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            };
+            const calculateDuration = (start, end) => {
+                if (!start) return '--';
+                const s = new Date(start);
+                const e = end ? new Date(end) : new Date();
+                if (e < s) return '0h 0m';
+                const diff = Math.abs(e - s);
+                const h = Math.floor(diff / (1000 * 60 * 60));
+                const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                return `${h}h ${m}m`;
+            };
+
+            days.forEach(day => {
+                const dateStr = format(day, 'yyyy-MM-dd');
+                const record = attendanceLogs.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+                const isSunday = day.getDay() === 0;
+                const isFuture = day > new Date();
+
+                let status = 'Absent';
+                let rowColor = 'FFF2DCDB'; // Red
+
+                const joiningDate = userDetails.joiningDate ? new Date(userDetails.joiningDate) : null;
+                if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
+                const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+
+                if (joiningDate && day < joiningDate) {
+                    status = 'Not Applicable';
+                    rowColor = 'FFFFFFFF';
+                } else if (isFuture) {
+                    status = '-';
+                    rowColor = 'FFFFFFFF';
+                } else if (holiday) {
+                    status = holiday.name;
+                    rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
+                } else if (record) {
+                    status = 'Present';
+                    rowColor = 'FFEBF1DE';
+                } else if (isSunday) {
+                    status = 'Weekoff';
+                    rowColor = 'FFF2F2F2';
+                }
+
+                const row = sheet.addRow([
+                    format(day, 'dd-MMM-yyyy'),
+                    format(day, 'EEEE'),
+                    status,
+                    record ? formatTime(record.clockIn, record.clockInIST) : '-',
+                    record ? formatTime(record.clockOut, record.clockOutIST) : '-',
+                    record ? calculateDuration(record.clockIn, record.clockOut) : '-'
+                ]);
+                row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
+                row.alignment = { horizontal: 'center' };
+            });
+
+            sheet.columns = [{ width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }];
+
+            const exportUserName = userDetails.firstName || 'User';
+            const buffer = await workbook.xlsx.writeBuffer();
+            const fileName = `Attendance_${format(start, 'MMMM_yyyy')}_${exportUserName}.xlsx`;
+            saveAs(new Blob([buffer]), fileName);
+            toast.success('Downloaded', { id: toastId });
+        } catch (error) {
+            console.error(error);
+            toast.error('Export Failed', { id: toastId });
+        }
+    };
 
     // Group entries by Project
     const getEntriesByProject = () => {
@@ -495,6 +757,8 @@ const Timesheet = () => {
         saveAs(new Blob([buffer]), fileName);
     };
 
+    const canViewAttendance = user?.roles?.includes('Admin') || user?.permissions?.includes('attendance.view');
+
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-7xl mx-auto space-y-6">
@@ -520,6 +784,15 @@ const Timesheet = () => {
                                             {pendingApprovals.length}
                                         </span>
                                     )}
+                                </button>
+                            )}
+                            {canViewAttendance && (
+                                <button
+                                    onClick={() => setActiveTab('attendance')}
+                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center space-x-2 ${activeTab === 'attendance' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    <FileText size={16} />
+                                    <span>Attendance View</span>
                                 </button>
                             )}
                         </div>
@@ -557,7 +830,32 @@ const Timesheet = () => {
                                                 {targetUserName && <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-bold">Manager View</span>}
                                             </div>
                                         </div>
-                                        <div className="flex space-x-3">
+
+                                        <div className="flex space-x-3 items-center">
+                                            {/* User Selection Dropdown */}
+                                            {usersList.length > 0 && (
+                                                <div className="relative">
+                                                    <select
+                                                        value={targetUserId || user._id} // Default to self if not set
+                                                        onChange={handleUserChange}
+                                                        className="appearance-none bg-white border border-slate-300 text-slate-700 py-2 pl-3 pr-8 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-slate-500 text-sm font-medium"
+                                                    >
+                                                        {/* Option for Self if not in list (though usually will be for Admin taking self) */}
+                                                        {!usersList.find(u => u._id === user._id) && (
+                                                            <option value={user._id}>Me ({user.firstName})</option>
+                                                        )}
+                                                        {usersList.map(u => (
+                                                            <option key={u._id} value={u._id}>
+                                                                {u.firstName} {u.lastName}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-700">
+                                                        <ChevronLeft className="fill-current h-4 w-4 transform -rotate-90" />
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <button onClick={() => setViewDate(d => addDays(d, -30))} className="zoho-btn-secondary flex items-center space-x-2">
                                                 <ChevronLeft size={16} /> <span>Prev</span>
                                             </button>
@@ -612,7 +910,7 @@ const Timesheet = () => {
                     )}
                 </div>
 
-                {activeTab === 'approvals' ? (
+                {activeTab === 'approvals' && (
                     <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
                         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
                             <h3 className="font-bold text-slate-700">Attendance Requests</h3>
@@ -704,7 +1002,9 @@ const Timesheet = () => {
                             </div>
                         )}
                     </div>
-                ) : (
+                )}
+
+                {activeTab === 'timesheet' && (
                     <>
                         {/* Inline Detail View */}
                         {selectedCell && (
@@ -828,6 +1128,114 @@ const Timesheet = () => {
                                                     </div>
                                                 )
                                             )}
+                                    </div>
+
+                                    {/* Add Work Log Section */}
+                                    <div className="p-4 bg-white border-t border-slate-100">
+                                        {!isAddingEntry ? (
+                                            (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && (
+                                                <button
+                                                    onClick={() => {
+                                                        setIsAddingEntry(true);
+                                                        setNewEntry(prev => ({ ...prev, date: selectedCell.date }));
+                                                    }}
+                                                    className="w-full flex items-center justify-center space-x-2 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium text-sm"
+                                                >
+                                                    <div className="bg-slate-200 rounded-full p-0.5">
+                                                        <span className="block h-4 w-4 leading-3 text-center">+</span>
+                                                    </div>
+                                                    <span>Add Work Log</span>
+                                                </button>
+                                            )
+                                        ) : (
+                                            <div className="bg-slate-50 border border-blue-100 rounded-lg p-4 animate-in fade-in zoom-in-95 duration-200 relative">
+                                                <button
+                                                    onClick={() => setIsAddingEntry(false)}
+                                                    className="absolute top-2 right-2 text-slate-400 hover:text-slate-600"
+                                                >
+                                                    &times;
+                                                </button>
+                                                <h4 className="text-xs font-bold text-blue-600 uppercase mb-3">New Work Log</h4>
+
+                                                <div className="space-y-3">
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Project <span className="text-red-500">*</span></label>
+                                                            <select
+                                                                value={newEntry.projectId}
+                                                                onChange={(e) => handleProjectChange(e.target.value)}
+                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                            >
+                                                                <option value="">Select Project</option>
+                                                                {availableProjects.map(p => (
+                                                                    <option key={p._id} value={p._id}>{p.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Module</label>
+                                                            <select
+                                                                value={newEntry.moduleId}
+                                                                onChange={(e) => handleModuleChange(e.target.value)}
+                                                                disabled={!newEntry.projectId}
+                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                            >
+                                                                <option value="">Select Module</option>
+                                                                {filteredModules.map(m => (
+                                                                    <option key={m._id} value={m._id}>{m.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Task</label>
+                                                            <select
+                                                                value={newEntry.taskId}
+                                                                onChange={(e) => setNewEntry(prev => ({ ...prev, taskId: e.target.value }))}
+                                                                disabled={!newEntry.moduleId}
+                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                            >
+                                                                <option value="">Select Task</option>
+                                                                {filteredTasks.map(t => (
+                                                                    <option key={t._id} value={t._id}>{t.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Hours <span className="text-red-500">*</span></label>
+                                                            <input
+                                                                type="number"
+                                                                value={newEntry.hours}
+                                                                onChange={(e) => setNewEntry(prev => ({ ...prev, hours: e.target.value }))}
+                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                min="0" step="0.5"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 mb-1">Description</label>
+                                                        <textarea
+                                                            value={newEntry.description}
+                                                            onChange={(e) => setNewEntry(prev => ({ ...prev, description: e.target.value }))}
+                                                            className="w-full p-2 border border-slate-300 rounded text-sm bg-white h-16 resize-none"
+                                                            placeholder="What did you work on?"
+                                                        />
+                                                    </div>
+
+                                                    <div className="flex justify-end pt-2">
+                                                        <button
+                                                            onClick={submitNewEntry}
+                                                            className="px-4 py-2 bg-blue-600 text-white rounded font-bold text-sm hover:bg-blue-700 shadow-sm"
+                                                        >
+                                                            Add Log
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {selectedCell.logs.map((log, i) => (
@@ -1111,6 +1519,145 @@ const Timesheet = () => {
                     </>
                 )}
 
+                {activeTab === 'attendance_deprecated' && (
+                    <div className="bg-white rounded-lg shadow-sm border border-slate-200">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                            <div className="flex items-center space-x-4">
+                                <h3 className="font-bold text-slate-700">Attendance Log</h3>
+                                <div className="flex items-center space-x-2 text-sm bg-slate-50 rounded-lg p-1 border border-slate-200">
+                                    <button
+                                        onClick={() => setViewDate(d => addDays(d, -30))}
+                                        className="p-1 text-slate-500 hover:text-slate-700 hover:bg-white rounded shadow-sm transition-all"
+                                        title="Previous Month"
+                                    >
+                                        <ChevronLeft size={16} />
+                                    </button>
+                                    <span className="font-bold w-32 text-center text-slate-700">{format(viewDate, 'MMMM yyyy')}</span>
+                                    <button
+                                        onClick={() => setViewDate(d => addDays(d, 30))}
+                                        className="p-1 text-slate-500 hover:text-slate-700 hover:bg-white rounded shadow-sm transition-all"
+                                        title="Next Month"
+                                    >
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleExportAttendance}
+                                className="flex items-center space-x-2 text-sm text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors border border-green-200"
+                            >
+                                <Download size={14} />
+                                <span>Download Report</span>
+                            </button>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
+                                    <tr>
+                                        <th className="px-4 py-3">Date</th>
+                                        <th className="px-4 py-3">Status</th>
+                                        <th className="px-4 py-3">Clock In</th>
+                                        <th className="px-4 py-3">Clock Out</th>
+                                        <th className="px-4 py-3">Duration</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {eachDayOfInterval({ start: startOfMonth(viewDate), end: endOfMonth(viewDate) }).map(day => {
+                                        const dateStr = format(day, 'yyyy-MM-dd');
+                                        const record = attendanceLogs.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+                                        const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+                                        const isSunday = day.getDay() === 0;
+                                        const isFuture = day > new Date();
+
+                                        // Status Logic
+                                        let status = 'Absent';
+                                        let statusColor = 'bg-red-100 text-red-700';
+
+                                        // const joiningDate ... needs user details. 
+                                        // For now assume active.
+
+                                        if (isFuture) {
+                                            status = '-';
+                                            statusColor = 'bg-slate-100 text-slate-500';
+                                        } else if (holiday) {
+                                            status = holiday.name;
+                                            statusColor = holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700';
+                                        } else if (record) {
+                                            status = 'Present';
+                                            statusColor = 'bg-green-100 text-green-700';
+                                        } else if (isSunday) {
+                                            status = 'Weekoff';
+                                            statusColor = 'bg-slate-100 text-slate-500';
+                                        }
+
+                                        return (
+                                            <tr key={dateStr} className="hover:bg-slate-50/50">
+                                                <td className="px-4 py-3">
+                                                    <div className="font-medium text-slate-700">{format(day, 'dd MMM yyyy')}</div>
+                                                    <div className="text-xs text-slate-400">{format(day, 'EEEE')}</div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${statusColor}`}>
+                                                        {status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 font-mono text-slate-600">
+                                                    {record ? (record.clockInIST?.split(',')[1]?.trim() || new Date(record.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : '-'}
+                                                </td>
+                                                <td className="px-4 py-3 font-mono text-slate-600">
+                                                    {record && record.clockOut ? (record.clockOutIST?.split(',')[1]?.trim() || new Date(record.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : '-'}
+                                                </td>
+                                                <td className="px-4 py-3 font-mono font-bold text-slate-700">
+                                                    {record ? (
+                                                        (() => {
+                                                            const start = new Date(record.clockIn);
+                                                            const end = record.clockOut ? new Date(record.clockOut) : new Date();
+                                                            if (end < start) return '-';
+                                                            const diff = Math.abs(end - start);
+                                                            const h = Math.floor(diff / (1000 * 60 * 60));
+                                                            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                                                            return `${h}h ${m}m`;
+                                                        })()
+                                                    ) : '-'}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'attendance' && (
+                    <div className="bg-white rounded-lg shadow-sm border border-slate-200">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                            <h3 className="font-bold text-slate-700">Attendance Log</h3>
+                            <button
+                                onClick={handleExportAttendance}
+                                className="flex items-center space-x-2 text-sm text-white bg-green-600 hover:bg-green-700 active:bg-green-800 px-4 py-2 rounded-lg shadow-sm transition-all cursor-pointer"
+                            >
+                                <Download size={14} />
+                                <span className="font-semibold">Download Report</span>
+                            </button>
+                        </div>
+                        <div className="p-4">
+                            <AttendanceCalendar
+                                history={attendanceLogs}
+                                onMonthChange={(y, m) => {
+                                    const newD = new Date(y, m - 1, 1);
+                                    if (format(newD, 'yyyy-MM') !== format(viewDate, 'yyyy-MM')) {
+                                        setViewDate(newD);
+                                    }
+                                }}
+                                user={viewUser}
+                                holidays={holidays}
+                                date={viewDate}
+                            />
+                        </div>
+                    </div>
+                )}
+
 
                 {/* Reject Modal */}
                 {
@@ -1210,7 +1757,7 @@ const Timesheet = () => {
                 }
 
             </div>
-        </div>
+        </div >
     );
 };
 

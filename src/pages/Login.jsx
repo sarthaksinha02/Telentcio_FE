@@ -138,7 +138,7 @@ const Login = () => {
                     autoComplete="email"
                     required
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => setEmail(e.target.value.toLowerCase())}
                     onFocus={() => setFocusedInput('email')}
                     onBlur={() => setFocusedInput(null)}
                     className="block w-full py-3 pl-10 bg-transparent border-b-2 border-slate-200 placeholder-transparent text-slate-900 focus:outline-none focus:border-blue-600 transition-colors sm:text-sm"

@@ -1,10 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [] }) => {
-    const [currentDate, setCurrentDate] = useState(new Date());
+const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date }) => {
+    const [currentDate, setCurrentDate] = useState(date || new Date());
 
     useEffect(() => {
+        if (date) {
+            setCurrentDate(date);
+        }
+    }, [date]);
+
+    useEffect(() => {
+        if (!date) { // Only trigger onMonthChange if not controlled? Or always?
+            // If controlled, parent handles change via onMonthChange.
+            // If I trigger onMonthChange here, parent might update 'date' prop, causing loop if not careful.
+            // But onMonthChange is usually "request to fetch data".
+        }
+        // Actually, the original logic was: mount -> trigger onMonthChange.
+        // If I change currentDate locally (prev/next), trigger onMonthChange.
+        // If 'date' prop updates, currentDate updates. Does that trigger onMonthChange?
+        // Yes, because of dependency [currentDate].
+        // This is fine.
         onMonthChange(currentDate.getFullYear(), currentDate.getMonth() + 1);
     }, [currentDate]);
 
@@ -101,18 +117,23 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [] }) => 
                             )}
 
                             {record ? (
-                                <div className="space-y-1">
-                                    <div className="flex items-center space-x-1.5">
-                                        <div className={`h-2 w-2 rounded-full ${getStatusColor(record.status)}`}></div>
-                                        <span className="text-xs font-semibold text-slate-700 capitalize">{record.status.toLowerCase()}</span>
-                                    </div>
-                                    <div className="text-[10px] text-slate-500 font-mono pl-3.5">
-                                        In: {record.clockInIST && record.clockInIST.includes(',') ? record.clockInIST.split(',')[1].trim().slice(0, 5) : '--:--'}
-                                    </div>
-                                    <div className="text-[10px] text-slate-500 font-mono pl-3.5">
-                                        Out: {record.clockOutIST && record.clockOutIST.includes(',') ? record.clockOutIST.split(',')[1].trim().slice(0, 5) : '--:--'}
-                                    </div>
-                                </div>
+                                (() => {
+                                    const finalStatus = record.status || (record.clockIn ? 'PRESENT' : 'ABSENT');
+                                    return (
+                                        <div className="space-y-1">
+                                            <div className="flex items-center space-x-1.5">
+                                                <div className={`h-2 w-2 rounded-full ${getStatusColor(finalStatus)}`}></div>
+                                                <span className="text-xs font-semibold text-slate-700 capitalize">{finalStatus.toLowerCase()}</span>
+                                            </div>
+                                            <div className="text-[10px] text-slate-500 font-mono pl-3.5">
+                                                In: {record.clockInIST && record.clockInIST.includes(',') ? record.clockInIST.split(',')[1].trim().slice(0, 5) : '--:--'}
+                                            </div>
+                                            <div className="text-[10px] text-slate-500 font-mono pl-3.5">
+                                                Out: {record.clockOutIST && record.clockOutIST.includes(',') ? record.clockOutIST.split(',')[1].trim().slice(0, 5) : '--:--'}
+                                            </div>
+                                        </div>
+                                    );
+                                })()
                             ) : (
 
                                 isBeforeJoining ? (

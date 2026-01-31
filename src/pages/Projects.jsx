@@ -68,11 +68,17 @@ const Projects = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
+            // Prepare payload: Convert empty strings to null for ObjectId/Date fields
+            const payload = { ...formData };
+            if (!payload.client) payload.client = null;
+            if (!payload.startDate) payload.startDate = null;
+            if (!payload.dueDate) payload.dueDate = null;
+
             if (editingId) {
-                await api.put(`/projects/${editingId}`, formData);
+                await api.put(`/projects/${editingId}`, payload);
                 toast.success('Project Updated');
             } else {
-                await api.post('/projects', formData);
+                await api.post('/projects', payload);
                 toast.success('Project Created');
             }
             setShowModal(false);

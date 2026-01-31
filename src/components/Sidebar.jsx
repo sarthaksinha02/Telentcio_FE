@@ -33,6 +33,11 @@ const Sidebar = () => {
           <Calendar size={18} />
           <span>Timesheet</span>
         </Link>
+        <Link to="/holidays" className={isActive('/holidays')}>
+          <CalendarDays size={18} />
+          <span>Holidays</span>
+        </Link>
+
 
 
         <div className="px-3 mt-8 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Organization</div>
@@ -57,33 +62,27 @@ const Sidebar = () => {
         )}
 
         {/* Project Management Section */}
-        {(user?.roles?.includes('Admin') ||
-          user?.permissions?.some(p => p.startsWith('project.') || p.startsWith('business_unit.') || p.startsWith('client.'))) && (
-            <>
-              <div className="px-3 mt-8 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Project Management</div>
+        {/* Project Management Section */}
+        <div className="px-3 mt-8 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Project Management</div>
 
-              {(user?.roles?.includes('Admin') || user?.permissions?.includes('business_unit.read')) && (
-                <Link to="/business-units" className={isActive('/business-units')}>
-                  <Building size={18} />
-                  <span>Business Units</span>
-                </Link>
-              )}
+        {(user?.roles?.includes('Admin') || user?.permissions?.includes('business_unit.read')) && (
+          <Link to="/business-units" className={isActive('/business-units')}>
+            <Building size={18} />
+            <span>Business Units</span>
+          </Link>
+        )}
 
-              {(user?.roles?.includes('Admin') || user?.permissions?.includes('client.read')) && (
-                <Link to="/clients" className={isActive('/clients')}>
-                  <Users size={18} />
-                  <span>Clients</span>
-                </Link>
-              )}
+        {(user?.roles?.includes('Admin') || user?.permissions?.includes('client.read')) && (
+          <Link to="/clients" className={isActive('/clients')}>
+            <Users size={18} />
+            <span>Clients</span>
+          </Link>
+        )}
 
-              {(user?.roles?.includes('Admin') || user?.permissions?.includes('project.read')) && (
-                <Link to="/projects" className={isActive('/projects')}>
-                  <Briefcase size={18} />
-                  <span>Projects</span>
-                </Link>
-              )}
-            </>
-          )}
+        <Link to="/projects" className={isActive('/projects')}>
+          <Briefcase size={18} />
+          <span>Projects</span>
+        </Link>
       </div>
 
       <div className="p-4 border-t border-slate-700/50">

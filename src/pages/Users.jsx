@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { UserPlus, Search, Edit2, Shield, Calendar } from 'lucide-react';
+import { UserPlus, Search, Edit2, Shield, Calendar, Download } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 
 const Users = () => {
     const [users, setUsers] = useState([]);
@@ -10,6 +13,130 @@ const Users = () => {
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [editingUser, setEditingUser] = useState(null);
+    const [holidays, setHolidays] = useState([]);
+
+    // Helpers for Export
+    const formatTime = (dateString, istString) => {
+        if (istString && istString.includes(',')) return istString.split(',')[1]?.trim() || '';
+        if (!dateString) return '--:--';
+        return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    };
+
+    const calculateDuration = (start, end) => {
+        if (!start) return '--';
+        const startTime = new Date(start);
+        const endTime = end ? new Date(end) : new Date();
+        if (endTime < startTime) return '0h 0m';
+        const diffString = Math.abs(endTime - startTime);
+        const hours = Math.floor(diffString / (1000 * 60 * 60));
+        const minutes = Math.floor((diffString % (1000 * 60 * 60)) / (1000 * 60));
+        return `${hours}h ${minutes}m`;
+    };
+
+    const handleExportAttendance = async (targetUser) => {
+        const toastId = toast.loading('Generating Report...');
+        try {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth() + 1;
+
+            // Fetch History and Holidays on demand if not present (Holidays could be fetched once, but safe here)
+            const [historyRes, holidaysRes] = await Promise.all([
+                api.get(`/attendance/history?year=${year}&month=${month}&userId=${targetUser._id}`),
+                api.get('/holidays')
+            ]);
+
+            const history = historyRes.data;
+            const holidaysData = holidaysRes.data;
+
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('Attendance Report');
+
+            // 1. Header Info (Rows 1-4)
+            sheet.mergeCells('A1:C1');
+            sheet.getCell('A1').value = `User Name: ${targetUser.firstName} ${targetUser.lastName || ''}`;
+            sheet.getCell('A1').font = { bold: true, size: 14 };
+
+            sheet.mergeCells('A2:C2');
+            sheet.getCell('A2').value = `Joining Date: ${targetUser.joiningDate ? new Date(targetUser.joiningDate).toLocaleDateString() : 'N/A'}`;
+
+            sheet.mergeCells('A3:C3');
+            const managers = targetUser.reportingManagers || [];
+            const mgrNames = managers.length > 0 ? managers.map(m => `${m.firstName} ${m.lastName}`).join(', ') : 'N/A';
+            sheet.getCell('A3').value = `Supervisor(s): ${mgrNames}`;
+
+            sheet.addRow([]); // Row 4 Empty Buffer
+
+            // 2. Table Header (Row 5)
+            const headerRow = sheet.addRow(['Date', 'Day', 'Status', 'In Time', 'Out Time', 'Duration']);
+            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } }; // Blue
+            headerRow.alignment = { horizontal: 'center' };
+
+            // 3. Data Generation
+            const start = startOfMonth(now);
+            const end = endOfMonth(now);
+            const days = eachDayOfInterval({ start, end });
+
+            days.forEach(day => {
+                const dateStr = format(day, 'yyyy-MM-dd');
+                const record = history.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+                const isSunday = day.getDay() === 0;
+                const isFuture = day > new Date();
+
+                let status = 'Absent';
+                let rowColor = 'FFF2DCDB'; // Red by default
+
+                const joiningDate = targetUser.joiningDate ? new Date(targetUser.joiningDate) : null;
+                if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
+
+                const holiday = holidaysData.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+
+                if (joiningDate && day < joiningDate) {
+                    status = 'Not Applicable';
+                    rowColor = 'FFFFFFFF';
+                } else if (isFuture) {
+                    status = '-';
+                    rowColor = 'FFFFFFFF';
+                } else if (holiday) {
+                    status = holiday.name;
+                    rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
+                } else if (record) {
+                    status = 'Present';
+                    rowColor = 'FFEBF1DE';
+                } else if (isSunday) {
+                    status = 'Weekoff';
+                    rowColor = 'FFF2F2F2';
+                }
+
+                const row = sheet.addRow([
+                    format(day, 'dd-MMM-yyyy'),
+                    format(day, 'EEEE'),
+                    status,
+                    record ? formatTime(record.clockIn, record.clockInIST) : '-',
+                    record ? formatTime(record.clockOut, record.clockOutIST) : '-',
+                    record ? calculateDuration(record.clockIn, record.clockOut) : '-'
+                ]);
+
+                row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
+                row.alignment = { horizontal: 'center' };
+            });
+
+            // 4. Columns Width
+            sheet.columns = [
+                { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }
+            ];
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const fileName = `Attendance_${format(start, 'MMMM_yyyy')}_${targetUser.firstName}.xlsx`;
+            saveAs(new Blob([buffer]), fileName);
+            toast.success('Report Downloaded', { id: toastId });
+
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to generate report', { id: toastId });
+        }
+    };
 
     // Form State
     const [formData, setFormData] = useState({
@@ -40,7 +167,7 @@ const Users = () => {
                 console.log('Admin users fetch failed', err.response?.status);
                 if (err.response && err.response.status === 403) {
                     console.log('Attempting to fetch my team...');
-                    toast('Viewing My Team (Not Admin)', { icon: '👥' });
+                    // toast('Viewing My Team (Not Admin)', { icon: '👥' });
                     const teamRes = await api.get('/admin/users/team');
                     console.log('Team fetch success', teamRes.data);
                     usersData = teamRes.data;
@@ -260,22 +387,25 @@ const Users = () => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-3 text-right">
-                                            {canEdit && (
-                                                <button onClick={() => handleEdit(user)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"><Edit2 size={16} /></button>
-                                            )}
-                                            {/* View Timesheet Action (Visible if user reports to me or if I am Admin) */}
-                                            {(!canEdit || canEdit) && (!user.reportingManagers?.some(rm => rm._id === user._id)) && (
-                                                <button
-                                                    onClick={() => {
-                                                        // Navigate to timesheet with user context
-                                                        window.location.href = `/timesheet?userId=${user._id}&name=${user.firstName} ${user.lastName}`;
-                                                    }}
-                                                    className="text-emerald-600 hover:text-emerald-800 p-1 hover:bg-emerald-50 rounded ml-2"
-                                                    title="View Timesheet"
-                                                >
-                                                    <Calendar size={16} />
-                                                </button>
-                                            )}
+                                            <div className="flex items-center justify-end space-x-2">
+                                                {canEdit && (
+                                                    <button onClick={() => handleEdit(user)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"><Edit2 size={16} /></button>
+                                                )}
+
+                                                {/* View Timesheet Action (Visible if user reports to me or if I am Admin) */}
+                                                {(!canEdit || canEdit) && (!user.reportingManagers?.some(rm => rm._id === user._id)) && (
+                                                    <button
+                                                        onClick={() => {
+                                                            // Navigate to timesheet with user context
+                                                            window.location.href = `/timesheet?userId=${user._id}&name=${user.firstName} ${user.lastName}`;
+                                                        }}
+                                                        className="text-emerald-600 hover:text-emerald-800 p-1 hover:bg-emerald-50 rounded"
+                                                        title="View Timesheet"
+                                                    >
+                                                        <Calendar size={16} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

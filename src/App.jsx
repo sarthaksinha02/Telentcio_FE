@@ -46,9 +46,11 @@ function App() {
               <Route element={<RoleRoute requiredPermissions={['project.read', 'project.create']} requiredRoles={['Admin']} />}>
                 <Route path="/business-units" element={<BusinessUnits />} />
                 <Route path="/clients" element={<Clients />} />
-                <Route path="/projects" element={<Projects />} />
-                <Route path="/projects/:id" element={<ProjectDetails />} />
               </Route>
+
+              {/* Accessible to all (backend filtered) */}
+              <Route path="/projects" element={<Projects />} />
+              <Route path="/projects/:id" element={<ProjectDetails />} />
 
               {/* Admin Only Routes */}
               <Route element={<RoleRoute requiredPermissions={['role.read']} requiredRoles={['Admin']} />}>
@@ -64,7 +66,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </AuthProvider>
-    </Router>
+    </Router >
   );
 }
 

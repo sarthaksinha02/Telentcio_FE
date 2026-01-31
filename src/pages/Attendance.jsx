@@ -16,6 +16,8 @@ const Attendance = () => {
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [holidays, setHolidays] = useState([]);
+    const [usersList, setUsersList] = useState([]);
+    const [selectedUserId, setSelectedUserId] = useState(user?._id);
 
     // Task Integration
     const [assignedTasks, setAssignedTasks] = useState([]);
@@ -43,7 +45,7 @@ const Attendance = () => {
 
             // If clocked in, fetch tasks
             if (res.data?.clockIn && !res.data?.clockOut && user) {
-                fetchAssignedTasks();
+                // fetchAssignedTasks(); // Now fetched globally
             }
         } catch (error) {
             console.error('Error fetching status', error);
@@ -63,9 +65,12 @@ const Attendance = () => {
         }
     };
 
+
+
     const fetchMonthHistory = async (year, month) => {
         try {
-            const res = await api.get(`/attendance/history?year=${year}&month=${month}`);
+            const userId = selectedUserId || user._id;
+            const res = await api.get(`/attendance/history?year=${year}&month=${month}&userId=${userId}`);
             setHistory(res.data);
         } catch (error) {
             console.error('Error fetching history', error);
@@ -92,12 +97,46 @@ const Attendance = () => {
         }
     };
 
+    const fetchUsers = async () => {
+        try {
+            if (user?.roles?.includes('Admin')) {
+                const res = await api.get('/users');
+                setUsersList(res.data);
+            } else {
+                // Try fetching team
+                const res = await api.get('/users/team');
+                setUsersList(res.data);
+            }
+        } catch (error) {
+            console.error('Error fetching users list', error);
+        }
+    };
+
     useEffect(() => {
-        fetchTodayStatus();
-        fetchRecentLogs();
-        fetchHolidays();
+        if (user) {
+            setSelectedUserId(user._id);
+            fetchTodayStatus();
+            fetchRecentLogs();
+            fetchHolidays();
+            fetchAssignedTasks(); // Fetch tasks immediately
+
+            // ...
+            if (user.roles?.includes('Admin') || (user.permissions && user.permissions.includes('user.read'))) {
+                fetchUsers();
+            } else {
+                fetchUsers();
+            }
+        }
         setLoading(false);
     }, [user]);
+
+    // Refetch history when selected user changes
+    useEffect(() => {
+        const now = new Date();
+        if (selectedUserId) {
+            fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
+        }
+    }, [selectedUserId]);
 
     // Check if a task has a log for today
     const getTodayLogForTask = (taskId) => {
@@ -114,7 +153,7 @@ const Attendance = () => {
             await api.post('/attendance/clock-in');
             toast.success('Clocked In Successfully');
             await fetchTodayStatus();
-
+            // fetchAssignedTasks(); // Already fetched
             const now = new Date();
             fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
         } catch (error) {
@@ -127,7 +166,7 @@ const Attendance = () => {
             await api.post('/attendance/clock-out');
             toast.success('Clocked Out Successfully');
             fetchTodayStatus();
-            setAssignedTasks([]); // Clear tasks on clock out
+            // setAssignedTasks([]); // Don't clear tasks so they remain visible
             const now = new Date();
             fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
         } catch (error) {
@@ -220,18 +259,23 @@ const Attendance = () => {
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet('Attendance Report');
 
+        // Determine user to export
+        const exportUser = (usersList.length > 0 && selectedUserId)
+            ? usersList.find(u => u._id === selectedUserId) || user
+            : user;
+
         // 1. Header Info (Rows 1-4)
         const titleStyle = { font: { bold: true, size: 12 }, alignment: { vertical: 'middle', horizontal: 'left' } };
 
         sheet.mergeCells('A1:C1');
-        sheet.getCell('A1').value = `User Name: ${user.firstName} ${user.lastName || ''}`;
+        sheet.getCell('A1').value = `User Name: ${exportUser.firstName} ${exportUser.lastName || ''}`;
         sheet.getCell('A1').font = { bold: true, size: 14 };
 
         sheet.mergeCells('A2:C2');
-        sheet.getCell('A2').value = `Joining Date: ${user.joiningDate ? new Date(user.joiningDate).toLocaleDateString() : 'N/A'}`;
+        sheet.getCell('A2').value = `Joining Date: ${exportUser.joiningDate ? new Date(exportUser.joiningDate).toLocaleDateString() : 'N/A'}`;
 
         sheet.mergeCells('A3:C3');
-        const managers = user.reportingManagers || [];
+        const managers = exportUser.reportingManagers || [];
         const mgrNames = managers.length > 0 ? managers.map(m => `${m.firstName} ${m.lastName}`).join(', ') : 'N/A';
         sheet.getCell('A3').value = `Supervisor(s): ${mgrNames}`;
 
@@ -264,7 +308,7 @@ const Attendance = () => {
             let status = 'Absent';
             let rowColor = 'FFF2DCDB'; // Red by default
 
-            const joiningDate = user.joiningDate ? new Date(user.joiningDate) : null;
+            const joiningDate = exportUser.joiningDate ? new Date(exportUser.joiningDate) : null;
             // Normalize joining date to start of day for comparison
             if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
 
@@ -311,7 +355,7 @@ const Attendance = () => {
         ];
 
         const buffer = await workbook.xlsx.writeBuffer();
-        const fileName = `Attendance_${format(start, 'MMMM_yyyy')}_${user.firstName}.xlsx`;
+        const fileName = `Attendance_${format(start, 'MMMM_yyyy')}_${exportUser.firstName}.xlsx`;
         saveAs(new Blob([buffer]), fileName);
     };
 
@@ -386,8 +430,25 @@ const Attendance = () => {
                                 {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                             </div>
                         </div>
+
+                        {/* User Selection for Admin/Manager */}
+                        {usersList.length > 0 && (
+                            <select
+                                value={selectedUserId}
+                                onChange={(e) => setSelectedUserId(e.target.value)}
+                                className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
+                            >
+                                <option value={user._id}>Me</option>
+                                {usersList.filter(u => u._id !== user._id).map(u => (
+                                    <option key={u._id} value={u._id}>
+                                        {u.firstName} {u.lastName} ({u.employeeCode || 'N/A'})
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+
                         {/* Export Button - Permission Check */
-                            (user?.role === 'Admin' || user?.permissions?.includes('attendance.export')) && (
+                            (user?.roles?.includes('Admin') || user?.roles?.includes('Manager') || user?.role === 'Admin' || usersList.length > 0 || user?.permissions?.includes('attendance.export')) && (
                                 <button
                                     onClick={handleExportAttendance}
                                     className="bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 p-2 rounded-lg shadow-sm transition-colors"
