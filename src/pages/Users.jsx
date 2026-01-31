@@ -138,6 +138,165 @@ const Users = () => {
         }
     };
 
+
+
+    const handleExportTeamAttendance = async () => {
+        const toastId = toast.loading('Generating Team Report...');
+        try {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth() + 1;
+
+            const res = await api.get(`/attendance/team-report?year=${year}&month=${month}`);
+            const { teamMembers, attendanceRecords } = res.data;
+
+            if (!teamMembers || teamMembers.length === 0) {
+                toast.error('No team members found', { id: toastId });
+                return;
+            }
+
+            const start = startOfMonth(now);
+            const end = endOfMonth(now);
+            const daysOfMonth = eachDayOfInterval({ start, end });
+
+            // Helpers
+            const fmtTime = (d) => {
+                if (!d) return '--:--';
+                return new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            };
+
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('Team Attendance');
+
+            // Iterate over each team member to create their own section
+            teamMembers.forEach((member, index) => {
+                // Add Space between users (except the first one)
+                if (index > 0) {
+                    sheet.addRow([]);
+                    sheet.addRow([]);
+                }
+
+                // --- User Metadata Section ---
+                const metaStartRow = sheet.rowCount + 1;
+
+                // Name
+                const nameRow = sheet.addRow(['Employee Name:', `${member.firstName} ${member.lastName}`]);
+                nameRow.font = { bold: true, size: 11 };
+
+                // Joining Date
+                const joinDateStr = member.joiningDate ? new Date(member.joiningDate).toLocaleDateString() : 'N/A';
+                const joinRow = sheet.addRow(['Joining Date:', joinDateStr]);
+                joinRow.font = { bold: true };
+
+                // Email
+                const emailRow = sheet.addRow(['Email:', member.email]);
+                emailRow.font = { bold: true };
+
+                sheet.addRow([]); // Blank row before table
+
+                // --- Table Header ---
+                const headerRow = sheet.addRow([
+                    'Date', 'Day', 'Status', 'In Time', 'Out Time', 'Duration (Hrs)'
+                ]);
+                headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } }; // Blue Header
+                headerRow.alignment = { horizontal: 'center' };
+
+                // --- Attendance Rows ---
+                daysOfMonth.forEach(day => {
+                    const dateStr = format(day, 'yyyy-MM-dd');
+                    const record = attendanceRecords.find(r =>
+                        r.user === member._id &&
+                        format(new Date(r.date), 'yyyy-MM-dd') === dateStr
+                    );
+
+                    const isSunday = day.getDay() === 0;
+                    const isFuture = day > new Date();
+                    const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+
+                    let status = 'Absent';
+                    let rowColor = 'FFF2DCDB'; // default Red
+
+                    const joiningDate = member.joiningDate ? new Date(member.joiningDate) : null;
+                    if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
+
+                    if (joiningDate && day < joiningDate) {
+                        status = 'N/A';
+                        rowColor = 'FFFFFFFF'; // White
+                    } else if (isFuture) {
+                        status = '-';
+                        rowColor = 'FFFFFFFF'; // White
+                    } else if (holiday) {
+                        status = holiday.name;
+                        rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
+                    } else if (record) {
+                        status = 'Present';
+                        rowColor = 'FFEBF1DE'; // Green
+                    } else if (isSunday) {
+                        status = 'Weekoff';
+                        rowColor = 'FFF2F2F2'; // Light Gray
+                    }
+
+                    let inTime = record ? fmtTime(record.clockIn) : '-';
+                    let outTime = record ? fmtTime(record.clockOut) : '-';
+
+                    let duration = '-';
+                    if (record) {
+                        if (record.duration) duration = (record.duration / 60).toFixed(2);
+                        else if (record.clockIn && record.clockOut) {
+                            duration = ((new Date(record.clockOut) - new Date(record.clockIn)) / 3600000).toFixed(2);
+                        }
+                    }
+
+                    const row = sheet.addRow([
+                        format(day, 'dd-MMM-yyyy'),
+                        format(day, 'EEEE'),
+                        status,
+                        inTime,
+                        outTime,
+                        duration
+                    ]);
+
+                    row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
+                    row.alignment = { horizontal: 'center' };
+
+                    // Borders for table cells
+                    row.eachCell((cell) => {
+                        cell.border = {
+                            top: { style: 'thin' },
+                            left: { style: 'thin' },
+                            bottom: { style: 'thin' },
+                            right: { style: 'thin' }
+                        };
+                    });
+
+                    if (status === 'Absent' || status === 'N/A' || status === '-') {
+                        row.font = { color: { argb: 'FF888888' } };
+                    }
+                });
+            });
+
+            // Set Column Widths
+            sheet.columns = [
+                { width: 15 }, // Date
+                { width: 15 }, // Day
+                { width: 20 }, // Status
+                { width: 15 }, // In
+                { width: 15 }, // Out
+                { width: 15 }  // Duration
+            ];
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const fileName = `Team_Attendance_${format(now, 'MMM_yyyy')}.xlsx`;
+            saveAs(new Blob([buffer]), fileName);
+            toast.success('Downloaded', { id: toastId });
+
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to export', { id: toastId });
+        }
+    };
+
     // Form State
     const [formData, setFormData] = useState({
         firstName: '',
@@ -305,15 +464,24 @@ const Users = () => {
                         <h1 className="text-2xl font-bold text-slate-800">{canEdit ? 'User Management' : 'My Team'}</h1>
                         <p className="text-sm text-slate-500">{canEdit ? 'Manage employees and their access roles' : 'View your direct reports'}</p>
                     </div>
-                    {canEdit && (
+                    <div className="flex space-x-2">
                         <button
-                            onClick={handleAdd}
-                            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-all"
+                            onClick={handleExportTeamAttendance}
+                            className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow transition-all"
                         >
-                            <UserPlus size={18} />
-                            <span>Add User</span>
+                            <Download size={18} />
+                            <span>Export Attendance</span>
                         </button>
-                    )}
+                        {canEdit && (
+                            <button
+                                onClick={handleAdd}
+                                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-all"
+                            >
+                                <UserPlus size={18} />
+                                <span>Add User</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* Users List */}

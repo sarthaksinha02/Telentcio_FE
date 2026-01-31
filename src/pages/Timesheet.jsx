@@ -428,10 +428,8 @@ const Timesheet = () => {
 
             // Helpers
             const formatTime = (dateString, istString) => {
-                // Use istString if available and formatted, else dateString
-                if (istString && istString.includes(',')) return istString.split(',')[1]?.trim() || '';
                 if (!dateString) return '--:--';
-                return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
             };
             const calculateDuration = (start, end) => {
                 if (!start) return '--';
@@ -531,6 +529,7 @@ const Timesheet = () => {
 
     const handleCellClick = (project, date, logs = [], force = false) => {
         if (!force && logs.length === 0) return;
+        setEntryToEdit(null); // Reset edit state when switching cells
         setSelectedCell({
             project,
             date,

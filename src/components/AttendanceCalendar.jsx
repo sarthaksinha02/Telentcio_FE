@@ -126,10 +126,10 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date 
                                                 <span className="text-xs font-semibold text-slate-700 capitalize">{finalStatus.toLowerCase()}</span>
                                             </div>
                                             <div className="text-[10px] text-slate-500 font-mono pl-3.5">
-                                                In: {record.clockInIST && record.clockInIST.includes(',') ? record.clockInIST.split(',')[1].trim().slice(0, 5) : '--:--'}
+                                                In: {record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--:--'}
                                             </div>
                                             <div className="text-[10px] text-slate-500 font-mono pl-3.5">
-                                                Out: {record.clockOutIST && record.clockOutIST.includes(',') ? record.clockOutIST.split(',')[1].trim().slice(0, 5) : '--:--'}
+                                                Out: {record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--:--'}
                                             </div>
                                         </div>
                                     );
