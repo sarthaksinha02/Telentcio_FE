@@ -97,20 +97,7 @@ const Attendance = () => {
         }
     };
 
-    const fetchUsers = async () => {
-        try {
-            if (user?.roles?.includes('Admin')) {
-                const res = await api.get('/users');
-                setUsersList(res.data);
-            } else {
-                // Try fetching team
-                const res = await api.get('/users/team');
-                setUsersList(res.data);
-            }
-        } catch (error) {
-            console.error('Error fetching users list', error);
-        }
-    };
+
 
     useEffect(() => {
         if (user) {
@@ -119,13 +106,6 @@ const Attendance = () => {
             fetchRecentLogs();
             fetchHolidays();
             fetchAssignedTasks(); // Fetch tasks immediately
-
-            // ...
-            if (user.roles?.includes('Admin') || (user.permissions && user.permissions.includes('user.read'))) {
-                fetchUsers();
-            } else {
-                fetchUsers();
-            }
         }
         setLoading(false);
     }, [user]);
@@ -431,21 +411,7 @@ const Attendance = () => {
                             </div>
                         </div>
 
-                        {/* User Selection for Admin/Manager */}
-                        {usersList.length > 0 && (
-                            <select
-                                value={selectedUserId}
-                                onChange={(e) => setSelectedUserId(e.target.value)}
-                                className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
-                            >
-                                <option value={user._id}>Me</option>
-                                {usersList.filter(u => u._id !== user._id).map(u => (
-                                    <option key={u._id} value={u._id}>
-                                        {u.firstName} {u.lastName} ({u.employeeCode || 'N/A'})
-                                    </option>
-                                ))}
-                            </select>
-                        )}
+
 
                         {/* Export Button - Permission Check */
                             (user?.roles?.includes('Admin') || user?.roles?.includes('Manager') || user?.role === 'Admin' || usersList.length > 0 || user?.permissions?.includes('attendance.export')) && (
