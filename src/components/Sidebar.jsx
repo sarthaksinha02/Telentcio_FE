@@ -12,8 +12,8 @@ const Sidebar = () => {
     <aside className="w-64 bg-[#1e293b] text-white flex-col hidden md:flex shadow-xl z-50 fixed inset-y-0 left-0">
       <div className="h-16 flex items-center px-6 border-b border-slate-700/50">
         <div className="flex items-center space-x-2">
-          <div className="h-8 w-8 bg-blue-600 rounded-md flex items-center justify-center font-bold text-white">H</div>
-          <span className="text-lg font-semibold tracking-tight">HRCODE</span>
+          <div className="h-8 w-8 bg-blue-600 rounded-md flex items-center justify-center font-bold text-white">T</div>
+          <span className="text-lg font-semibold tracking-tight">TalentCio</span>
         </div>
       </div>
 
