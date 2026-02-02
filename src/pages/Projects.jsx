@@ -179,6 +179,23 @@ const Projects = () => {
                                             </td>
                                             <td className="px-6 py-3 text-right space-x-3">
                                                 {canUpdate && <button onClick={() => handleEdit(project)} className="text-slate-500 hover:text-blue-600 text-xs font-medium">Edit</button>}
+                                                {user?.permissions?.includes('project.delete') && (
+                                                    <button
+                                                        onClick={() => {
+                                                            if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
+                                                                api.delete(`/projects/${project._id}`)
+                                                                    .then(() => {
+                                                                        toast.success('Project deleted');
+                                                                        fetchData();
+                                                                    })
+                                                                    .catch(() => toast.error('Failed to delete project'));
+                                                            }
+                                                        }}
+                                                        className="text-slate-500 hover:text-red-600 text-xs font-medium"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                )}
                                                 <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">View Modules</a>
                                             </td>
                                         </tr>

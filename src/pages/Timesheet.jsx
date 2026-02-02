@@ -11,7 +11,11 @@ import AttendanceCalendar from '../components/AttendanceCalendar';
 
 const Timesheet = () => {
     const { user } = useAuth();
-    const [viewDate, setViewDate] = useState(new Date());
+    const [viewDate, setViewDate] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const m = params.get('month');
+        return m ? new Date(m) : new Date();
+    });
     const [timesheet, setTimesheet] = useState(null);
     const [attendanceLogs, setAttendanceLogs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -121,6 +125,26 @@ const Timesheet = () => {
         setEntryToEdit(entry);
         setEditHours(entry.hours); // Load saved hours (PRIORITY)
         setEditDescription(entry.description || '');
+
+        // Fix: Also open the cell so the edit form is visible
+        if (entry.date && entry.project) {
+            const entryDate = new Date(entry.date);
+            const dateKey = format(entryDate, 'yyyy-MM-dd');
+            const pid = entry.project._id || entry.project;
+
+            // Find all logs for this cell to populate the view
+            const logsForCell = timesheet.entries.filter(e => {
+                const eDateKey = format(new Date(e.date), 'yyyy-MM-dd');
+                const ePid = e.project._id || e.project;
+                return eDateKey === dateKey && ePid === pid;
+            });
+
+            setSelectedCell({
+                date: entryDate,
+                project: entry.project,
+                logs: logsForCell
+            });
+        }
 
         if (entry.startTime && entry.endTime) {
             setEditStartTime(entry.startTime);
@@ -992,7 +1016,6 @@ const Timesheet = () => {
                                         <tr>
                                             <th className="px-6 py-3">Employee</th>
                                             <th className="px-6 py-3">Month</th>
-                                            <th className="px-6 py-3">Total Entries</th>
                                             <th className="px-6 py-3 text-right">Actions</th>
                                         </tr>
                                     </thead>
@@ -1006,24 +1029,14 @@ const Timesheet = () => {
                                                 <td className="px-6 py-3 font-mono text-slate-600">
                                                     {ts.month}
                                                 </td>
-                                                <td className="px-6 py-3 text-slate-600">
-                                                    <span className="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded-full">
-                                                        {ts.entries?.length || 0} Items
-                                                    </span>
-                                                </td>
                                                 <td className="px-6 py-3 text-right space-x-2">
                                                     <button
                                                         onClick={() => {
-                                                            // View logic: Redirect to URL with params to trigger Manager View
-                                                            const url = new URL(window.location);
-                                                            url.searchParams.set('userId', ts.user._id);
-                                                            url.searchParams.set('name', `${ts.user.firstName} ${ts.user.lastName}`);
-                                                            window.history.pushState({}, '', url);
-                                                            // Force reload/re-render logic:
-                                                            // Since we use window.location.search in component body (which is not reactive solely by pushState),
-                                                            // we should technically reload or lift state. 
-                                                            // Better: Use internal state if possible, but our logic uses queryParams const.
-                                                            // Simplest: Force reload or use navigate if using react-router (which we likely are but I see no hook usage).
+                                                            const u = new URL(window.location);
+                                                            u.searchParams.set('userId', ts.user._id);
+                                                            u.searchParams.set('name', `${ts.user.firstName} ${ts.user.lastName}`);
+                                                            u.searchParams.set('month', ts.month); // Pass Month
+                                                            window.history.pushState({}, '', u);
                                                             window.location.reload();
                                                         }}
                                                         className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded text-xs font-bold transition-colors"
@@ -1443,18 +1456,18 @@ const Timesheet = () => {
                         )}
 
                         <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
-                            <div className="overflow-x-auto">
+                            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
                                 <table className="w-full text-sm text-left border-collapse">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
-                                            <th className="p-4 border-r border-slate-200 min-w-[200px] sticky left-0 z-20 bg-slate-50 font-bold">
+                                            <th className="p-4 border-r border-slate-200 min-w-[250px] sticky left-0 z-30 bg-slate-50 font-bold shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 Project / Task
                                             </th>
                                             {daysInMonth.map(day => {
                                                 const dateKey = format(day, 'yyyy-MM-dd');
                                                 const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
                                                 return (
-                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[50px] text-center ${holiday ? 'bg-green-50' : ['Sat', 'Sun'].includes(format(day, 'EEE')) ? 'bg-slate-100/50' : ''}`}>
+                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[60px] text-center ${holiday ? 'bg-green-50' : ['Sat', 'Sun'].includes(format(day, 'EEE')) ? 'bg-slate-100/50' : ''}`}>
                                                         <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
                                                         <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
                                                         {holiday && (
@@ -1465,7 +1478,7 @@ const Timesheet = () => {
                                                     </th>
                                                 );
                                             })}
-                                            <th className="p-4 border-l border-slate-200 min-w-[80px] font-bold text-center bg-slate-50 sticky right-0 z-10">
+                                            <th className="p-4 border-l border-slate-200 min-w-[100px] font-bold text-center bg-slate-50 sticky right-0 z-30 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 Total
                                             </th>
                                         </tr>
@@ -1473,7 +1486,7 @@ const Timesheet = () => {
                                     <tbody className="divide-y divide-slate-100">
                                         {/* Attendance Row */}
                                         <tr className="bg-slate-50/80 border-b border-slate-200">
-                                            <td className="p-4 border-r border-slate-200 font-bold text-slate-700 sticky left-0 bg-slate-50 z-10">
+                                            <td className="p-4 border-r border-slate-200 font-bold text-slate-700 sticky left-0 bg-slate-50 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 <div className="flex flex-col">
                                                     <span>Attendance</span>
                                                     <span className="text-[10px] text-slate-400 font-normal uppercase">Check-in / Out</span>
@@ -1487,25 +1500,27 @@ const Timesheet = () => {
                                                 // Joining Date Check
                                                 const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
                                                 const isBeforeJoining = joiningDate && day < joiningDate;
+                                                const isFutureDate = day > new Date();
 
                                                 return (
                                                     <td
                                                         key={'att-' + day}
                                                         onClick={() => {
+                                                            if (isFutureDate) return;
                                                             if (isBeforeJoining) {
                                                                 toast.error('Cannot edit attendance before joining date');
                                                                 return;
                                                             }
                                                             handleCellClick({ name: 'Attendance Log' }, day, [], true);
                                                         }}
-                                                        className={`p-1 border-r border-slate-200 text-center text-xs transition-colors ${isBeforeJoining
+                                                        className={`p-1 border-r border-slate-200 text-center text-xs transition-colors ${isBeforeJoining || isFutureDate
                                                             ? 'bg-slate-50 cursor-not-allowed opacity-50'
                                                             : `cursor-pointer hover:bg-blue-50 ${isWeekend ? 'bg-slate-100/50' : ''}`
                                                             }`}
-                                                        title={isBeforeJoining ? 'Before Joining Date' : ''}
+                                                        title={isBeforeJoining ? 'Before Joining Date' : isFutureDate ? 'Future Date' : ''}
                                                     >
-                                                        {isBeforeJoining ? (
-                                                            <span className="text-slate-200 select-none text-[10px]">N/A</span>
+                                                        {isBeforeJoining || isFutureDate ? (
+                                                            <span className="text-slate-200 select-none text-[10px]">{isFutureDate ? '-' : 'N/A'}</span>
                                                         ) : log ? (
                                                             <div className="flex flex-col items-center justify-center">
                                                                 <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${log.clockOutIST || isSameDay(new Date(log.date), new Date())
@@ -1525,7 +1540,7 @@ const Timesheet = () => {
                                                     </td>
                                                 );
                                             })}
-                                            <td className="p-4 border-l border-slate-200 font-bold text-center bg-slate-50 sticky right-0 z-10">
+                                            <td className="p-4 border-l border-slate-200 font-bold text-center bg-slate-50 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 {/* Total Attendance Hours */}
                                                 {(attendanceLogs.reduce((acc, log) => {
                                                     if (log.duration) return acc + (log.duration / 60);
@@ -1542,7 +1557,7 @@ const Timesheet = () => {
                                                 const projectTotal = Object.values(group.hours).reduce((a, b) => a + b, 0);
                                                 return (
                                                     <tr key={group.project._id || idx} className="hover:bg-blue-50/30 transition-colors group">
-                                                        <td className="p-4 border-r border-slate-200 font-medium text-slate-700 sticky left-0 bg-white group-hover:bg-blue-50/30 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                        <td className="p-4 border-r border-slate-200 font-medium text-slate-700 sticky left-0 bg-white z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                             <div className="flex flex-col">
                                                                 <span className="text-sm text-slate-800">{group.project.name || 'Unknown Project'}</span>
                                                                 <span className="text-xs text-slate-400 font-normal">{group.project.client?.name || 'Internal'}</span>
@@ -1559,11 +1574,13 @@ const Timesheet = () => {
                                                             // Joining Date Check
                                                             const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
                                                             const isBeforeJoining = joiningDate && day < joiningDate;
+                                                            const isFutureDate = day > new Date();
 
                                                             return (
                                                                 <td
                                                                     key={day.toString()}
                                                                     onClick={() => {
+                                                                        if (isFutureDate) return;
                                                                         if (holiday) {
                                                                             toast.error(`Cannot edit on holiday: ${holiday.name}`);
                                                                             return;
@@ -1575,17 +1592,17 @@ const Timesheet = () => {
                                                                         handleCellClick(group.project, day, logs);
                                                                     }}
                                                                     className={`p-1 border-r border-slate-200 text-center transition-colors ${holiday ? 'bg-green-50/30 cursor-not-allowed'
-                                                                        : isBeforeJoining ? 'bg-slate-50 cursor-not-allowed opacity-50'
+                                                                        : isBeforeJoining || isFutureDate ? 'bg-slate-50 cursor-not-allowed opacity-50'
                                                                             : `cursor-pointer hover:bg-blue-100 ${isWeekend ? 'bg-slate-50/30' : ''}`
                                                                         }`}
-                                                                    title={isBeforeJoining ? 'Before Joining Date' : ''}
+                                                                    title={isBeforeJoining ? 'Before Joining Date' : isFutureDate ? 'Future Date' : ''}
                                                                 >
                                                                     {holiday ? (
                                                                         <div className="flex justify-center items-center h-full">
                                                                             <span className="text-[10px] font-bold text-green-300 select-none" title={holiday.name}>HOL</span>
                                                                         </div>
-                                                                    ) : isBeforeJoining ? (
-                                                                        <span className="text-slate-200 text-[10px] select-none">N/A</span>
+                                                                    ) : isBeforeJoining || isFutureDate ? (
+                                                                        <span className="text-slate-200 text-[10px] select-none">{isFutureDate ? '-' : 'N/A'}</span>
                                                                     ) : hours ? (
                                                                         <div className="flex flex-col items-center justify-center group/cell relative">
                                                                             <span className={`inline-flex items-center justify-center h-8 w-8 rounded-full font-bold text-xs shadow-sm transition-all ${isRejected
@@ -1604,8 +1621,8 @@ const Timesheet = () => {
                                                                 </td>
                                                             );
                                                         })}
-                                                        <td className="p-4 border-l border-slate-200 text-center font-bold text-slate-800 bg-white sticky right-0 z-10 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                            {projectTotal.toFixed(1)}
+                                                        <td className="p-4 border-l border-slate-200 font-bold text-center bg-white sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                            <span className={projectTotal > 0 ? 'text-slate-800' : 'text-slate-300'}>{projectTotal.toFixed(1)}</span>
                                                         </td>
                                                     </tr>
                                                 );
@@ -1637,7 +1654,7 @@ const Timesheet = () => {
                                                     </td>
                                                 );
                                             })}
-                                            <td className="p-3 border-l border-slate-300 text-center text-white bg-slate-600 sticky right-0 z-10">
+                                            <td className="p-4 border-l border-slate-200 font-bold text-center text-white bg-slate-600 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 {daysInMonth.reduce((acc, day) => acc + getTotalPerDay(day), 0).toFixed(1)}
                                             </td>
                                         </tr>
