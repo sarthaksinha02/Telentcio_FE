@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Skeleton from '../components/Skeleton';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { LogOut, Users, Clock, Calendar, Search, Bell, Menu, ChevronDown, Shield, Building, Briefcase, UserX, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
 const Dashboard = () => {
     const { user, logout } = useAuth();
+    const navigate = useNavigate();
     const [stats, setStats] = useState(null);
+    const [projects, setProjects] = useState([]);
     const [recentActivity, setRecentActivity] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -18,6 +20,7 @@ const Dashboard = () => {
                 const res = await api.get('/dashboard');
                 setStats(res.data.stats);
                 setRecentActivity(res.data.recentActivity);
+                setProjects(res.data.projects || []);
             } catch (error) {
                 console.error("Failed to fetch dashboard data", error);
             } finally {
@@ -76,7 +79,7 @@ const Dashboard = () => {
                         </div>
 
                         {/* Stats Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             {/* Total Employees */}
                             <div className="zoho-card p-5 border-t-4 border-t-blue-500">
                                 <div className="text-slate-500 text-xs font-semibold uppercase tracking-wide">Total Employees</div>
@@ -116,30 +119,17 @@ const Dashboard = () => {
                                     ) : (
                                         <span className="text-3xl font-bold text-slate-800">{stats?.absentToday || 0}</span>
                                     )}
-                                    <span className="text-xs text-slate-400">Low</span>
-                                </div>
-                            </div>
-
-                            {/* Pending Requests */}
-                            <div className="zoho-card p-5 border-t-4 border-t-purple-500">
-                                <div className="text-slate-500 text-xs font-semibold uppercase tracking-wide">Pending Requests</div>
-                                <div className="mt-3">
-                                    {loading ? (
-                                        <Skeleton className="h-8 w-16" />
-                                    ) : (
-                                        <span className="text-3xl font-bold text-slate-800">{stats?.pendingRequests || 0}</span>
-                                    )}
-                                    <div className="text-xs text-slate-500">Requires Action</div>
+                                    {/* <span className="text-xs text-slate-400">Low</span> */}
                                 </div>
                             </div>
                         </div>
 
-                        {/* Tables Section */}
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            {/* Main Table */}
-                            <div className="lg:col-span-2 zoho-card">
+                        {/* Tables Section - Side by Side */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                            {/* Recent Attendance */}
+                            <div className="zoho-card">
                                 <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
-                                    <h3 className="font-semibold text-slate-800 text-sm">Recent Attendance</h3>
+                                    <h3 className="font-semibold text-slate-800 text-sm">Todays Attendance</h3>
                                     <Link to="/attendance" className="text-xs text-blue-600 hover:underline">View All</Link>
                                 </div>
                                 <div className="overflow-x-auto">
@@ -156,7 +146,7 @@ const Dashboard = () => {
                                                 [1, 2, 3].map(i => (
                                                     <tr key={i}>
                                                         <td className="px-6 py-4"><Skeleton className="h-10 w-32" /></td>
-                                                        <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                                                        <td className="px-6 py-4"><Skeleton className="h-6 w-16" /></td>
                                                         <td className="px-6 py-4"><Skeleton className="h-6 w-16" /></td>
                                                     </tr>
                                                 ))
@@ -175,12 +165,13 @@ const Dashboard = () => {
                                                             </div>
                                                         </td>
                                                         <td className="px-6 py-3 text-slate-600">
-                                                            {format(new Date(record.time), 'h:mm a')}
+                                                            {record.time ? format(new Date(record.time), 'hh:mm a') : '-'}
                                                         </td>
                                                         <td className="px-6 py-3">
                                                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${record.status === 'PRESENT' ? 'bg-emerald-100 text-emerald-800' :
                                                                 record.status === 'HALF_DAY' ? 'bg-yellow-100 text-yellow-800' :
-                                                                    'bg-slate-100 text-slate-800'
+                                                                    record.status === 'ABSENT' ? 'bg-red-100 text-red-800' :
+                                                                        'bg-slate-100 text-slate-800'
                                                                 }`}>
                                                                 {record.status}
                                                             </span>
@@ -189,7 +180,7 @@ const Dashboard = () => {
                                                 ))
                                             ) : (
                                                 <tr>
-                                                    <td colSpan="3" className="px-6 py-8 text-center text-slate-500">
+                                                    <td colSpan="2" className="px-6 py-8 text-center text-slate-500">
                                                         <div className="flex flex-col items-center">
                                                             <AlertCircle size={24} className="mb-2 text-slate-300" />
                                                             <p>No attendance activity today.</p>
@@ -202,24 +193,52 @@ const Dashboard = () => {
                                 </div>
                             </div>
 
-                            {/* Side Widget */}
+                            {/* Projects */}
                             <div className="zoho-card">
-                                <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/30">
-                                    <h3 className="font-semibold text-slate-800 text-sm">Quick Links</h3>
+                                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
+                                    <h3 className="font-semibold text-slate-800 text-sm">Projects</h3>
+                                    <Link to="/projects" className="text-xs text-blue-600 hover:underline">View All</Link>
                                 </div>
-                                <div className="p-2">
-                                    <Link to="/attendance" className="flex items-center justify-between px-4 py-3 hover:bg-slate-50 rounded-md group transition-colors">
-                                        <span className="text-sm text-slate-600 group-hover:text-blue-600">Log Timesheet</span>
-                                        <ChevronDown size={14} className="text-slate-300 -rotate-90" />
-                                    </Link>
-                                    <Link to="/attendance" className="flex items-center justify-between px-4 py-3 hover:bg-slate-50 rounded-md group transition-colors">
-                                        <span className="text-sm text-slate-600 group-hover:text-blue-600">My Attendance</span>
-                                        <ChevronDown size={14} className="text-slate-300 -rotate-90" />
-                                    </Link>
-                                    <Link to="/projects" className="flex items-center justify-between px-4 py-3 hover:bg-slate-50 rounded-md group transition-colors">
-                                        <span className="text-sm text-slate-600 group-hover:text-blue-600">Projects</span>
-                                        <ChevronDown size={14} className="text-slate-300 -rotate-90" />
-                                    </Link>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-slate-50 text-slate-500 font-medium">
+                                            <tr>
+                                                <th className="px-6 py-3">Project Name</th>
+                                                <th className="px-6 py-3">Status</th>
+                                                <th className="px-6 py-3">Deadline</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {loading ? (
+                                                <tr><td colSpan="3" className="px-6 py-4"><Skeleton className="h-6 w-full" /></td></tr>
+                                            ) : projects.length > 0 ? (
+                                                projects.map((project) => (
+                                                    <tr
+                                                        key={project._id}
+                                                        className="hover:bg-slate-50/50 transition-colors cursor-pointer"
+                                                        onClick={() => navigate('/projects')}
+                                                    >
+                                                        <td className="px-6 py-3 font-medium text-slate-800">{project.name}</td>
+                                                        <td className="px-6 py-3">
+                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${project.status === 'Active' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'
+                                                                }`}>
+                                                                {project.status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-3 text-slate-600">
+                                                            {project.deadline ? format(new Date(project.deadline), 'MMM d, yyyy') : '-'}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan="3" className="px-6 py-8 text-center text-slate-500">
+                                                        No projects.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>

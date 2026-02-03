@@ -242,7 +242,8 @@ const Timesheet = () => {
                 await api.post('/attendance', {
                     date: entryToEdit.date,
                     clockIn: inTime, // Axios will serialize to ISO string
-                    clockOut: outTime
+                    clockOut: outTime,
+                    userId: targetUserId || undefined
                 });
                 toast.success('Attendance created');
 
@@ -407,7 +408,8 @@ const Timesheet = () => {
                 description: newEntry.description,
                 projectId: newEntry.projectId,
                 moduleId: newEntry.moduleId,
-                taskId: newEntry.taskId
+                taskId: newEntry.taskId,
+                userId: targetUserId || undefined // Pass target user ID if Admin view
             });
             toast.success("Work Log Added");
             setIsAddingEntry(false);
@@ -1073,6 +1075,214 @@ const Timesheet = () => {
                 {activeTab === 'timesheet' && (
                     <>
                         {/* Inline Detail View */}
+                        <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden mb-6">
+                            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+                                <table className="w-full text-sm text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
+                                            <th className="p-4 border-r border-slate-200 min-w-[250px] sticky left-0 z-30 bg-slate-50 font-bold shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                Project / Task
+                                            </th>
+                                            {daysInMonth.map(day => {
+                                                const dateKey = format(day, 'yyyy-MM-dd');
+                                                const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
+                                                return (
+                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[60px] text-center ${holiday ? 'bg-green-50' : ['Sat', 'Sun'].includes(format(day, 'EEE')) ? 'bg-slate-100/50' : ''}`}>
+                                                        <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
+                                                        <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
+                                                        {holiday && (
+                                                            <div className="text-[8px] text-green-600 font-bold truncate max-w-[50px] mt-1" title={holiday.name}>
+                                                                {holiday.name}
+                                                            </div>
+                                                        )}
+                                                    </th>
+                                                );
+                                            })}
+                                            <th className="p-4 border-l border-slate-200 min-w-[100px] font-bold text-center bg-slate-50 sticky right-0 z-30 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                Total
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {/* Attendance Row */}
+                                        <tr className="bg-slate-50/80 border-b border-slate-200">
+                                            <td className="p-4 border-r border-slate-200 font-bold text-slate-700 sticky left-0 bg-slate-50 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                <div className="flex flex-col">
+                                                    <span>Attendance</span>
+                                                    <span className="text-[10px] text-slate-400 font-normal uppercase">Check-in / Out</span>
+                                                </div>
+                                            </td>
+                                            {daysInMonth.map(day => {
+                                                const dateKey = format(day, 'yyyy-MM-dd');
+                                                const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateKey);
+                                                const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
+
+                                                // Joining Date Check
+                                                const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
+                                                const isBeforeJoining = joiningDate && day < joiningDate;
+                                                const isFutureDate = day > new Date();
+
+                                                return (
+                                                    <td
+                                                        key={'att-' + day}
+                                                        onClick={() => {
+                                                            if (isFutureDate) return;
+                                                            if (isBeforeJoining) {
+                                                                toast.error('Cannot edit attendance before joining date');
+                                                                return;
+                                                            }
+                                                            handleCellClick({ name: 'Attendance Log' }, day, [], true);
+                                                        }}
+                                                        className={`p-1 border-r border-slate-200 text-center text-xs transition-colors ${isBeforeJoining || isFutureDate
+                                                            ? 'bg-slate-50 cursor-not-allowed opacity-50'
+                                                            : `cursor-pointer hover:bg-blue-50 ${isWeekend ? 'bg-slate-100/50' : ''}`
+                                                            }`}
+                                                        title={isBeforeJoining ? 'Before Joining Date' : isFutureDate ? 'Future Date' : ''}
+                                                    >
+                                                        {isBeforeJoining || isFutureDate ? (
+                                                            <span className="text-slate-200 select-none text-[10px]">{isFutureDate ? '-' : 'N/A'}</span>
+                                                        ) : log ? (
+                                                            <div className="flex flex-col items-center justify-center">
+                                                                <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${log.clockOutIST || isSameDay(new Date(log.date), new Date())
+                                                                    ? 'bg-slate-200 text-slate-800'
+                                                                    : 'bg-red-100 text-red-700'
+                                                                    }`}>
+                                                                    {log.duration
+                                                                        ? (log.duration / 60).toFixed(1)
+                                                                        : (log.clockOut && log.clockIn
+                                                                            ? ((new Date(log.clockOut) - new Date(log.clockIn)) / 3600000).toFixed(1)
+                                                                            : '-')}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-300">-</span>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                            <td className="p-4 border-l border-slate-200 font-bold text-center bg-slate-50 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                {/* Total Attendance Hours */}
+                                                {(attendanceLogs.reduce((acc, log) => {
+                                                    if (log.duration) return acc + (log.duration / 60);
+                                                    if (log.clockIn && log.clockOut) {
+                                                        const dur = (new Date(log.clockOut) - new Date(log.clockIn)) / 3600000;
+                                                        return acc + dur;
+                                                    }
+                                                    return acc;
+                                                }, 0)).toFixed(1)}
+                                            </td>
+                                        </tr>
+                                        {Object.values(projectGroups).length > 0 ? (
+                                            Object.values(projectGroups).map((group, idx) => {
+                                                const projectTotal = Object.values(group.hours).reduce((a, b) => a + b, 0);
+                                                return (
+                                                    <tr key={group.project._id || idx} className="hover:bg-blue-50/30 transition-colors group">
+                                                        <td className="p-4 border-r border-slate-200 font-medium text-slate-700 sticky left-0 bg-white z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                            <div className="flex flex-col">
+                                                                <span className="text-sm text-slate-800">{group.project.name || 'Unknown Project'}</span>
+                                                                <span className="text-xs text-slate-400 font-normal">{group.project.client?.name || 'Internal'}</span>
+                                                            </div>
+                                                        </td>
+                                                        {daysInMonth.map(day => {
+                                                            const dateKey = format(day, 'yyyy-MM-dd');
+                                                            const hours = group.hours[dateKey];
+                                                            const logs = group.logs[dateKey] || [];
+                                                            const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
+                                                            const isRejected = logs.some(l => l.status === 'REJECTED');
+                                                            const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
+
+                                                            // Joining Date Check
+                                                            const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
+                                                            const isBeforeJoining = joiningDate && day < joiningDate;
+                                                            const isFutureDate = day > new Date();
+
+                                                            return (
+                                                                <td
+                                                                    key={day.toString()}
+                                                                    onClick={() => {
+                                                                        if (isFutureDate) return;
+                                                                        if (holiday) {
+                                                                            toast.error(`Cannot edit on holiday: ${holiday.name}`);
+                                                                            return;
+                                                                        }
+                                                                        if (isBeforeJoining) {
+                                                                            toast.error('Cannot edit timesheet before joining date');
+                                                                            return;
+                                                                        }
+                                                                        handleCellClick(group.project, day, logs);
+                                                                    }}
+                                                                    className={`p-1 border-r border-slate-200 text-center transition-colors ${holiday ? 'bg-green-50/30 cursor-not-allowed'
+                                                                        : isBeforeJoining || isFutureDate ? 'bg-slate-50 cursor-not-allowed opacity-50'
+                                                                            : `cursor-pointer hover:bg-blue-100 ${isWeekend ? 'bg-slate-50/30' : ''}`
+                                                                        }`}
+                                                                    title={isBeforeJoining ? 'Before Joining Date' : isFutureDate ? 'Future Date' : ''}
+                                                                >
+                                                                    {holiday ? (
+                                                                        <div className="flex justify-center items-center h-full">
+                                                                            <span className="text-[10px] font-bold text-green-300 select-none" title={holiday.name}>HOL</span>
+                                                                        </div>
+                                                                    ) : isBeforeJoining || isFutureDate ? (
+                                                                        <span className="text-slate-200 text-[10px] select-none">{isFutureDate ? '-' : 'N/A'}</span>
+                                                                    ) : hours ? (
+                                                                        <div className="flex flex-col items-center justify-center group/cell relative">
+                                                                            <span className={`inline-flex items-center justify-center h-8 w-8 rounded-full font-bold text-xs shadow-sm transition-all ${isRejected
+                                                                                ? 'bg-red-100 text-red-700 ring-1 ring-red-500 group-hover/cell:bg-red-600 group-hover/cell:text-white'
+                                                                                : 'bg-blue-100 text-blue-700 group-hover/cell:bg-blue-600 group-hover/cell:text-white'
+                                                                                }`}>
+                                                                                {hours}
+                                                                            </span>
+                                                                            {logs.length > 1 && (
+                                                                                <div className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white"></div>
+                                                                            )}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="text-slate-200 text-xs">•</span>
+                                                                    )}
+                                                                </td>
+                                                            );
+                                                        })}
+                                                        <td className="p-4 border-l border-slate-200 font-bold text-center bg-white sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                            <span className={projectTotal > 0 ? 'text-slate-800' : 'text-slate-300'}>{projectTotal.toFixed(1)}</span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={daysInMonth.length + 2} className="p-12 text-center text-slate-500 bg-slate-50/50">
+                                                    <div className="flex flex-col items-center">
+                                                        <Calendar size={48} className="text-slate-300 mb-3" />
+                                                        <p className="font-medium">No timesheet entries found</p>
+                                                        <p className="text-xs mt-1">Clock in or log work to see data here</p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+
+                                        {/* Daily Totals Row */}
+                                        <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs uppercase text-slate-700">
+                                            <td className="p-3 border-r border-slate-300 sticky left-0 bg-slate-100 z-20">Daily Total</td>
+                                            {daysInMonth.map(day => {
+                                                const total = getTotalPerDay(day);
+                                                return (
+                                                    <td key={day.toString()} className="p-1 border-r border-slate-300 text-center">
+                                                        {total > 0 && (
+                                                            <span className={`block py-1 rounded ${total > 9 ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-800'}`}>
+                                                                {total.toFixed(1)}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                            <td className="p-4 border-l border-slate-200 font-bold text-center text-white bg-slate-600 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                {daysInMonth.reduce((acc, day) => acc + getTotalPerDay(day), 0).toFixed(1)}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
                         {selectedCell && (
                             <div className="bg-white rounded-lg shadow-sm border border-slate-200 mb-6 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-200">
                                 <div className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center">
@@ -1087,13 +1297,12 @@ const Timesheet = () => {
                                     <div className="p-4 bg-slate-50/50">
                                         <h4 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center justify-between">
                                             <div className="flex items-center"><Clock size={12} className="mr-1" /> Attendance</div>
-                                            {attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date))) &&
-                                                (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && canEditAttendance && (
+                                            {attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date))) ? (
+                                                (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && (!targetUserId || user?.roles?.includes('Admin')) && canEditAttendance && (
                                                     <button
                                                         onClick={() => {
                                                             const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
                                                             setEntryToEdit({ _id: log._id, type: 'ATTENDANCE', ...log });
-                                                            // Pre-fill
                                                             const fmtTime = (d) => d ? new Date(d).toTimeString().substring(0, 5) : '';
                                                             setEditStartTime(fmtTime(log.clockIn));
                                                             setEditEndTime(fmtTime(log.clockOut));
@@ -1102,7 +1311,21 @@ const Timesheet = () => {
                                                     >
                                                         Edit Time
                                                     </button>
-                                                )}
+                                                )
+                                            ) : (
+                                                (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED' || !timesheet) && (!targetUserId || user?.roles?.includes('Admin')) && canEditAttendance && selectedCell.date <= new Date() && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setEntryToEdit({ type: 'ATTENDANCE_CREATE', date: selectedCell.date });
+                                                            setEditStartTime('09:00');
+                                                            setEditEndTime('18:00');
+                                                        }}
+                                                        className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                                                    >
+                                                        Add Attendance
+                                                    </button>
+                                                )
+                                            )}
                                         </h4>
 
                                         {/* Inline Attendance Edit Logic */
@@ -1199,7 +1422,7 @@ const Timesheet = () => {
                                     {/* Add Work Log Section */}
                                     <div className="p-4 bg-white border-t border-slate-100">
                                         {!isAddingEntry ? (
-                                            (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && (
+                                            ((timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && (!targetUserId || user?.roles?.includes('Admin'))) && (
                                                 <button
                                                     onClick={() => {
                                                         setIsAddingEntry(true);
@@ -1455,213 +1678,7 @@ const Timesheet = () => {
                             </div>
                         )}
 
-                        <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
-                            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
-                                <table className="w-full text-sm text-left border-collapse">
-                                    <thead>
-                                        <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
-                                            <th className="p-4 border-r border-slate-200 min-w-[250px] sticky left-0 z-30 bg-slate-50 font-bold shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                Project / Task
-                                            </th>
-                                            {daysInMonth.map(day => {
-                                                const dateKey = format(day, 'yyyy-MM-dd');
-                                                const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
-                                                return (
-                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[60px] text-center ${holiday ? 'bg-green-50' : ['Sat', 'Sun'].includes(format(day, 'EEE')) ? 'bg-slate-100/50' : ''}`}>
-                                                        <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
-                                                        <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
-                                                        {holiday && (
-                                                            <div className="text-[8px] text-green-600 font-bold truncate max-w-[50px] mt-1" title={holiday.name}>
-                                                                {holiday.name}
-                                                            </div>
-                                                        )}
-                                                    </th>
-                                                );
-                                            })}
-                                            <th className="p-4 border-l border-slate-200 min-w-[100px] font-bold text-center bg-slate-50 sticky right-0 z-30 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                Total
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {/* Attendance Row */}
-                                        <tr className="bg-slate-50/80 border-b border-slate-200">
-                                            <td className="p-4 border-r border-slate-200 font-bold text-slate-700 sticky left-0 bg-slate-50 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                <div className="flex flex-col">
-                                                    <span>Attendance</span>
-                                                    <span className="text-[10px] text-slate-400 font-normal uppercase">Check-in / Out</span>
-                                                </div>
-                                            </td>
-                                            {daysInMonth.map(day => {
-                                                const dateKey = format(day, 'yyyy-MM-dd');
-                                                const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateKey);
-                                                const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
 
-                                                // Joining Date Check
-                                                const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
-                                                const isBeforeJoining = joiningDate && day < joiningDate;
-                                                const isFutureDate = day > new Date();
-
-                                                return (
-                                                    <td
-                                                        key={'att-' + day}
-                                                        onClick={() => {
-                                                            if (isFutureDate) return;
-                                                            if (isBeforeJoining) {
-                                                                toast.error('Cannot edit attendance before joining date');
-                                                                return;
-                                                            }
-                                                            handleCellClick({ name: 'Attendance Log' }, day, [], true);
-                                                        }}
-                                                        className={`p-1 border-r border-slate-200 text-center text-xs transition-colors ${isBeforeJoining || isFutureDate
-                                                            ? 'bg-slate-50 cursor-not-allowed opacity-50'
-                                                            : `cursor-pointer hover:bg-blue-50 ${isWeekend ? 'bg-slate-100/50' : ''}`
-                                                            }`}
-                                                        title={isBeforeJoining ? 'Before Joining Date' : isFutureDate ? 'Future Date' : ''}
-                                                    >
-                                                        {isBeforeJoining || isFutureDate ? (
-                                                            <span className="text-slate-200 select-none text-[10px]">{isFutureDate ? '-' : 'N/A'}</span>
-                                                        ) : log ? (
-                                                            <div className="flex flex-col items-center justify-center">
-                                                                <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${log.clockOutIST || isSameDay(new Date(log.date), new Date())
-                                                                    ? 'bg-slate-200 text-slate-800'
-                                                                    : 'bg-red-100 text-red-700'
-                                                                    }`}>
-                                                                    {log.duration
-                                                                        ? (log.duration / 60).toFixed(1)
-                                                                        : (log.clockOut && log.clockIn
-                                                                            ? ((new Date(log.clockOut) - new Date(log.clockIn)) / 3600000).toFixed(1)
-                                                                            : '-')}
-                                                                </span>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-slate-300">-</span>
-                                                        )}
-                                                    </td>
-                                                );
-                                            })}
-                                            <td className="p-4 border-l border-slate-200 font-bold text-center bg-slate-50 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                {/* Total Attendance Hours */}
-                                                {(attendanceLogs.reduce((acc, log) => {
-                                                    if (log.duration) return acc + (log.duration / 60);
-                                                    if (log.clockIn && log.clockOut) {
-                                                        const dur = (new Date(log.clockOut) - new Date(log.clockIn)) / 3600000;
-                                                        return acc + dur;
-                                                    }
-                                                    return acc;
-                                                }, 0)).toFixed(1)}
-                                            </td>
-                                        </tr>
-                                        {Object.values(projectGroups).length > 0 ? (
-                                            Object.values(projectGroups).map((group, idx) => {
-                                                const projectTotal = Object.values(group.hours).reduce((a, b) => a + b, 0);
-                                                return (
-                                                    <tr key={group.project._id || idx} className="hover:bg-blue-50/30 transition-colors group">
-                                                        <td className="p-4 border-r border-slate-200 font-medium text-slate-700 sticky left-0 bg-white z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                            <div className="flex flex-col">
-                                                                <span className="text-sm text-slate-800">{group.project.name || 'Unknown Project'}</span>
-                                                                <span className="text-xs text-slate-400 font-normal">{group.project.client?.name || 'Internal'}</span>
-                                                            </div>
-                                                        </td>
-                                                        {daysInMonth.map(day => {
-                                                            const dateKey = format(day, 'yyyy-MM-dd');
-                                                            const hours = group.hours[dateKey];
-                                                            const logs = group.logs[dateKey] || [];
-                                                            const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
-                                                            const isRejected = logs.some(l => l.status === 'REJECTED');
-                                                            const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
-
-                                                            // Joining Date Check
-                                                            const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
-                                                            const isBeforeJoining = joiningDate && day < joiningDate;
-                                                            const isFutureDate = day > new Date();
-
-                                                            return (
-                                                                <td
-                                                                    key={day.toString()}
-                                                                    onClick={() => {
-                                                                        if (isFutureDate) return;
-                                                                        if (holiday) {
-                                                                            toast.error(`Cannot edit on holiday: ${holiday.name}`);
-                                                                            return;
-                                                                        }
-                                                                        if (isBeforeJoining) {
-                                                                            toast.error('Cannot edit timesheet before joining date');
-                                                                            return;
-                                                                        }
-                                                                        handleCellClick(group.project, day, logs);
-                                                                    }}
-                                                                    className={`p-1 border-r border-slate-200 text-center transition-colors ${holiday ? 'bg-green-50/30 cursor-not-allowed'
-                                                                        : isBeforeJoining || isFutureDate ? 'bg-slate-50 cursor-not-allowed opacity-50'
-                                                                            : `cursor-pointer hover:bg-blue-100 ${isWeekend ? 'bg-slate-50/30' : ''}`
-                                                                        }`}
-                                                                    title={isBeforeJoining ? 'Before Joining Date' : isFutureDate ? 'Future Date' : ''}
-                                                                >
-                                                                    {holiday ? (
-                                                                        <div className="flex justify-center items-center h-full">
-                                                                            <span className="text-[10px] font-bold text-green-300 select-none" title={holiday.name}>HOL</span>
-                                                                        </div>
-                                                                    ) : isBeforeJoining || isFutureDate ? (
-                                                                        <span className="text-slate-200 text-[10px] select-none">{isFutureDate ? '-' : 'N/A'}</span>
-                                                                    ) : hours ? (
-                                                                        <div className="flex flex-col items-center justify-center group/cell relative">
-                                                                            <span className={`inline-flex items-center justify-center h-8 w-8 rounded-full font-bold text-xs shadow-sm transition-all ${isRejected
-                                                                                ? 'bg-red-100 text-red-700 ring-1 ring-red-500 group-hover/cell:bg-red-600 group-hover/cell:text-white'
-                                                                                : 'bg-blue-100 text-blue-700 group-hover/cell:bg-blue-600 group-hover/cell:text-white'
-                                                                                }`}>
-                                                                                {hours}
-                                                                            </span>
-                                                                            {logs.length > 1 && (
-                                                                                <div className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white"></div>
-                                                                            )}
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span className="text-slate-200 text-xs">•</span>
-                                                                    )}
-                                                                </td>
-                                                            );
-                                                        })}
-                                                        <td className="p-4 border-l border-slate-200 font-bold text-center bg-white sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                            <span className={projectTotal > 0 ? 'text-slate-800' : 'text-slate-300'}>{projectTotal.toFixed(1)}</span>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })
-                                        ) : (
-                                            <tr>
-                                                <td colSpan={daysInMonth.length + 2} className="p-12 text-center text-slate-500 bg-slate-50/50">
-                                                    <div className="flex flex-col items-center">
-                                                        <Calendar size={48} className="text-slate-300 mb-3" />
-                                                        <p className="font-medium">No timesheet entries found</p>
-                                                        <p className="text-xs mt-1">Clock in or log work to see data here</p>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )}
-
-                                        {/* Daily Totals Row */}
-                                        <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs uppercase text-slate-700">
-                                            <td className="p-3 border-r border-slate-300 sticky left-0 bg-slate-100 z-20">Daily Total</td>
-                                            {daysInMonth.map(day => {
-                                                const total = getTotalPerDay(day);
-                                                return (
-                                                    <td key={day.toString()} className="p-1 border-r border-slate-300 text-center">
-                                                        {total > 0 && (
-                                                            <span className={`block py-1 rounded ${total > 9 ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-800'}`}>
-                                                                {total.toFixed(1)}
-                                                            </span>
-                                                        )}
-                                                    </td>
-                                                );
-                                            })}
-                                            <td className="p-4 border-l border-slate-200 font-bold text-center text-white bg-slate-600 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                {daysInMonth.reduce((acc, day) => acc + getTotalPerDay(day), 0).toFixed(1)}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
 
                         <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-start space-x-3">
                             <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
