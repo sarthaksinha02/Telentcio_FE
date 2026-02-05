@@ -18,7 +18,8 @@ import Profile from './pages/Profile';
 import Holidays from './pages/Holidays';
 import LeaveConfig from './pages/LeaveConfig';
 import Leaves from './pages/Leaves';
-import LeaveApprovals from './pages/LeaveApprovals';
+import EmployeeDossier from './pages/EmployeeDossier';
+
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleRoute from './components/RoleRoute';
 import SystemRoute from './components/SystemRoute';
@@ -44,7 +45,10 @@ function App() {
               <Route path="/attendance" element={<Attendance />} />
               <Route path="/timesheet" element={<Timesheet />} />
               <Route path="/leaves" element={<Leaves />} />
-              <Route path="/leave-approvals" element={<LeaveApprovals />} />
+
+              <Route path="/leaves" element={<Leaves />} />
+              <Route path="/dossier/:userId" element={<EmployeeDossier />} />
+
               <Route path="/profile" element={<Profile />} />
               <Route path="/holidays" element={<Holidays />} />
 

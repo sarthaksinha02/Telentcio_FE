@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
-import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2 } from 'lucide-react';
+import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay } from 'date-fns';
 import AttendanceCalendar from '../components/AttendanceCalendar';
+import Button from '../components/Button';
 
 const Attendance = () => {
     const { user } = useAuth();
@@ -23,7 +24,7 @@ const Attendance = () => {
     const [assignedTasks, setAssignedTasks] = useState([]);
     const [recentLogs, setRecentLogs] = useState([]);
     const [showLogModal, setShowLogModal] = useState(false);
-    const [logForm, setLogForm] = useState({ date: new Date().toISOString().split('T')[0], hours: '', description: '' });
+    const [logForm, setLogForm] = useState({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
     const [loggingTaskId, setLoggingTaskId] = useState(null);
     const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks'
     const [expandedLogTaskId, setExpandedLogTaskId] = useState(null);
@@ -182,14 +183,20 @@ const Attendance = () => {
             setLoggingTaskId(taskId);
             if (existingLog) {
                 setEditingLogId(existingLog._id);
+                // SPLIT
+                const total = parseFloat(existingLog.hours) || 0;
+                const h = Math.floor(total);
+                const m = Math.round((total - h) * 60);
+
                 setLogForm({
                     date: new Date(existingLog.date).toISOString().split('T')[0],
-                    hours: existingLog.hours,
-                    description: existingLog.description
+                    hours: h,
+                    minutes: m,
+                    description: existingLog.description || ''
                 });
             } else {
                 setEditingLogId(null);
-                setLogForm({ date: new Date().toISOString().split('T')[0], hours: '', description: '' });
+                setLogForm({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
             }
         }
     };
@@ -208,18 +215,29 @@ const Attendance = () => {
     const handleLogWork = async (e) => {
         e.preventDefault();
         try {
+            const h = parseFloat(logForm.hours) || 0;
+            const m = parseFloat(logForm.minutes) || 0;
+            const totalHours = h + (m / 60);
+
+            if (totalHours <= 0) {
+                toast.error("Please enter valid time");
+                return;
+            }
+
+            const payload = { ...logForm, hours: totalHours.toFixed(2) };
+
             if (editingLogId) {
-                await api.put(`/projects/worklogs/${editingLogId}`, logForm);
+                await api.put(`/projects/worklogs/${editingLogId}`, payload);
                 toast.success('Work Log Updated');
             } else {
-                await api.post(`/projects/tasks/${loggingTaskId}/log`, logForm);
+                await api.post(`/projects/tasks/${loggingTaskId}/log`, payload);
                 toast.success('Work Logged Successfully');
             }
 
             setExpandedLogTaskId(null);
             setLoggingTaskId(null);
             setEditingLogId(null);
-            setLogForm({ date: new Date().toISOString().split('T')[0], hours: '', description: '' });
+            setLogForm({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
             fetchRecentLogs(); // Refresh logs
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to log work');
@@ -568,13 +586,14 @@ const Attendance = () => {
 
                         {/* Export Button - Permission Check */
                             (user?.roles?.includes('Admin') || user?.roles?.includes('Manager') || user?.role === 'Admin' || usersList.length > 0 || user?.permissions?.includes('attendance.export')) && (
-                                <button
+                                <Button
                                     onClick={handleExportAttendance}
-                                    className="bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 p-2 rounded-lg shadow-sm transition-colors"
+                                    variants="outline"
+                                    className="p-2 border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300"
                                     title="Download Personal Report"
                                 >
                                     <Download size={20} />
-                                </button>
+                                </Button>
                             )}
                     </div>
                 </div>
@@ -605,19 +624,19 @@ const Attendance = () => {
 
                             <div className="w-full space-y-3">
                                 {!isClockedIn && !isClockedOut && (
-                                    <button onClick={handleClockIn} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold shadow-md active:scale-95 transition-all">
+                                    <Button onClick={handleClockIn} className="w-full">
                                         Check In
-                                    </button>
+                                    </Button>
                                 )}
 
                                 {isClockedIn && (
-                                    <button onClick={handleClockOut} className="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white rounded font-semibold shadow-md active:scale-95 transition-all">
+                                    <Button onClick={handleClockOut} variant="danger" className="w-full">
                                         Check Out
-                                    </button>
+                                    </Button>
                                 )}
 
                                 {isClockedOut && (
-                                    <div className="w-full py-2.5 bg-slate-100 text-slate-500 rounded font-medium border border-slate-200 text-sm">
+                                    <div className="w-full py-2.5 bg-slate-100 text-slate-500 rounded font-medium border border-slate-200 text-sm text-center">
                                         Output Logged
                                     </div>
                                 )}
@@ -736,113 +755,285 @@ const Attendance = () => {
                             {activeTab === 'history' ? (
                                 <AttendanceCalendar history={history} onMonthChange={fetchMonthHistory} user={user} holidays={holidays} />
                             ) : (
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h3 className="text-lg font-bold text-slate-800">My Assigned Tasks</h3>
-                                        {!isClockedIn && <span className="text-xs text-amber-600 font-medium bg-amber-50 px-3 py-1 rounded-full border border-amber-200">⚠️ Clock in to log work</span>}
-                                    </div>
-
-                                    {assignedTasks.length > 0 ? (
-                                        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                                            <table className="w-full text-sm text-left">
-                                                <thead className="bg-slate-50 text-slate-500 uppercase font-semibold text-xs">
-                                                    <tr>
-                                                        <th className="px-4 py-3 border-b border-slate-200">Project</th>
-                                                        <th className="px-4 py-3 border-b border-slate-200">Module</th>
-                                                        <th className="px-4 py-3 border-b border-slate-200">Task Name</th>
-                                                        <th className="px-4 py-3 border-b border-slate-200 w-1/3">Description</th>
-                                                        <th className="px-4 py-3 border-b border-slate-200 text-right">Action</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100">
-                                                    {assignedTasks.map(task => {
-                                                        const existingLog = getTodayLogForTask(task._id);
-                                                        return (
-                                                            <React.Fragment key={task._id}>
-                                                                <tr className={`hover:bg-slate-50 transition-colors group ${expandedLogTaskId === task._id ? 'bg-blue-50/30' : ''}`}>
-                                                                    <td className="px-4 py-3 font-medium text-blue-600">{task.module?.project?.name || 'Unknown Project'}</td>
-                                                                    <td className="px-4 py-3 text-slate-600">{task.module?.name}</td>
-                                                                    <td className="px-4 py-3 font-medium text-slate-800">{task.name}</td>
-                                                                    <td className="px-4 py-3 text-slate-500 truncate max-w-xs">{task.description || '-'}</td>
-                                                                    <td className="px-4 py-3 text-right">
-                                                                        {existingLog ? (
-                                                                            <div className="flex items-center justify-end gap-2">
-                                                                                <button
-                                                                                    onClick={() => toggleLogForm(task._id, existingLog)}
-                                                                                    className={`p-1.5 rounded hover:bg-slate-200 text-slate-500 hover:text-blue-600 ${expandedLogTaskId === task._id ? 'bg-blue-100 text-blue-600' : ''}`}
-                                                                                    title="Edit Log"
-                                                                                >
-                                                                                    <Edit2 size={14} />
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={() => handleDeleteLog(existingLog._id)}
-                                                                                    className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"
-                                                                                    title="Delete Log"
-                                                                                >
-                                                                                    <Trash2 size={14} />
-                                                                                </button>
-                                                                            </div>
-                                                                        ) : (
-                                                                            <button
-                                                                                onClick={() => toggleLogForm(task._id)}
-                                                                                disabled={!isClockedIn}
-                                                                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${isClockedIn ? (expandedLogTaskId === task._id ? 'bg-slate-200 text-slate-700' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200') : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
-                                                                            >
-                                                                                {expandedLogTaskId === task._id ? 'Cancel' : <><Clock size={14} /> Log Work</>}
-                                                                            </button>
-                                                                        )}
-                                                                    </td>
-                                                                </tr>
-                                                                {expandedLogTaskId === task._id && (
-                                                                    <tr className="bg-slate-50/50">
-                                                                        <td colSpan="5" className="px-4 py-3 border-b border-slate-100">
-                                                                            <form onSubmit={handleLogWork} className="flex flex-col sm:flex-row gap-4 items-end bg-white p-4 rounded border border-slate-200 shadow-sm">
-                                                                                <div className="flex-1 w-full">
-                                                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
-                                                                                    <input
-                                                                                        required
-                                                                                        className="zoho-input w-full"
-                                                                                        placeholder="What did you work on?"
-                                                                                        value={logForm.description}
-                                                                                        onChange={e => setLogForm({ ...logForm, description: e.target.value })}
-                                                                                    />
-                                                                                </div>
-                                                                                <div className="w-32">
-                                                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hours</label>
-                                                                                    <input
-                                                                                        type="number"
-                                                                                        step="0.1"
-                                                                                        required
-                                                                                        className="zoho-input w-full"
-                                                                                        placeholder="0.0"
-                                                                                        value={logForm.hours}
-                                                                                        onChange={e => setLogForm({ ...logForm, hours: e.target.value })}
-                                                                                    />
-                                                                                </div>
-                                                                                <button type="submit" className="zoho-btn-primary bg-emerald-600 hover:bg-emerald-700 h-[38px] px-6">
-                                                                                    {editingLogId ? 'Update' : 'Save'}
-                                                                                </button>
-                                                                            </form>
-                                                                        </td>
-                                                                    </tr>
-                                                                )}
-                                                            </React.Fragment>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    ) : (
-                                        <div className="text-center py-12 text-slate-400">
-                                            <CheckSquare size={48} className="mx-auto text-slate-200 mb-3" />
-                                            <p>No tasks currently assigned to you.</p>
-                                        </div>
-                                    )}
-                                </div>
+                                <AssignedTasksView
+                                    assignedTasks={assignedTasks}
+                                    isClockedIn={isClockedIn}
+                                    onLogWork={handleLogWork}
+                                    logForm={logForm}
+                                    setLogForm={setLogForm}
+                                    expandedLogTaskId={expandedLogTaskId}
+                                    setExpandedLogTaskId={setExpandedLogTaskId} // Using this to track "selected task" for logging
+                                    recentLogs={recentLogs}
+                                    onDeleteLog={handleDeleteLog}
+                                    toggleLogForm={toggleLogForm}
+                                    editingLogId={editingLogId}
+                                />
                             )}
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    );
+};
+
+const AssignedTasksView = ({
+    assignedTasks,
+    isClockedIn,
+    onLogWork,
+    logForm,
+    setLogForm,
+    expandedLogTaskId,
+    setExpandedLogTaskId,
+    recentLogs,
+    onDeleteLog,
+    toggleLogForm,
+    editingLogId
+}) => {
+    // 1. Group Tasks by Project -> Module
+    const groupedData = useMemo(() => {
+        const projects = {};
+        assignedTasks.forEach(task => {
+            const projectId = task.module?.project?._id || 'unknown';
+            const projectName = task.module?.project?.name || 'Unknown Project';
+            const moduleId = task.module?._id || 'unknown';
+            const moduleName = task.module?.name || 'Unknown Module';
+
+            if (!projects[projectId]) {
+                projects[projectId] = { id: projectId, name: projectName, modules: {} };
+            }
+            if (!projects[projectId].modules[moduleId]) {
+                projects[projectId].modules[moduleId] = { id: moduleId, name: moduleName, tasks: [] };
+            }
+            projects[projectId].modules[moduleId].tasks.push(task);
+        });
+
+        return Object.values(projects).map(p => ({
+            ...p,
+            modules: Object.values(p.modules)
+        }));
+    }, [assignedTasks]);
+
+    // 2. Selection State
+    const [selectedProjectId, setSelectedProjectId] = useState(null);
+    const [selectedModuleId, setSelectedModuleId] = useState(null);
+
+    // Derived Data for Views
+    const selectedProject = selectedProjectId ? groupedData.find(p => p.id === selectedProjectId) : null;
+    const selectedModule = (selectedProject && selectedModuleId) ? selectedProject.modules.find(m => m.id === selectedModuleId) : null;
+
+    // Helper
+    const getTodayLogForTask = (taskId) => {
+        const today = new Date().toISOString().split('T')[0];
+        return recentLogs.find(log =>
+            log.task &&
+            log.task._id === taskId &&
+            new Date(log.date).toISOString().split('T')[0] === today
+        );
+    };
+
+    // --- VIEW 1: PROJECTS GRID ---
+    if (!selectedProjectId) {
+        return (
+            <div className="h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="flex justify-between items-center mb-4 sticky top-0 bg-white z-10 py-2 border-b border-slate-100">
+                    <h3 className="text-lg font-bold text-slate-800">My Projects</h3>
+                    <span className="text-xs text-slate-500">{groupedData.length} Projects</span>
+                </div>
+
+                {groupedData.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {groupedData.map(project => (
+                            <button
+                                key={project.id}
+                                onClick={() => setSelectedProjectId(project.id)}
+                                className="flex items-center p-4 bg-white border border-slate-200 rounded-lg shadow-sm hover:shadow-md hover:border-blue-300 transition-all text-left group"
+                            >
+                                <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 mr-4 group-hover:scale-110 transition-transform">
+                                    <Briefcase size={20} />
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">{project.name}</h4>
+                                    <p className="text-xs text-slate-500">{project.modules.length} Modules • {project.modules.reduce((acc, m) => acc + m.tasks.length, 0)} Tasks</p>
+                                </div>
+                                <ChevronRight className="ml-auto text-slate-300 group-hover:text-blue-400" size={20} />
+                            </button>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-12 text-slate-400">
+                        <CheckSquare size={48} className="mx-auto text-slate-200 mb-3" />
+                        <p>No tasks assigned.</p>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // --- VIEW 2: MODULES GRID ---
+    if (!selectedModuleId) {
+        return (
+            <div className="h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="sticky top-0 bg-white z-10 pb-4 border-b border-slate-100 mb-4">
+                    <button
+                        onClick={() => setSelectedProjectId(null)}
+                        className="flex items-center text-sm text-slate-500 hover:text-blue-600 transition-colors mb-2"
+                    >
+                        <ChevronLeft size={16} className="mr-1" /> Back to Projects
+                    </button>
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center">
+                        <span className="text-slate-400 font-normal mr-2">Project:</span>
+                        {selectedProject?.name}
+                    </h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedProject?.modules.map(module => (
+                        <button
+                            key={module.id}
+                            onClick={() => setSelectedModuleId(module.id)}
+                            className="flex items-center p-4 bg-white border border-slate-200 rounded-lg shadow-sm hover:shadow-md hover:border-emerald-300 transition-all text-left group"
+                        >
+                            <div className="h-10 w-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 mr-4 group-hover:scale-110 transition-transform">
+                                <Layers size={20} />
+                            </div>
+                            <div>
+                                <h4 className="font-semibold text-slate-800 group-hover:text-emerald-600 transition-colors">{module.name}</h4>
+                                <p className="text-xs text-slate-500">{module.tasks.length} Assigned Tasks</p>
+                            </div>
+                            <ChevronRight className="ml-auto text-slate-300 group-hover:text-emerald-400" size={20} />
+                        </button>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    // --- VIEW 3: TASKS LIST ---
+    return (
+        <div className="h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="sticky top-0 bg-white z-10 pb-4 border-b border-slate-100 mb-4">
+                <button
+                    onClick={() => setSelectedModuleId(null)}
+                    className="flex items-center text-sm text-slate-500 hover:text-blue-600 transition-colors mb-2"
+                >
+                    <ChevronLeft size={16} className="mr-1" /> Back to Modules
+                </button>
+                <div className="flex flex-col">
+                    <div className="flex items-center space-x-2 text-xs text-slate-500 mb-1">
+                        <span>{selectedProject?.name}</span>
+                        <span>/</span>
+                        <span>{selectedModule?.name}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-lg font-bold text-slate-800">Tasks</h3>
+                        {!isClockedIn && <span className="text-xs text-amber-600 font-medium bg-amber-50 px-3 py-1 rounded-full border border-amber-200">⚠️ Clock in to log work</span>}
+                    </div>
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                {selectedModule?.tasks.map(task => {
+                    const existingLog = getTodayLogForTask(task._id);
+                    const isExpanded = expandedLogTaskId === task._id;
+
+                    return (
+                        <div key={task._id} className={`border rounded-lg transition-all ${isExpanded ? 'border-blue-300 ring-1 ring-blue-100 bg-white' : 'border-slate-200 hover:border-blue-200 bg-white hover:bg-slate-50'}`}>
+                            {/* Task Items */}
+                            <div className="p-4">
+                                <div className="flex justify-between items-start gap-4">
+                                    <div className="flex-1">
+                                        <h4 className={`font-semibold text-sm ${isExpanded ? 'text-blue-700' : 'text-slate-800'}`}>{task.name}</h4>
+                                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">{task.description || 'No description'}</p>
+                                    </div>
+                                    <div className="flex-shrink-0">
+                                        {existingLog ? (
+                                            <div className="flex items-center gap-2">
+                                                <div className="px-3 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full flex items-center">
+                                                    <CheckSquare size={12} className="mr-1.5" />
+                                                    {existingLog.hours}h Logged
+                                                </div>
+                                                <button
+                                                    onClick={() => toggleLogForm(task._id, existingLog)}
+                                                    className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-blue-600"
+                                                    title="Edit"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
+                                                <button
+                                                    onClick={() => onDeleteLog(existingLog._id)}
+                                                    className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-500"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => toggleLogForm(task._id)}
+                                                disabled={!isClockedIn}
+                                                className={`flex items-center px-3 py-1.5 rounded text-xs font-medium transition-all ${isClockedIn ? (isExpanded ? 'bg-slate-100 text-slate-600' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm') : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                                            >
+                                                {isExpanded ? 'Cancel' : 'Log Work'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Log Form Area */}
+                            {isExpanded && (
+                                <div className="bg-slate-50 p-4 border-t border-slate-100 rounded-b-lg animate-fadeIn">
+                                    <form onSubmit={onLogWork} className="flex flex-col sm:flex-row gap-4 items-end">
+                                        <div className="w-full sm:w-32 flex space-x-2">
+                                            <div className="flex-1">
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hrs</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    required
+                                                    autoFocus
+                                                    className="w-full p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                                    placeholder="0"
+                                                    value={logForm.hours}
+                                                    onChange={(e) => setLogForm({ ...logForm, hours: e.target.value })}
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Min</label>
+                                                <input
+                                                    type="number"
+                                                    min="0" max="59"
+                                                    className="w-full p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                                    placeholder="0"
+                                                    value={logForm.minutes}
+                                                    onChange={(e) => setLogForm({ ...logForm, minutes: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 w-full">
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
+                                            <input
+                                                type="text"
+                                                className="w-full p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                                placeholder="What did you work on?"
+                                                value={logForm.description}
+                                                onChange={(e) => setLogForm({ ...logForm, description: e.target.value })}
+                                            />
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            className="w-full sm:w-auto px-6 py-2 bg-emerald-600 text-white rounded text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm h-[38px] flex items-center justify-center"
+                                        >
+                                            <CheckSquare size={16} className="mr-2" />
+                                            {editingLogId ? 'Update' : 'Save'}
+                                        </button>
+                                    </form>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

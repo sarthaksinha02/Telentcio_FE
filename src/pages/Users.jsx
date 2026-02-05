@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Search, Edit2, Shield, Calendar, Download } from 'lucide-react';
+import { UserPlus, Search, Edit2, Shield, Calendar, Download, FileText } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -483,12 +483,21 @@ const Users = () => {
         }
     };
 
-    const filteredUsers = users.filter(user =>
-    (user.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.employeeCode?.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+
+    const [filterDate, setFilterDate] = useState('');
+
+    const filteredUsers = users.filter(user => {
+        const matchesSearch = (
+            user.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            user.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            user.employeeCode?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+        const matchesDate = !filterDate || (user.joiningDate && new Date(user.joiningDate).toISOString().split('T')[0] === filterDate);
+
+        return matchesSearch && matchesDate;
+    }).sort((a, b) => new Date(b.joiningDate || 0) - new Date(a.joiningDate || 0));
 
     useEffect(() => {
         fetchData();
@@ -794,6 +803,14 @@ const Users = () => {
                                                         <Calendar size={16} />
                                                     </button>
                                                 )}
+
+                                                <button
+                                                    onClick={() => window.location.href = `/dossier/${user._id}`}
+                                                    className="text-purple-600 hover:text-purple-800 p-1 hover:bg-purple-50 rounded"
+                                                    title="View Dossier"
+                                                >
+                                                    <FileText size={16} />
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>

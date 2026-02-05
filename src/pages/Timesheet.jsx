@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import AttendanceCalendar from '../components/AttendanceCalendar';
+import Button from '../components/Button';
 
 const Timesheet = () => {
     const { user } = useAuth();
@@ -86,6 +87,7 @@ const Timesheet = () => {
     // Edit/Regularize Logic
     const [entryToEdit, setEntryToEdit] = useState(null);
     const [editHours, setEditHours] = useState(0);
+    const [editMinutes, setEditMinutes] = useState(0);
     const [editDescription, setEditDescription] = useState('');
     const [editStartTime, setEditStartTime] = useState('');
     const [editEndTime, setEditEndTime] = useState('');
@@ -102,7 +104,11 @@ const Timesheet = () => {
         projectId: '',
         moduleId: '',
         taskId: '',
+        projectId: '',
+        moduleId: '',
+        taskId: '',
         hours: '',
+        minutes: '',
         description: ''
     });
     const [filteredModules, setFilteredModules] = useState([]);
@@ -123,7 +129,14 @@ const Timesheet = () => {
 
     const handleEditClick = (entry) => {
         setEntryToEdit(entry);
-        setEditHours(entry.hours); // Load saved hours (PRIORITY)
+
+        // Parse decimal hours to H:M
+        const total = parseFloat(entry.hours) || 0;
+        const h = Math.floor(total);
+        const m = Math.round((total - h) * 60);
+
+        setEditHours(h);
+        setEditMinutes(m);
         setEditDescription(entry.description || '');
 
         // Fix: Also open the cell so the edit form is visible
@@ -266,8 +279,12 @@ const Timesheet = () => {
                 });
                 toast.success('Attendance updated');
             } else {
+                const h = parseFloat(editHours) || 0;
+                const m = parseFloat(editMinutes) || 0;
+                const totalHours = h + (m / 60);
+
                 await api.put(`/timesheet/entry/${entryToEdit._id}`, {
-                    hours: Number(editHours),
+                    hours: totalHours.toFixed(2),
                     description: editDescription,
                     startTime: editStartTime,
                     endTime: editEndTime,
@@ -393,8 +410,12 @@ const Timesheet = () => {
     };
 
     const submitNewEntry = async () => {
-        if (!newEntry.projectId || !newEntry.hours || !newEntry.date) {
-            toast.error("Project, Hours and Date (internal error) are required");
+        const h = parseFloat(newEntry.hours) || 0;
+        const m = parseFloat(newEntry.minutes) || 0;
+        const totalHours = h + (m / 60);
+
+        if (!newEntry.projectId || totalHours <= 0 || !newEntry.date) {
+            toast.error("Project, valid Duration (hours/minutes) and Date are required");
             return;
         }
         if (!newEntry.taskId && !newEntry.moduleId) {
@@ -404,7 +425,7 @@ const Timesheet = () => {
         try {
             await api.post('/timesheet/entry', {
                 date: newEntry.date,
-                hours: newEntry.hours,
+                hours: totalHours.toFixed(2), // Send total
                 description: newEntry.description,
                 projectId: newEntry.projectId,
                 moduleId: newEntry.moduleId,
@@ -413,7 +434,7 @@ const Timesheet = () => {
             });
             toast.success("Work Log Added");
             setIsAddingEntry(false);
-            setNewEntry({ projectId: '', moduleId: '', taskId: '', hours: '', description: '' });
+            setNewEntry({ projectId: '', moduleId: '', taskId: '', hours: '', minutes: '', description: '' });
             fetchData(); // Refresh
             // Update selected cell logs? fetchData will update timesheet, but we might need to locally update selectedCell or close it.
             // Closing it is easiest to ensure consistency.
@@ -935,21 +956,36 @@ const Timesheet = () => {
                                         <div className="flex space-x-3 items-center">
 
 
-                                            <button onClick={() => setViewDate(d => addDays(d, -30))} className="zoho-btn-secondary flex items-center space-x-2">
+                                            <Button
+                                                onClick={() => setViewDate(d => addDays(d, -30))}
+                                                variant="secondary"
+                                                className="flex items-center space-x-2"
+                                            >
                                                 <ChevronLeft size={16} /> <span>Prev</span>
-                                            </button>
-                                            <button onClick={() => setViewDate(d => addDays(d, 30))} className="zoho-btn-secondary flex items-center space-x-2">
+                                            </Button>
+                                            <Button
+                                                onClick={() => setViewDate(d => addDays(d, 30))}
+                                                variant="secondary"
+                                                className="flex items-center space-x-2"
+                                            >
                                                 <span>Next</span> <ChevronRight size={16} />
-                                            </button>
+                                            </Button>
                                             {(timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && (
-                                                <button onClick={handleSubmit} className="zoho-btn-primary flex items-center space-x-2">
+                                                <Button
+                                                    onClick={handleSubmit}
+                                                    className="flex items-center space-x-2"
+                                                >
                                                     <Send size={16} /> <span>{timesheet?.status === 'REJECTED' ? 'Resubmit' : 'Submit'} for Approval</span>
-                                                </button>
+                                                </Button>
                                             )}
                                             {(user?.role === 'Admin' || user?.permissions?.includes('timesheet.export')) && (
-                                                <button onClick={handleExport} className="zoho-btn-secondary flex items-center space-x-2 bg-white text-green-700 border-green-200 hover:bg-green-50">
+                                                <Button
+                                                    onClick={handleExport}
+                                                    variant="secondary"
+                                                    className="flex items-center space-x-2 bg-white text-green-700 border-green-200 hover:bg-green-50"
+                                                >
                                                     <Save size={16} /> <span>Export Excel</span>
-                                                </button>
+                                                </Button>
                                             )}
                                         </div>
                                     </div>
@@ -970,12 +1006,13 @@ const Timesheet = () => {
                                                         {timesheet.entries.filter(e => e.status === 'REJECTED').map(entry => (
                                                             <div key={entry._id} className="flex justify-between items-center text-xs p-1 hover:bg-red-50 rounded">
                                                                 <span>{format(new Date(entry.date), 'MMM d')} - {entry.project?.name} ({entry.hours}h)</span>
-                                                                <button
+                                                                <Button
                                                                     onClick={() => handleEditClick(entry)}
-                                                                    className="px-2 py-0.5 bg-red-100 text-red-700 hover:bg-red-200 rounded font-bold border border-red-200"
+                                                                    variant="ghost"
+                                                                    className="px-2 py-0.5 bg-red-100 text-red-700 hover:bg-red-200 rounded font-bold border border-red-200 h-auto text-xs"
                                                                 >
                                                                     Regularize
-                                                                </button>
+                                                                </Button>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -1032,7 +1069,7 @@ const Timesheet = () => {
                                                     {ts.month}
                                                 </td>
                                                 <td className="px-6 py-3 text-right space-x-2">
-                                                    <button
+                                                    <Button
                                                         onClick={() => {
                                                             const u = new URL(window.location);
                                                             u.searchParams.set('userId', ts.user._id);
@@ -1041,22 +1078,25 @@ const Timesheet = () => {
                                                             window.history.pushState({}, '', u);
                                                             window.location.reload();
                                                         }}
-                                                        className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded text-xs font-bold transition-colors"
+                                                        variant="ghost"
+                                                        className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded text-xs font-bold transition-colors h-auto"
                                                     >
                                                         View Details
-                                                    </button>
-                                                    <button
+                                                    </Button>
+                                                    <Button
                                                         onClick={() => handleApprove(ts, 'APPROVED')}
-                                                        className="px-3 py-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded text-xs font-bold transition-colors"
+                                                        variant="ghost"
+                                                        className="px-3 py-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded text-xs font-bold transition-colors h-auto"
                                                     >
                                                         Approve
-                                                    </button>
-                                                    <button
+                                                    </Button>
+                                                    <Button
                                                         onClick={() => handleApprove(ts, 'REJECTED')}
-                                                        className="px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded text-xs font-bold transition-colors"
+                                                        variant="ghost"
+                                                        className="px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded text-xs font-bold transition-colors h-auto"
                                                     >
                                                         Reject
-                                                    </button>
+                                                    </Button>
                                                 </td>
                                             </tr>
                                         ))}
@@ -1403,16 +1443,17 @@ const Timesheet = () => {
                                                     <div className="text-center py-4 space-y-3">
                                                         <div className="text-xs text-slate-400 italic">No attendance record found for this date.</div>
                                                         {(timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && canEditAttendance && (
-                                                            <button
+                                                            <Button
                                                                 onClick={() => {
                                                                     setEntryToEdit({ type: 'ATTENDANCE_CREATE', date: selectedCell.date });
                                                                     setEditStartTime('');
                                                                     setEditEndTime('');
                                                                 }}
-                                                                className="zoho-btn-secondary text-xs w-full justify-center"
+                                                                variant="secondary"
+                                                                className="text-xs w-full justify-center"
                                                             >
                                                                 <Clock size={14} className="mr-1" /> Add Attendance Manually
-                                                            </button>
+                                                            </Button>
                                                         )}
                                                     </div>
                                                 )
@@ -1423,18 +1464,19 @@ const Timesheet = () => {
                                     <div className="p-4 bg-white border-t border-slate-100">
                                         {!isAddingEntry ? (
                                             ((timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && (!targetUserId || user?.roles?.includes('Admin'))) && (
-                                                <button
+                                                <Button
                                                     onClick={() => {
                                                         setIsAddingEntry(true);
                                                         setNewEntry(prev => ({ ...prev, date: selectedCell.date }));
                                                     }}
-                                                    className="w-full flex items-center justify-center space-x-2 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium text-sm"
+                                                    variant="ghost"
+                                                    className="w-full flex items-center justify-center space-x-2 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium text-sm h-auto"
                                                 >
                                                     <div className="bg-slate-200 rounded-full p-0.5">
                                                         <span className="block h-4 w-4 leading-3 text-center">+</span>
                                                     </div>
                                                     <span>Add Work Log</span>
-                                                </button>
+                                                </Button>
                                             )
                                         ) : (
                                             <div className="bg-slate-50 border border-blue-100 rounded-lg p-4 animate-in fade-in zoom-in-95 duration-200 relative">
@@ -1492,15 +1534,29 @@ const Timesheet = () => {
                                                                 ))}
                                                             </select>
                                                         </div>
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Hours <span className="text-red-500">*</span></label>
-                                                            <input
-                                                                type="number"
-                                                                value={newEntry.hours}
-                                                                onChange={(e) => setNewEntry(prev => ({ ...prev, hours: e.target.value }))}
-                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
-                                                                min="0" step="0.5"
-                                                            />
+                                                        <div className="flex space-x-2">
+                                                            <div className="flex-1">
+                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Hours <span className="text-red-500">*</span></label>
+                                                                <input
+                                                                    type="number"
+                                                                    placeholder="0"
+                                                                    value={newEntry.hours}
+                                                                    onChange={(e) => setNewEntry(prev => ({ ...prev, hours: e.target.value }))}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                    min="0"
+                                                                />
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Minutes</label>
+                                                                <input
+                                                                    type="number"
+                                                                    placeholder="0"
+                                                                    value={newEntry.minutes}
+                                                                    onChange={(e) => setNewEntry(prev => ({ ...prev, minutes: e.target.value }))}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                    min="0" max="59"
+                                                                />
+                                                            </div>
                                                         </div>
                                                     </div>
 
@@ -1515,12 +1571,12 @@ const Timesheet = () => {
                                                     </div>
 
                                                     <div className="flex justify-end pt-2">
-                                                        <button
+                                                        <Button
                                                             onClick={submitNewEntry}
-                                                            className="px-4 py-2 bg-blue-600 text-white rounded font-bold text-sm hover:bg-blue-700 shadow-sm"
+                                                            className="px-4 py-2 font-bold text-sm shadow-sm"
                                                         >
                                                             Add Log
-                                                        </button>
+                                                        </Button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1599,15 +1655,27 @@ const Timesheet = () => {
                                                                 </select>
                                                             </div>
                                                         </div>
-                                                        <div className="col-span-1">
-                                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hours</label>
-                                                            <input
-                                                                type="number"
-                                                                value={editHours}
-                                                                onChange={e => setEditHours(e.target.value)}
-                                                                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm"
-                                                                min="0" max="24" step="0.1"
-                                                            />
+                                                        <div className="col-span-1 grid grid-cols-2 gap-1">
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hrs</label>
+                                                                <input
+                                                                    type="number"
+                                                                    value={editHours}
+                                                                    onChange={e => setEditHours(e.target.value)}
+                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm"
+                                                                    min="0"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Min</label>
+                                                                <input
+                                                                    type="number"
+                                                                    value={editMinutes}
+                                                                    onChange={e => setEditMinutes(e.target.value)}
+                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm"
+                                                                    min="0" max="59"
+                                                                />
+                                                            </div>
                                                         </div>
                                                         <div className="col-span-3">
                                                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
@@ -1619,18 +1687,19 @@ const Timesheet = () => {
                                                         </div>
                                                     </div>
                                                     <div className="flex justify-end space-x-2">
-                                                        <button
+                                                        <Button
                                                             onClick={() => setEntryToEdit(null)}
-                                                            className="px-3 py-1 text-slate-500 hover:text-slate-700 text-xs font-medium"
+                                                            variant="secondary"
+                                                            className="px-3 py-1 text-xs font-medium"
                                                         >
                                                             Cancel
-                                                        </button>
-                                                        <button
+                                                        </Button>
+                                                        <Button
                                                             onClick={submitEdit}
-                                                            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-bold"
+                                                            className="px-3 py-1 text-xs font-bold"
                                                         >
                                                             Save
-                                                        </button>
+                                                        </Button>
                                                     </div>
                                                 </div>
                                             ) : (
@@ -1813,13 +1882,13 @@ const Timesheet = () => {
                     <div className="bg-white rounded-lg shadow-sm border border-slate-200">
                         <div className="p-4 border-b border-slate-100 flex justify-between items-center">
                             <h3 className="font-bold text-slate-700">Attendance Log</h3>
-                            <button
+                            <Button
                                 onClick={handleExportAttendance}
-                                className="flex items-center space-x-2 text-sm text-white bg-green-600 hover:bg-green-700 active:bg-green-800 px-4 py-2 rounded-lg shadow-sm transition-all cursor-pointer"
+                                className="flex items-center space-x-2 text-sm bg-green-600 hover:bg-green-700 active:bg-green-800 px-4 py-2 rounded-lg shadow-sm transition-all text-white border-transparent"
                             >
                                 <Download size={14} />
                                 <span className="font-semibold">Download Report</span>
-                            </button>
+                            </Button>
                         </div>
                         <div className="p-4">
                             <AttendanceCalendar
@@ -1913,22 +1982,21 @@ const Timesheet = () => {
                                     ></textarea>
 
                                     <div className="flex justify-end space-x-3 mt-4">
-                                        <button
+                                        <Button
                                             onClick={() => setShowRejectModal(false)}
-                                            className="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium text-sm"
+                                            variant="secondary"
+                                            className="px-4 py-2 text-sm"
                                         >
                                             Cancel
-                                        </button>
-                                        <button
+                                        </Button>
+                                        <Button
                                             onClick={submitRejection}
-                                            className={`px-4 py-2 text-white rounded-lg font-bold text-sm shadow-sm transition-colors ${(!rejectReason.trim() || (rejectionType === 'PARTIAL' && rejectedEntryIds.length === 0))
-                                                ? 'bg-red-300 cursor-not-allowed'
-                                                : 'bg-red-600 hover:bg-red-700'
-                                                }`}
+                                            variant="danger"
+                                            className="px-4 py-2 text-sm"
                                             disabled={!rejectReason.trim() || (rejectionType === 'PARTIAL' && rejectedEntryIds.length === 0)}
                                         >
                                             {rejectionType === 'PARTIAL' ? `Reject ${rejectedEntryIds.length} Entries` : 'Reject Entire Month'}
-                                        </button>
+                                        </Button>
                                     </div>
                                 </div>
                             </div>

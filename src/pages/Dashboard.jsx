@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Skeleton from '../components/Skeleton';
+import Button from '../components/Button';
 import { Link, useNavigate } from 'react-router-dom';
 import { LogOut, Users, Clock, Calendar, Search, Bell, Menu, ChevronDown, Shield, Building, Briefcase, UserX, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
@@ -36,32 +37,7 @@ const Dashboard = () => {
             {/* Main Content */}
             <main className="flex-1 flex flex-col overflow-hidden">
                 {/* Top Header */}
-                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 z-10">
-                    <div className="flex items-center">
-                        <button className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-md mr-2">
-                            <Menu size={20} />
-                        </button>
-                        <div className="relative hidden sm:block">
-                            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="text"
-                                placeholder="Search employees, actions..."
-                                className="pl-10 pr-4 py-1.5 w-64 bg-slate-100 border-none rounded-md text-sm text-slate-700 focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
-                            />
-                        </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                        <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-full relative">
-                            <Bell size={18} />
-                            <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full border border-white"></span>
-                        </button>
-                        <div className="h-8 w-px bg-slate-200 mx-2"></div>
-                        <button className="flex items-center space-x-2 text-sm font-medium text-slate-700 hover:text-blue-600 transition-colors">
-                            <span>Quick Actions</span>
-                            <ChevronDown size={14} />
-                        </button>
-                    </div>
-                </header>
+
 
                 {/* Scrollable Content */}
                 <div className="flex-1 overflow-auto p-4 sm:p-8">
@@ -150,8 +126,8 @@ const Dashboard = () => {
                                                         <td className="px-6 py-4"><Skeleton className="h-6 w-16" /></td>
                                                     </tr>
                                                 ))
-                                            ) : recentActivity.length > 0 ? (
-                                                recentActivity.map((record) => (
+                                            ) : recentActivity.filter(r => r.status === 'PRESENT').length > 0 ? (
+                                                recentActivity.filter(r => r.status === 'PRESENT').map((record) => (
                                                     <tr key={record.id} className="hover:bg-slate-50/50 transition-colors">
                                                         <td className="px-6 py-3">
                                                             <div className="flex items-center space-x-3">
