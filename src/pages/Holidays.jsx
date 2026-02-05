@@ -20,7 +20,7 @@ const Holidays = () => {
 
     // Determine stats
     const totalHolidays = holidays.length;
-    const upcomingHolidays = holidays.filter(h => new Date(h.date) >= new Date()).length;
+    const upcomingHolidays = holidays.filter(h => new Date(h.date) >= new Date() && !h.isOptional).length;
     const optionalHolidays = holidays.filter(h => h.isOptional).length;
 
     const isAdmin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');

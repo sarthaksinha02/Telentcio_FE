@@ -70,6 +70,13 @@ const Profile = () => {
                                         <span className="font-mono">{profile.employeeCode || 'N/A'}</span>
                                     </div>
                                 </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Employment Type</label>
+                                    <div className="flex items-center mt-1 text-slate-700">
+                                        <Briefcase size={18} className="mr-2 text-slate-400" />
+                                        <span>{profile.employmentType || 'Full Time'}</span>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="space-y-4">

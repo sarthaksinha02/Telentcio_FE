@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import api from '../api/axios';
-import { Briefcase, Plus, Folder, CheckSquare, User, Calendar, ArrowLeft, Clock, LayoutList, ListTree, GanttChart, ChevronDown, ChevronRight, ListChecks } from 'lucide-react';
+import { Briefcase, Plus, Folder, CheckSquare, User, Calendar, ArrowLeft, Clock, LayoutList, ListTree, GanttChart, ChevronDown, ChevronRight, ListChecks, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import { useAuth } from '../context/AuthContext';
@@ -17,6 +17,8 @@ const ProjectDetails = () => {
     const canUpdateProject = user?.roles?.includes('Admin') || user?.permissions?.includes('project.update');
     const canCreateTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.create');
     const canUpdateTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.update');
+    const canDeleteModule = user?.roles?.includes('Admin') || user?.permissions?.includes('module.delete');
+    const canDeleteTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.delete');
 
     const [project, setProject] = useState(null);
     const [modules, setModules] = useState([]);
@@ -176,11 +178,31 @@ const ProjectDetails = () => {
                             <h3 className="font-bold text-slate-800 text-lg">{module.name}</h3>
                             <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-600 rounded">{module.status}</span>
                         </div>
-                        {canCreateTask && (
-                            <button onClick={() => openCreateTaskModal(module._id)} className="text-sm text-blue-600 hover:text-blue-800 flex items-center space-x-1 font-medium">
-                                <Plus size={16} /> <span>Add Task</span>
-                            </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {canDeleteModule && (
+                                <button
+                                    onClick={() => {
+                                        if (window.confirm('Are you sure you want to delete this module? All tasks within it will be deleted.')) {
+                                            api.delete(`/projects/modules/${module._id}`)
+                                                .then(() => {
+                                                    toast.success('Module Deleted');
+                                                    fetchData();
+                                                })
+                                                .catch(() => toast.error('Failed to delete module'));
+                                        }
+                                    }}
+                                    className="text-slate-400 hover:text-red-600 p-1"
+                                    title="Delete Module"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            )}
+                            {canCreateTask && (
+                                <button onClick={() => openCreateTaskModal(module._id)} className="text-sm text-blue-600 hover:text-blue-800 flex items-center space-x-1 font-medium">
+                                    <Plus size={16} /> <span>Add Task</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className="p-4">
                         {module.tasks && module.tasks.length > 0 ? (
@@ -189,6 +211,23 @@ const ProjectDetails = () => {
                                     <div key={task._id} className="border border-slate-100 rounded p-4 hover:shadow-md transition-shadow bg-white flex flex-col justify-between group relative">
                                         <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             {canUpdateTask && <button onClick={() => handleEditTask(task, module._id)} className="text-slate-400 hover:text-blue-500 p-1"><CheckSquare size={16} /></button>}
+                                            {canDeleteTask && (
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm('Delete this task?')) {
+                                                            api.delete(`/projects/tasks/${task._id}`)
+                                                                .then(() => {
+                                                                    toast.success('Task Deleted');
+                                                                    fetchData();
+                                                                })
+                                                                .catch(() => toast.error('Failed to delete task'));
+                                                        }
+                                                    }}
+                                                    className="text-slate-400 hover:text-red-500 p-1"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
                                         </div>
                                         <div>
                                             <div className="flex justify-between items-start mb-2">
@@ -260,11 +299,26 @@ const ProjectDetails = () => {
                                     </td>
                                     <td className="px-6 py-3">-</td>
                                     <td className="px-6 py-3 text-right">
-                                        {canCreateTask && (
-                                            <button onClick={() => openCreateTaskModal(module._id)} className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center justify-end gap-1">
-                                                <Plus size={14} /> Add Task
-                                            </button>
-                                        )}
+                                        <div className="flex items-center justify-end gap-2">
+                                            {canDeleteModule && (
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm('Are you sure you want to delete this module?')) {
+                                                            api.delete(`/projects/modules/${module._id}`).then(() => { toast.success('Module Deleted'); fetchData(); }).catch(() => toast.error('Failed'));
+                                                        }
+                                                    }}
+                                                    className="text-slate-400 hover:text-red-600"
+                                                    title="Delete Module"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            )}
+                                            {canCreateTask && (
+                                                <button onClick={() => openCreateTaskModal(module._id)} className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center justify-end gap-1">
+                                                    <Plus size={14} /> Add Task
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                                 {module.tasks?.map(task => {
@@ -316,6 +370,19 @@ const ProjectDetails = () => {
                                                                 <button onClick={() => openLogModal(task._id)} title="Log Work" className="text-slate-400 hover:text-green-600"><Clock size={16} /></button>
                                                                 <button onClick={() => handleEditTask(task, module._id)} title="Edit" className="text-slate-400 hover:text-blue-600"><CheckSquare size={16} /></button>
                                                             </>
+                                                        )}
+                                                        {canDeleteTask && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (window.confirm('Delete this task?')) {
+                                                                        api.delete(`/projects/tasks/${task._id}`).then(() => { toast.success('Task Deleted'); fetchData(); }).catch(() => toast.error('Failed'));
+                                                                    }
+                                                                }}
+                                                                title="Delete"
+                                                                className="text-slate-400 hover:text-red-600"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
                                                         )}
                                                     </div>
                                                 </td>

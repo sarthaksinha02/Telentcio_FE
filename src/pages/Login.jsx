@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
+import Button from '../components/Button';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -175,22 +176,14 @@ const Login = () => {
             </div>
 
             <div className="pt-4">
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
+              <Button
                 type="submit"
-                disabled={isLoading}
-                className="group relative w-full flex justify-center py-3.5 px-4 border border-transparent text-sm font-semibold rounded-xl text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg shadow-blue-500/30 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                isLoading={isLoading}
+                className="w-full"
               >
-                {isLoading ? (
-                  <Loader2 className="animate-spin h-5 w-5" />
-                ) : (
-                  <span className="flex items-center">
-                    Sign In
-                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                  </span>
-                )}
-              </motion.button>
+                Sign In
+                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+              </Button>
             </div>
 
 

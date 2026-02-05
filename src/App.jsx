@@ -1,8 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
 import Login from './pages/Login';
+import Unauthorized from './pages/Unauthorized';
 
 import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
@@ -15,6 +16,10 @@ import Projects from './pages/Projects';
 import ProjectDetails from './pages/ProjectDetails';
 import Profile from './pages/Profile';
 import Holidays from './pages/Holidays';
+import LeaveConfig from './pages/LeaveConfig';
+import Leaves from './pages/Leaves';
+import EmployeeDossier from './pages/EmployeeDossier';
+
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleRoute from './components/RoleRoute';
 import SystemRoute from './components/SystemRoute';
@@ -39,6 +44,11 @@ function App() {
               } />
               <Route path="/attendance" element={<Attendance />} />
               <Route path="/timesheet" element={<Timesheet />} />
+              <Route path="/leaves" element={<Leaves />} />
+
+              <Route path="/leaves" element={<Leaves />} />
+              <Route path="/dossier/:userId" element={<EmployeeDossier />} />
+
               <Route path="/profile" element={<Profile />} />
               <Route path="/holidays" element={<Holidays />} />
 
@@ -55,10 +65,14 @@ function App() {
               {/* Admin Only Routes */}
               <Route element={<RoleRoute requiredPermissions={['role.read']} requiredRoles={['Admin']} />}>
                 <Route path="/roles" element={<Roles />} />
+                <Route path="/leave-config" element={<LeaveConfig />} />
               </Route>
 
               {/* Users Management (Internal access control) */}
-              <Route path="/users" element={<Users />} />
+              {/* Users Management */}
+              <Route path="/users" element={<UsersAccessWrapper />} />
+
+              <Route path="/unauthorized" element={<Unauthorized />} />
             </Route>
           </Route>
 
@@ -71,3 +85,15 @@ function App() {
 }
 
 export default App;
+
+const UsersAccessWrapper = () => {
+  const { user } = useAuth();
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('user.read') ||
+    user.directReportsCount > 0;
+
+  return canAccess ? <Users /> : <Navigate to="/unauthorized" />;
+};

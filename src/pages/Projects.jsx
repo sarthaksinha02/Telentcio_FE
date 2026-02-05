@@ -3,6 +3,7 @@ import api from '../api/axios';
 import { Briefcase, Plus, Search, Building } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
+import Button from '../components/Button';
 
 import { useAuth } from '../context/AuthContext';
 
@@ -122,13 +123,13 @@ const Projects = () => {
                         <p className="text-sm text-slate-500">Track initiatives and jobs</p>
                     </div>
                     {canCreate && (
-                        <button
+                        <Button
                             onClick={openCreateModal}
-                            className="flex items-center space-x-2 zoho-btn-primary"
+                            className="flex items-center space-x-2"
                         >
                             <Plus size={18} />
                             <span>New Project</span>
-                        </button>
+                        </Button>
                     )}
                 </div>
 
@@ -179,6 +180,23 @@ const Projects = () => {
                                             </td>
                                             <td className="px-6 py-3 text-right space-x-3">
                                                 {canUpdate && <button onClick={() => handleEdit(project)} className="text-slate-500 hover:text-blue-600 text-xs font-medium">Edit</button>}
+                                                {user?.permissions?.includes('project.delete') && (
+                                                    <button
+                                                        onClick={() => {
+                                                            if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
+                                                                api.delete(`/projects/${project._id}`)
+                                                                    .then(() => {
+                                                                        toast.success('Project deleted');
+                                                                        fetchData();
+                                                                    })
+                                                                    .catch(() => toast.error('Failed to delete project'));
+                                                            }
+                                                        }}
+                                                        className="text-slate-500 hover:text-red-600 text-xs font-medium"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                )}
                                                 <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">View Modules</a>
                                             </td>
                                         </tr>
@@ -306,8 +324,8 @@ const Projects = () => {
                             </div>
 
                             <div className="flex justify-end space-x-3 pt-4">
-                                <button type="button" onClick={() => setShowModal(false)} className="zoho-btn-secondary">Cancel</button>
-                                <button type="submit" className="zoho-btn-primary">{editingId ? 'Update' : 'Create'}</button>
+                                <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+                                <Button type="submit">{editingId ? 'Update' : 'Create'}</Button>
                             </div>
                         </form>
                     </div>
