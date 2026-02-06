@@ -530,6 +530,7 @@ const Users = () => {
         setShowModal(true);
     };
 
+
     const handleAdd = () => {
         setEditingUser(null);
         setFormData({
@@ -709,15 +710,17 @@ const Users = () => {
                 {/* Users List */}
                 <div className="zoho-card overflow-hidden">
                     <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                        <div className="relative">
-                            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="text"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder="Search employees..."
-                                className="pl-9 pr-4 py-1.5 w-64 bg-white border border-slate-200 rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                            />
+                        <div className="flex items-center space-x-4">
+                            <div className="relative">
+                                <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    placeholder="Search employees..."
+                                    className="pl-9 pr-4 py-1.5 w-64 bg-white border border-slate-200 rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                            </div>
                         </div>
                         <div className="text-sm text-slate-500">
                             Total Users: <strong>{users.length}</strong>
@@ -804,6 +807,7 @@ const Users = () => {
                                                     </button>
                                                 )}
 
+                                                {/* View Dossier */}
                                                 <button
                                                     onClick={() => window.location.href = `/dossier/${user._id}`}
                                                     className="text-purple-600 hover:text-purple-800 p-1 hover:bg-purple-50 rounded"

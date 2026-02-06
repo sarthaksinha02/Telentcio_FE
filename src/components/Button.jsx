@@ -18,6 +18,7 @@ const Button = ({
         secondary: "text-blue-600 bg-blue-50 hover:bg-blue-100 focus:ring-blue-500 border border-transparent",
         outline: "text-slate-700 bg-transparent border-2 border-slate-200 hover:border-blue-600 hover:text-blue-600 focus:ring-slate-500",
         danger: "text-white bg-red-600 hover:bg-red-700 focus:ring-red-500 shadow-lg shadow-red-500/30",
+        success: "text-white bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500 shadow-lg shadow-emerald-500/30",
         ghost: "text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus:ring-slate-500"
     };
 
