@@ -4,7 +4,7 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
     User, Briefcase, FileText, DollarSign, Calendar, Shield,
-    ArrowLeft, Save, Upload, Download, Trash2, CheckCircle, AlertCircle, X
+    ArrowLeft, Save, Upload, Download, Trash2, CheckCircle, AlertCircle, X, Search
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
@@ -53,7 +53,7 @@ const Field = ({ label, value, section, field, type = "text", options = null, is
     );
 };
 
-const SectionCard = ({ title, sectionName, icon: Icon, children, editMode, setEditMode, onSave, isLoading }) => {
+const SectionCard = ({ title, sectionName, icon: Icon, children, editMode, setEditMode, onSave, isLoading, canEdit = true }) => {
     const isEditing = editMode === sectionName;
     return (
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
@@ -62,16 +62,16 @@ const SectionCard = ({ title, sectionName, icon: Icon, children, editMode, setEd
                     {Icon && <Icon size={20} className="text-slate-400" />}
                     <h3 className="text-lg font-bold text-slate-800">{title}</h3>
                 </div>
-                {!isEditing ? (
+                {canEdit && !isEditing ? (
                     <button onClick={() => setEditMode(sectionName)} className="text-sm bg-slate-50 hover:bg-slate-100 text-slate-600 px-3 py-1.5 rounded-md font-medium transition flex items-center border border-slate-200">
                         <Save size={14} className="mr-1.5" /> Edit
                     </button>
-                ) : (
+                ) : isEditing ? (
                     <div className="flex space-x-2">
                         <Button variants="ghost" onClick={() => setEditMode(false)} disabled={isLoading} className="text-slate-500 hover:text-slate-700 px-3 py-1.5">Cancel</Button>
                         <Button onClick={() => onSave(sectionName)} isLoading={isLoading} className="px-3 py-1.5 shadow-sm">Save</Button>
                     </div>
-                )}
+                ) : null}
             </div>
             {children(isEditing)}
         </div>
@@ -82,6 +82,10 @@ const EmployeeDossier = () => {
     const { userId } = useParams();
     const navigate = useNavigate();
     const { user: currentUser } = useAuth();
+
+    // Permissions
+    const canEdit = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('dossier.edit');
+    const canApprove = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('dossier.approve');
 
     // State
     const [profile, setProfile] = useState(null);
@@ -100,6 +104,11 @@ const EmployeeDossier = () => {
     const [showUploadPreview, setShowUploadPreview] = useState(false);
     const [uploadCategory, setUploadCategory] = useState(null);
     const fileInputRef = useRef(null);
+
+    // HRIS Requests State
+    const [hrisRequests, setHrisRequests] = useState([]);
+    const [loadingRequests, setLoadingRequests] = useState(false);
+    const [hrisSearchTerm, setHrisSearchTerm] = useState('');
 
     // Cleanup preview URL on unmount
     useEffect(() => {
@@ -230,6 +239,53 @@ const EmployeeDossier = () => {
         if (userId) fetchDossier();
     }, [userId]);
 
+    const fetchHRISRequests = async () => {
+        try {
+            setLoadingRequests(true);
+            const res = await api.get('/dossier/requests');
+            setHrisRequests(res.data);
+        } catch (error) {
+            console.error('Failed to fetch HRIS requests', error);
+        } finally {
+            setLoadingRequests(false);
+        }
+    };
+
+    const handleHRISApproveOther = async (id) => {
+        try {
+            const toastId = toast.loading('Approving HRIS request...');
+            await api.patch(`/dossier/${id}/approve-hris`);
+            toast.dismiss(toastId);
+            toast.success('HRIS Approved');
+            fetchHRISRequests();
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to approve HRIS');
+        }
+    };
+
+    const handleHRISRejectOther = async (id) => {
+        const reason = window.prompt('Please enter a reason for rejection:');
+        if (reason === null) return;
+        try {
+            const toastId = toast.loading('Rejecting HRIS request...');
+            await api.patch(`/dossier/${id}/reject-hris`, { reason });
+            toast.dismiss(toastId);
+            toast.success('HRIS Rejected');
+            fetchHRISRequests();
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to reject HRIS');
+        }
+    };
+
+    useEffect(() => {
+        const isManager = currentUser?.roles?.some(r => r.name === 'Admin') || currentUser?.directReportsCount > 0;
+        if (isManager && activeTab === 'requests') {
+            fetchHRISRequests();
+        }
+    }, [activeTab, currentUser]);
+
     // Handle Tab Change
     const tabs = [
         { id: 'overview', label: 'Overview', icon: User },
@@ -238,7 +294,13 @@ const EmployeeDossier = () => {
         { id: 'financials', label: 'Financials', icon: DollarSign },
         { id: 'documents', label: 'Documents', icon: FileText },
         { id: 'history', label: 'History', icon: Calendar },
+        { id: 'hris', label: 'HRIS', icon: Shield },
     ];
+
+    const isManager = currentUser?.roles?.some(r => r.name === 'Admin') || currentUser?.directReportsCount > 0;
+    if (isManager) {
+        tabs.push({ id: 'requests', label: 'Requests', icon: AlertCircle });
+    }
 
     // Handle Input Change for nested objects
     const handleInputChange = (section, field, value) => {
@@ -284,6 +346,45 @@ const EmployeeDossier = () => {
                 }
             };
         });
+    };
+
+    const handleHRISSave = async () => {
+        try {
+            setSavingSection('hris');
+            await api.patch(`/dossier/${userId}/submit-hris`, formData);
+            toast.success('HRIS Form saved successfully');
+            setEditMode(false);
+            fetchDossier();
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to save HRIS form');
+        } finally {
+            setSavingSection(null);
+        }
+    };
+
+
+    const handleExcelExport = async (targetUserId = null) => {
+        try {
+            const toastId = toast.loading('Generating Excel...');
+            const params = targetUserId ? { userId: targetUserId } : {};
+            const response = await api.get('/dossier/export-excel', {
+                params,
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `HRIS_Export_${format(new Date(), 'dd_MMM_yyyy')}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            toast.dismiss(toastId);
+            toast.success('Excel exported successfully');
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to export Excel');
+        }
     };
 
     // Save Changes
@@ -426,6 +527,7 @@ const EmployeeDossier = () => {
                     setEditMode={setEditMode}
                     onSave={handleSave}
                     isLoading={savingSection === 'personal'}
+                    canEdit={canEdit}
                 >
                     {(isEditing) => (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -459,6 +561,7 @@ const EmployeeDossier = () => {
                     setEditMode={setEditMode}
                     onSave={handleSave}
                     isLoading={savingSection === 'contact'}
+                    canEdit={canEdit}
                 >
                     {(isEditing) => (
                         <div className="space-y-6">
@@ -744,15 +847,14 @@ const EmployeeDossier = () => {
                                         >
                                             <Download size={12} className="mr-1" /> View
                                         </button>
-                                        <Button
+                                        <button
                                             onClick={() => handleDeleteDocument(doc._id)}
-                                            isLoading={deletingDocId === doc._id}
-                                            variant="danger"
-                                            className="text-xs bg-white border border-slate-200 hover:bg-red-50 text-red-600 px-3 py-1.5 shadow-sm"
+                                            disabled={deletingDocId === doc._id}
+                                            className="text-xs bg-white border border-slate-200 hover:bg-red-50 text-red-600 px-3 py-1.5 rounded shadow-sm flex items-center justify-center transition"
                                             title="Delete Document"
                                         >
-                                            <Trash2 size={12} />
-                                        </Button>
+                                            {deletingDocId === doc._id ? <span className="animate-spin h-3 w-3 border-2 border-red-600 border-t-transparent rounded-full"></span> : <Trash2 size={12} />}
+                                        </button>
                                     </div>
                                 </div>
                             );
@@ -785,7 +887,7 @@ const EmployeeDossier = () => {
                                                 Submit
                                             </Button>
                                             <Button
-                                                variants="ghost"
+                                                variant="ghost"
                                                 onClick={handleCancelUpload}
                                                 disabled={isUploading}
                                                 className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-600 px-3 py-1.5 shadow-sm text-xs"
@@ -818,6 +920,535 @@ const EmployeeDossier = () => {
             </div>
         );
     };
+    const handleArrayChange = (section, index, field, value) => {
+        setFormData(prev => {
+            const newArray = [...(prev[section] || [])];
+            newArray[index] = { ...newArray[index], [field]: value };
+            return { ...prev, [section]: newArray };
+        });
+    };
+
+    const addArrayItem = (section, defaultObj = {}) => {
+        setFormData(prev => ({
+            ...prev,
+            [section]: [...(prev[section] || []), defaultObj]
+        }));
+    };
+
+    const removeArrayItem = (section, index) => {
+        setFormData(prev => ({
+            ...prev,
+            [section]: prev[section].filter((_, i) => i !== index)
+        }));
+    };
+
+    const getStatusBadge = (status) => {
+        const badgeBase = "px-3 py-1.5 rounded-full text-[11px] font-bold border flex items-center shadow-sm transition-all";
+        switch (status) {
+            case 'Approved':
+                return <span className={`${badgeBase} bg-emerald-50 text-emerald-700 border-emerald-200`}><CheckCircle size={14} className="mr-1.5 flex-shrink-0" /> Approved</span>;
+            case 'Pending Approval':
+                return <span className={`${badgeBase} bg-amber-50 text-amber-700 border-amber-200`}><AlertCircle size={14} className="mr-1.5 flex-shrink-0" /> Pending Approval</span>;
+            case 'Rejected':
+                return <span className={`${badgeBase} bg-red-50 text-red-700 border-red-200`}><X size={14} className="mr-1.5 flex-shrink-0" /> Rejected</span>;
+            default:
+                return <span className={`${badgeBase} bg-slate-50 text-slate-600 border-slate-200`}>Draft</span>;
+        }
+    };
+
+    const renderHRIS = () => {
+        if (!profile) return null;
+        const isEditing = editMode === 'hris';
+        const isAdmin = currentUser?.roles?.some(r => r.name === 'Admin');
+        const isManager = profile.employment?.reportingManager?._id === currentUser?._id || profile.employment?.reportingManager === currentUser?._id;
+        const hrisStatus = profile.hris?.status || 'Draft';
+
+        return (
+            <div className="space-y-8 bg-white p-4 md:p-8 rounded-xl border border-slate-200 shadow-sm transition-all animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50 -m-4 md:-m-8 p-4 md:p-6 mb-12 border-b border-slate-200 rounded-t-xl gap-4">
+                    <div className="flex items-center space-x-4">
+                        <div>
+                            <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">HRIS Information Form</h2>
+                            <div className="mt-4 flex items-center gap-4">
+                                {getStatusBadge(hrisStatus)}
+                                {profile.hris?.submittedAt && (
+                                    <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded">
+                                        Submitted: {format(new Date(profile.hris.submittedAt), 'dd MMM yyyy')}
+                                    </span>
+                                )}
+                            </div>
+                            {hrisStatus === 'Rejected' && profile.hris?.rejectionReason && (
+                                <div className="mt-4 bg-red-50/50 p-3 rounded-lg border border-red-100/50 flex items-start gap-2 max-w-xl">
+                                    <AlertCircle size={14} className="text-red-500 mt-0.5" />
+                                    <p className="text-xs text-red-700 leading-relaxed font-medium">
+                                        <span className="font-bold">Rejection Reason:</span> {profile.hris.rejectionReason}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Admin Action: Export */}
+                        {isAdmin && (
+                            <Button variant="ghost" onClick={handleExcelExport} className="border-slate-200 hover:bg-slate-100 text-slate-600 px-3 py-2">
+                                <Download size={16} className="mr-2" /> Export to Excel
+                            </Button>
+                        )}
+
+
+                        {/* Edit Action for Self (and Admin) */}
+                        {!isEditing ? (
+                            (hrisStatus === 'Draft' || hrisStatus === 'Rejected' || hrisStatus === 'Approved' || isAdmin) && (
+                                <div className="flex space-x-2">
+                                    <Button onClick={() => setEditMode('hris')} className="flex items-center">
+                                        <Save size={16} className="mr-2" /> Edit Form
+                                    </Button>
+                                    {(hrisStatus === 'Draft' || hrisStatus === 'Rejected' || hrisStatus === 'Approved') && profile.hris?.isDeclared && (
+                                        <Button onClick={() => handleHRISSave()} className="bg-blue-600 hover:bg-blue-700 text-white border-none">
+                                            <Shield size={16} className="mr-2" /> Submit for Approval
+                                        </Button>
+                                    )}
+                                </div>
+                            )
+                        ) : (
+                            <div className="flex space-x-3">
+                                <Button variant="ghost" onClick={() => { setEditMode(false); setFormData(profile); }}>Cancel</Button>
+                                <Button onClick={handleHRISSave} variant="primary" isLoading={savingSection === 'hris'} className="px-8">
+                                    {formData.hris?.isDeclared ? 'Submit for Approval' : 'Save Information'}
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 py-12">
+                    {/* 1. Basic Details */}
+                    <div className="space-y-6">
+                        <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                            <User size={18} className="text-blue-500" />
+                            <h3 className="font-bold text-slate-700">1. Basic Employee Details</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <Field section="user" isEditing={false} label="Employee Code" field="employeeCode" value={profile.user?.employeeCode} />
+                            <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} />
+                            <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
+                        </div>
+                    </div>
+
+                    {/* 2. Name Details */}
+                    <div className="space-y-6">
+                        <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                            <User size={18} className="text-blue-500" />
+                            <h3 className="font-bold text-slate-700">2. Name Details</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <Field section="personal" isEditing={isEditing} label="Full Name" field="fullName" value={profile.personal?.fullName} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="First Name" field="firstName" value={profile.personal?.firstName} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="Middle Name" field="middleName" value={profile.personal?.middleName} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="Last Name" field="lastName" value={profile.personal?.lastName} formData={formData} onChange={handleInputChange} />
+                        </div>
+                    </div>
+
+                    {/* 3. Personal Info */}
+                    <div className="space-y-6">
+                        <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                            <Calendar size={18} className="text-blue-500" />
+                            <h3 className="font-bold text-slate-700">3. Personal Information</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} />
+                            <Field section="employment" isEditing={false} label="Date of Joining" field="joiningDate" type="date" value={profile.employment?.joiningDate} />
+                        </div>
+                    </div>
+
+                    {/* 4. Bank Details */}
+                    <div className="space-y-6">
+                        <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                            <DollarSign size={18} className="text-blue-500" />
+                            <h3 className="font-bold text-slate-700">4. Bank Account Details</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <Field
+                                section="compensation" isEditing={isEditing} label="Account Number" field="bankAccount"
+                                value={profile.compensation?.bankDetails?.accountNumber}
+                                valueOverride={formData.compensation?.bankDetails?.accountNumber}
+                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountNumber: e.target.value } } }))}
+                            />
+                            <Field
+                                section="compensation" isEditing={isEditing} label="IFSC Code" field="ifsc"
+                                value={profile.compensation?.bankDetails?.ifscCode}
+                                valueOverride={formData.compensation?.bankDetails?.ifscCode}
+                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, ifscCode: e.target.value } } }))}
+                            />
+                            <Field
+                                section="compensation" isEditing={isEditing} label="Bank Name" field="bankName"
+                                value={profile.compensation?.bankDetails?.bankName}
+                                valueOverride={formData.compensation?.bankDetails?.bankName}
+                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, bankName: e.target.value } } }))}
+                            />
+                            <Field
+                                section="compensation" isEditing={isEditing} label="Account Holder Name" field="holder"
+                                value={profile.compensation?.bankDetails?.accountHolderName}
+                                valueOverride={formData.compensation?.bankDetails?.accountHolderName}
+                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountHolderName: e.target.value } } }))}
+                            />
+                            <Field
+                                section="compensation" isEditing={isEditing} label="Branch Address" field="branchAddress"
+                                value={profile.compensation?.bankDetails?.branchAddress}
+                                valueOverride={formData.compensation?.bankDetails?.branchAddress}
+                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, branchAddress: e.target.value } } }))}
+                            />
+                        </div>
+                    </div>
+
+                    {/* 5. Addresses */}
+                    <div className="space-y-6">
+                        <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                            <FileText size={18} className="text-blue-500" />
+                            <h3 className="font-bold text-slate-700">5. Address Details</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            {['Current', 'Permanent', 'Mailing'].map(type => (
+                                <div key={type} className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-widest">{type} Address</h4>
+                                    <div className="space-y-6">
+                                        <Field section="contact" isEditing={isEditing} label="Street" field={`${type}_street`}
+                                            value={profile.contact?.addresses?.find(a => a.type === type)?.street}
+                                            valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.street}
+                                            onChangeOverride={(e) => handleAddressChange(type, 'street', e.target.value)}
+                                        />
+                                        <Field section="contact" isEditing={isEditing} label="City" field={`${type}_city`}
+                                            value={profile.contact?.addresses?.find(a => a.type === type)?.city}
+                                            valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.city}
+                                            onChangeOverride={(e) => handleAddressChange(type, 'city', e.target.value)}
+                                        />
+                                        <Field section="contact" isEditing={isEditing} label="State" field={`${type}_state`}
+                                            value={profile.contact?.addresses?.find(a => a.type === type)?.state}
+                                            valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.state}
+                                            onChangeOverride={(e) => handleAddressChange(type, 'state', e.target.value)}
+                                        />
+                                        <Field section="contact" isEditing={isEditing} label="Zip Code" field={`${type}_zip`}
+                                            value={profile.contact?.addresses?.find(a => a.type === type)?.zipCode}
+                                            valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.zipCode}
+                                            onChangeOverride={(e) => handleAddressChange(type, 'zipCode', e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 6. Contact Details */}
+                    <div className="space-y-6">
+                        <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                            <Shield size={18} className="text-blue-500" />
+                            <h3 className="font-bold text-slate-700">6. Contact Details</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <Field section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing} label="Emergency Number" field="emergencyNumber" value={profile.contact?.emergencyNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing} label="Landline Number" field="landlineNumber" value={profile.contact?.landlineNumber} formData={formData} onChange={handleInputChange} />
+                        </div>
+                    </div>
+
+                    {/* 7. Family Details */}
+                    <div className="space-y-6">
+                        <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                            <User size={18} className="text-blue-500" />
+                            <h3 className="font-bold text-slate-700">7. Medical Insurance / Family Information</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <Field section="family" isEditing={isEditing} label="Father's Name" field="fatherName" value={profile.family?.fatherName} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Father's Occupation" field="fatherOccupation" value={profile.family?.fatherOccupation} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Mother's Name" field="motherName" value={profile.family?.motherName} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Mother's Occupation" field="motherOccupation" value={profile.family?.motherOccupation} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="Marital Status" field="maritalStatus" value={profile.personal?.maritalStatus} options={['Single', 'Married', 'Divorced', 'Widowed']} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Total Siblings" field="totalSiblings" type="number" value={profile.family?.totalSiblings} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="Date of Marriage" field="dateOfMarriage" type="date" value={profile.personal?.dateOfMarriage} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Spouse DOB" field="spouseDob" type="date" value={profile.family?.spouseDob} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="Dietary Preference" field="dietaryPreference" value={profile.personal?.dietaryPreference} options={['Veg', 'Non-Veg', 'Vegan', 'Egg']} formData={formData} onChange={handleInputChange} />
+                        </div>
+
+                        {/* Children List */}
+                        <div className="mt-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                            <div className="flex justify-between items-center mb-4">
+                                <h4 className="text-sm font-bold text-slate-700">Children Details</h4>
+                                {isEditing && (
+                                    <button
+                                        onClick={() => setFormData(prev => ({ ...prev, family: { ...prev.family, children: [...(prev.family?.children || []), { name: '', dob: '' }] } }))}
+                                        className="text-xs bg-emerald-50 text-emerald-600 px-2 py-1 rounded border border-emerald-200 hover:bg-emerald-100"
+                                    >
+                                        + Add Child
+                                    </button>
+                                )}
+                            </div>
+                            <div className="space-y-3">
+                                {(formData.family?.children || profile.family?.children || []).map((child, idx) => (
+                                    <div key={idx} className="flex gap-4 items-end bg-white p-3 rounded border border-slate-200">
+                                        <div className="flex-1">
+                                            <Field section="family" isEditing={isEditing} label="Child's Name" field={`child_${idx}_name`}
+                                                value={child.name} valueOverride={formData.family?.children?.[idx]?.name}
+                                                onChangeOverride={(e) => {
+                                                    const newChildren = [...(formData.family?.children || [])];
+                                                    newChildren[idx] = { ...newChildren[idx], name: e.target.value };
+                                                    handleInputChange('family', 'children', newChildren);
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="flex-1">
+                                            <Field section="family" isEditing={isEditing} label="Date of Birth" field={`child_${idx}_dob`}
+                                                value={child.dob} valueOverride={formData.family?.children?.[idx]?.dob} type="date"
+                                                onChangeOverride={(e) => {
+                                                    const newChildren = [...(formData.family?.children || [])];
+                                                    newChildren[idx] = { ...newChildren[idx], dob: e.target.value };
+                                                    handleInputChange('family', 'children', newChildren);
+                                                }}
+                                            />
+                                        </div>
+                                        {isEditing && (
+                                            <button
+                                                onClick={() => {
+                                                    const newChildren = formData.family?.children.filter((_, i) => i !== idx);
+                                                    handleInputChange('family', 'children', newChildren);
+                                                }}
+                                                className="p-2 text-red-500 hover:bg-red-50 rounded"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 8. Education */}
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                            <div className="flex items-center space-x-2">
+                                <FileText size={18} className="text-blue-500" />
+                                <h3 className="font-bold text-slate-700">8. Educational Qualification</h3>
+                            </div>
+                            {isEditing && (
+                                <button
+                                    onClick={() => addArrayItem('education', { institution: '', degree: '', grade: '' })}
+                                    className="text-xs bg-emerald-50 text-emerald-600 px-2 py-1 rounded border border-emerald-200"
+                                >
+                                    + Add Education
+                                </button>
+                            )}
+                        </div>
+                        <div className="space-y-6">
+                            {(formData.education || profile.education || []).map((edu, idx) => (
+                                <div key={idx} className="bg-slate-50 p-4 rounded-lg border border-slate-100 flex gap-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
+                                        <Field section="education" isEditing={isEditing} label="Institution" field={`inst_${idx}`}
+                                            value={edu.institution} valueOverride={formData.education?.[idx]?.institution}
+                                            onChangeOverride={(e) => handleArrayChange('education', idx, 'institution', e.target.value)}
+                                        />
+                                        <Field section="education" isEditing={isEditing} label="University" field={`univ_${idx}`}
+                                            value={edu.university} valueOverride={formData.education?.[idx]?.university}
+                                            onChangeOverride={(e) => handleArrayChange('education', idx, 'university', e.target.value)}
+                                        />
+                                        <Field section="education" isEditing={isEditing} label="Degree/Course" field={`deg_${idx}`}
+                                            value={edu.degree} valueOverride={formData.education?.[idx]?.degree}
+                                            onChangeOverride={(e) => handleArrayChange('education', idx, 'degree', e.target.value)}
+                                        />
+                                        <Field section="education" isEditing={isEditing} label="Grade/CGPA" field={`grade_${idx}`}
+                                            value={edu.grade} valueOverride={formData.education?.[idx]?.grade}
+                                            onChangeOverride={(e) => handleArrayChange('education', idx, 'grade', e.target.value)}
+                                        />
+                                        <Field section="education" isEditing={isEditing} label="College Rank" field={`rank_${idx}`}
+                                            value={edu.collegeRank} valueOverride={formData.education?.[idx]?.collegeRank}
+                                            onChangeOverride={(e) => handleArrayChange('education', idx, 'collegeRank', e.target.value)}
+                                        />
+                                        <Field section="education" isEditing={isEditing} label="From Date" field={`from_${idx}`} type="date"
+                                            value={edu.fromDate} valueOverride={formData.education?.[idx]?.fromDate}
+                                            onChangeOverride={(e) => handleArrayChange('education', idx, 'fromDate', e.target.value)}
+                                        />
+                                        <Field section="education" isEditing={isEditing} label="To Date" field={`to_${idx}`} type="date"
+                                            value={edu.toDate} valueOverride={formData.education?.[idx]?.toDate}
+                                            onChangeOverride={(e) => handleArrayChange('education', idx, 'toDate', e.target.value)}
+                                        />
+                                    </div>
+                                    {isEditing && (
+                                        <button onClick={() => removeArrayItem('education', idx)} className="self-center p-2 text-red-500"><Trash2 size={18} /></button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 9. Experience */}
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                            <div className="flex items-center space-x-2">
+                                <Briefcase size={18} className="text-blue-500" />
+                                <h3 className="font-bold text-slate-700">9. Work Experience</h3>
+                            </div>
+                            {isEditing && (
+                                <button
+                                    onClick={() => addArrayItem('experience', { companyName: '', designation: '', startDate: '', endDate: '' })}
+                                    className="text-xs bg-emerald-50 text-emerald-600 px-2 py-1 rounded border border-emerald-200"
+                                >
+                                    + Add Work History
+                                </button>
+                            )}
+                        </div>
+                        <div className="space-y-6">
+                            {(formData.experience || profile.experience || []).map((exp, idx) => (
+                                <div key={idx} className="bg-slate-50 p-4 rounded-lg border border-slate-100 flex gap-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
+                                        <Field section="experience" isEditing={isEditing} label="Company Name" field={`comp_${idx}`}
+                                            value={exp.companyName} valueOverride={formData.experience?.[idx]?.companyName}
+                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'companyName', e.target.value)}
+                                        />
+                                        <Field section="experience" isEditing={isEditing} label="Designation" field={`desig_${idx}`}
+                                            value={exp.designation} valueOverride={formData.experience?.[idx]?.designation}
+                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'designation', e.target.value)}
+                                        />
+                                        <Field section="experience" isEditing={isEditing} label="Start Date" field={`start_${idx}`} type="date"
+                                            value={exp.startDate} valueOverride={formData.experience?.[idx]?.startDate}
+                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'startDate', e.target.value)}
+                                        />
+                                        <Field section="experience" isEditing={isEditing} label="End Date" field={`end_${idx}`} type="date"
+                                            value={exp.endDate} valueOverride={formData.experience?.[idx]?.endDate}
+                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'endDate', e.target.value)}
+                                        />
+                                        <Field section="experience" isEditing={isEditing} label="Total Work Experience" field={`total_${idx}`}
+                                            value={exp.totalExperience} valueOverride={formData.experience?.[idx]?.totalExperience}
+                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'totalExperience', e.target.value)}
+                                        />
+                                    </div>
+                                    {isEditing && (
+                                        <button onClick={() => removeArrayItem('experience', idx)} className="self-center p-2 text-red-500"><Trash2 size={18} /></button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 10. Skills */}
+                    <div className="space-y-4">
+                        <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                            <Shield size={18} className="text-blue-500" />
+                            <h3 className="font-bold text-slate-700">10. Skills Information</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Technical Skills (Comma separated)</label>
+                                {isEditing ? (
+                                    <textarea
+                                        className="w-full p-2 border border-slate-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-100"
+                                        rows={3}
+                                        value={formData.skills?.technical?.join(', ') || ''}
+                                        onChange={(e) => handleInputChange('skills', 'technical', e.target.value.split(',').map(s => s.trim()))}
+                                        placeholder="React, Node.js, AWS..."
+                                    />
+                                ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                        {(profile.skills?.technical || []).map(s => <span key={s} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs border border-blue-100">{s}</span>)}
+                                        {profile.skills?.technical?.length === 0 && <span className="text-slate-400 italic text-sm">Not specified</span>}
+                                    </div>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Behavioral Skills</label>
+                                {isEditing ? (
+                                    <textarea
+                                        className="w-full p-2 border border-slate-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-100"
+                                        rows={3}
+                                        value={formData.skills?.behavioral?.join(', ') || ''}
+                                        onChange={(e) => handleInputChange('skills', 'behavioral', e.target.value.split(',').map(s => s.trim()))}
+                                        placeholder="Communication, Teamwork..."
+                                    />
+                                ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                        {(profile.skills?.behavioral || []).map(s => <span key={s} className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-xs border border-emerald-100">{s}</span>)}
+                                        {profile.skills?.behavioral?.length === 0 && <span className="text-slate-400 italic text-sm">Not specified</span>}
+                                    </div>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Skill you would like to learn</label>
+                                {isEditing ? (
+                                    <textarea
+                                        className="w-full p-2 border border-slate-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-blue-100"
+                                        rows={3}
+                                        value={formData.skills?.learningInterests?.join(', ') || ''}
+                                        onChange={(e) => handleInputChange('skills', 'learningInterests', e.target.value.split(',').map(s => s.trim()))}
+                                        placeholder="AI, Cloud Computing..."
+                                    />
+                                ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                        {(profile.skills?.learningInterests || []).map(s => <span key={s} className="bg-purple-50 text-purple-700 px-2 py-1 rounded text-xs border border-purple-100">{s}</span>)}
+                                        {profile.skills?.learningInterests?.length === 0 && <span className="text-slate-400 italic text-sm">Not specified</span>}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 11. Declaration */}
+                    <div className="mt-10 pt-10 border-t border-slate-200">
+                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 flex flex-col items-center text-center">
+                            <h3 className="font-bold text-slate-800 text-lg mb-2">11. Final Declaration</h3>
+                            <p className="text-sm text-slate-600 max-w-2xl mb-6">
+                                I hereby declare that all the information provided above is true and accurate to the best of my knowledge.
+                                I understand that any false information may lead to disciplinary action or termination of employment.
+                            </p>
+                            {isEditing ? (
+                                <div className="space-y-4 flex flex-col items-center">
+                                    <label className="flex items-center space-x-3 cursor-pointer group">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.hris?.isDeclared}
+                                            onChange={(e) => handleInputChange('hris', 'isDeclared', e.target.checked)}
+                                            className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 group-hover:border-blue-400 transition"
+                                        />
+                                        <span className="text-sm font-semibold text-slate-700 select-none">I agree to the declaration</span>
+                                    </label>
+                                    {formData.hris?.isDeclared && (
+                                        <p className="text-xs text-blue-600 font-medium animate-pulse">
+                                            Ready to submit! Click "Submit for Approval" to finish.
+                                        </p>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-4 flex flex-col items-center">
+                                    <div className="flex items-center text-emerald-600 space-x-2 font-bold bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100">
+                                        <CheckCircle size={20} />
+                                        <span>{profile.hris?.isDeclared ? `Declared on ${format(new Date(profile.hris.declarationDate || profile.updatedAt), 'dd MMM yyyy')}` : 'Not Declared Yet'}</span>
+                                    </div>
+                                    {profile.hris?.isDeclared && (hrisStatus === 'Draft' || hrisStatus === 'Rejected') && (
+                                        <Button onClick={handleHRISSave} className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center">
+                                            <Shield size={18} className="mr-2" /> Submit HRIS for Approval
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {
+                    isEditing && (
+                        <div className="flex justify-end space-x-4 pt-8 mt-10 border-t border-slate-100">
+                            <Button variants="ghost" onClick={() => { setEditMode(false); setFormData(profile); }}>Discard Changes</Button>
+                            <Button onClick={handleHRISSave} isLoading={savingSection === 'hris'} className="px-8 flex items-center shadow-lg">
+                                <Save size={18} className="mr-2" /> Complete & Save Form
+                            </Button>
+                        </div>
+                    )
+                }
+            </div >
+        );
+    };
+
     const renderHistory = () => {
         return (
             <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
@@ -872,6 +1503,114 @@ const EmployeeDossier = () => {
                         ))}
                     </div>
                 )}
+            </div>
+        );
+    };
+
+    const renderHRISRequests = () => {
+        const filtered = hrisRequests.filter(req =>
+            `${req.firstName} ${req.lastName}`.toLowerCase().includes(hrisSearchTerm.toLowerCase()) ||
+            req.employeeCode?.toLowerCase().includes(hrisSearchTerm.toLowerCase())
+        );
+
+        return (
+            <div className="space-y-6">
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-800">HRIS Requests Management</h3>
+                            <p className="text-sm text-slate-500">View and manage HRIS submissions history</p>
+                        </div>
+                        {/* Top Actions Removed */}
+                    </div>
+
+                    <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 text-slate-500 font-medium">
+                                <tr>
+                                    <th className="px-4 py-3">Employee</th>
+                                    <th className="px-4 py-3">Dept</th>
+                                    <th className="px-4 py-3">Submitted</th>
+                                    <th className="px-4 py-3">Status</th>
+                                    <th className="px-4 py-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {loadingRequests ? (
+                                    <tr>
+                                        <td colSpan="5" className="px-4 py-10 text-center">
+                                            <div className="animate-spin h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+                                            <p className="text-slate-500">Fetching requests...</p>
+                                        </td>
+                                    </tr>
+                                ) : filtered.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="5" className="px-4 py-10 text-center text-slate-500 italic">
+                                            No HRIS requests found
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filtered.map(req => (
+                                        <tr key={req._id} className="hover:bg-slate-50/50">
+                                            <td className="px-4 py-3">
+                                                <div className="font-semibold text-slate-800">{req.firstName} {req.lastName}</div>
+                                                <div className="text-[11px] text-slate-500 font-medium">{req.employeeCode}</div>
+                                            </td>
+                                            <td className="px-4 py-3 text-slate-600">{req.department || '-'}</td>
+                                            <td className="px-4 py-3 text-slate-600">
+                                                {req.employeeProfile?.hris?.submittedAt ? format(new Date(req.employeeProfile.hris.submittedAt), 'dd MMM yyyy') : '-'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="scale-75 origin-left w-32">
+                                                    {getStatusBadge(req.employeeProfile?.hris?.status)}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <div className="flex items-center justify-end space-x-2">
+                                                    {req.employeeProfile?.hris?.status === 'Pending Approval' && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleHRISApproveOther(req._id)}
+                                                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+                                                                title="Approve"
+                                                            >
+                                                                <CheckCircle size={18} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleHRISRejectOther(req._id)}
+                                                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                                                title="Reject"
+                                                            >
+                                                                <X size={18} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    <button
+                                                        onClick={() => {
+                                                            navigate(`/dossier/${req._id}`);
+                                                            setActiveTab('hris');
+                                                        }}
+                                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                                        title="View Form"
+                                                    >
+                                                        <FileText size={18} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleExcelExport(req._id)}
+                                                        className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-md transition-colors"
+                                                        title="Download Excel"
+                                                    >
+                                                        <Download size={18} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         );
     };
@@ -935,6 +1674,8 @@ const EmployeeDossier = () => {
                     )}
                     {activeTab === 'documents' && renderDocuments()}
                     {activeTab === 'history' && renderHistory()}
+                    {activeTab === 'hris' && renderHRIS()}
+                    {activeTab === 'requests' && renderHRISRequests()}
                 </div>
 
 
