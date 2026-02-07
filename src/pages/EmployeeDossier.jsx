@@ -1351,7 +1351,7 @@ const EmployeeDossier = () => {
                                     />
                                 ) : (
                                     <div className="flex flex-wrap gap-2">
-                                        {(profile.skills?.technical || []).map(s => <span key={s} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs border border-blue-100">{s}</span>)}
+                                        {(profile.skills?.technical || []).map((s, i) => <span key={`${s}-${i}`} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs border border-blue-100">{s}</span>)}
                                         {profile.skills?.technical?.length === 0 && <span className="text-slate-400 italic text-sm">Not specified</span>}
                                     </div>
                                 )}
@@ -1368,7 +1368,7 @@ const EmployeeDossier = () => {
                                     />
                                 ) : (
                                     <div className="flex flex-wrap gap-2">
-                                        {(profile.skills?.behavioral || []).map(s => <span key={s} className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-xs border border-emerald-100">{s}</span>)}
+                                        {(profile.skills?.behavioral || []).map((s, i) => <span key={`${s}-${i}`} className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-xs border border-emerald-100">{s}</span>)}
                                         {profile.skills?.behavioral?.length === 0 && <span className="text-slate-400 italic text-sm">Not specified</span>}
                                     </div>
                                 )}
@@ -1385,7 +1385,7 @@ const EmployeeDossier = () => {
                                     />
                                 ) : (
                                     <div className="flex flex-wrap gap-2">
-                                        {(profile.skills?.learningInterests || []).map(s => <span key={s} className="bg-purple-50 text-purple-700 px-2 py-1 rounded text-xs border border-purple-100">{s}</span>)}
+                                        {(profile.skills?.learningInterests || []).map((s, i) => <span key={`${s}-${i}`} className="bg-purple-50 text-purple-700 px-2 py-1 rounded text-xs border border-purple-100">{s}</span>)}
                                         {profile.skills?.learningInterests?.length === 0 && <span className="text-slate-400 italic text-sm">Not specified</span>}
                                     </div>
                                 )}

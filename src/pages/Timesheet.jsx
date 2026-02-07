@@ -104,9 +104,6 @@ const Timesheet = () => {
         projectId: '',
         moduleId: '',
         taskId: '',
-        projectId: '',
-        moduleId: '',
-        taskId: '',
         hours: '',
         minutes: '',
         description: ''
