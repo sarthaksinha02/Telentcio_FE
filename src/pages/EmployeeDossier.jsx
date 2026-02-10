@@ -84,8 +84,8 @@ const EmployeeDossier = () => {
     const { user: currentUser } = useAuth();
 
     // Permissions
-    const canEdit = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('dossier.edit');
-    const canApprove = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('dossier.approve');
+    const canEdit = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.permissions?.includes('dossier.edit');
+    const canApprove = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.permissions?.includes('dossier.approve');
 
     // State
     const [profile, setProfile] = useState(null);
@@ -351,7 +351,16 @@ const EmployeeDossier = () => {
     const handleHRISSave = async () => {
         try {
             setSavingSection('hris');
-            await api.patch(`/dossier/${userId}/submit-hris`, formData);
+            const dataToSubmit = { ...formData };
+
+            // Allow Admins to submit without explicit checkbox (forces status update)
+            const isAdmin = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin');
+            if (isAdmin) {
+                if (!dataToSubmit.hris) dataToSubmit.hris = {};
+                dataToSubmit.hris.isDeclared = true;
+            }
+
+            await api.patch(`/dossier/${userId}/submit-hris`, dataToSubmit);
             toast.success('HRIS Form saved successfully');
             setEditMode(false);
             fetchDossier();
@@ -959,7 +968,7 @@ const EmployeeDossier = () => {
     const renderHRIS = () => {
         if (!profile) return null;
         const isEditing = editMode === 'hris';
-        const isAdmin = currentUser?.roles?.some(r => r.name === 'Admin');
+        const isAdmin = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin');
         const isManager = profile.employment?.reportingManager?._id === currentUser?._id || profile.employment?.reportingManager === currentUser?._id;
         const hrisStatus = profile.hris?.status || 'Draft';
 
@@ -1004,9 +1013,9 @@ const EmployeeDossier = () => {
                                     <Button onClick={() => setEditMode('hris')} className="flex items-center">
                                         <Save size={16} className="mr-2" /> Edit Form
                                     </Button>
-                                    {(hrisStatus === 'Draft' || hrisStatus === 'Rejected' || hrisStatus === 'Approved') && profile.hris?.isDeclared && (
+                                    {(hrisStatus === 'Draft' || hrisStatus === 'Rejected' || hrisStatus === 'Approved') && (profile.hris?.isDeclared || (currentUser?.roles?.some(r => r.name === 'Admin'))) && (
                                         <Button onClick={() => handleHRISSave()} className="bg-blue-600 hover:bg-blue-700 text-white border-none">
-                                            <Shield size={16} className="mr-2" /> Submit for Approval
+                                            <Shield size={16} className="mr-2" /> {profile.hris?.isDeclared ? 'Submit for Approval' : 'Submit as Admin'}
                                         </Button>
                                     )}
                                 </div>
@@ -1015,7 +1024,7 @@ const EmployeeDossier = () => {
                             <div className="flex space-x-3">
                                 <Button variant="ghost" onClick={() => { setEditMode(false); setFormData(profile); }}>Cancel</Button>
                                 <Button onClick={handleHRISSave} variant="primary" isLoading={savingSection === 'hris'} className="px-8">
-                                    {formData.hris?.isDeclared ? 'Submit for Approval' : 'Save Information'}
+                                    {(formData.hris?.isDeclared || isAdmin) ? 'Submit for Approval' : 'Save Information'}
                                 </Button>
                             </div>
                         )}
