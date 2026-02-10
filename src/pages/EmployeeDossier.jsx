@@ -280,7 +280,7 @@ const EmployeeDossier = () => {
     };
 
     useEffect(() => {
-        const isManager = currentUser?.roles?.some(r => r.name === 'Admin') || currentUser?.directReportsCount > 0;
+        const isManager = currentUser?.roles?.some(r => r.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
         if (isManager && activeTab === 'requests') {
             fetchHRISRequests();
         }
@@ -297,7 +297,7 @@ const EmployeeDossier = () => {
         { id: 'hris', label: 'HRIS', icon: Shield },
     ];
 
-    const isManager = currentUser?.roles?.some(r => r.name === 'Admin') || currentUser?.directReportsCount > 0;
+    const isManager = currentUser?.roles?.some(r => r.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
     if (isManager) {
         tabs.push({ id: 'requests', label: 'Requests', icon: AlertCircle });
     }
