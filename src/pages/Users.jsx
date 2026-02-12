@@ -6,9 +6,11 @@ import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 
 const Users = () => {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const [users, setUsers] = useState([]);
     const [roles, setRoles] = useState([]);
@@ -741,37 +743,37 @@ const Users = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {filteredUsers.map((user) => (
-                                    <tr key={user._id} className="hover:bg-slate-50/50">
+                                {filteredUsers.map((employee) => (
+                                    <tr key={employee._id} className="hover:bg-slate-50/50">
                                         <td className="px-6 py-3">
                                             <div className="flex items-center space-x-3">
                                                 <div className="h-9 w-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
-                                                    {user.firstName.charAt(0)}{user.lastName?.charAt(0)}
+                                                    {employee.firstName.charAt(0)}{employee.lastName?.charAt(0)}
                                                 </div>
                                                 <div>
-                                                    <div className="font-medium text-slate-800">{user.firstName} {user.lastName}</div>
-                                                    <div className="text-xs text-slate-500">{user.employeeCode || 'N/A'}</div>
+                                                    <div className="font-medium text-slate-800">{employee.firstName} {employee.lastName}</div>
+                                                    <div className="text-xs text-slate-500">{employee.employeeCode || 'N/A'}</div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-3 text-slate-600">{user.email}</td>
+                                        <td className="px-6 py-3 text-slate-600">{employee.email}</td>
                                         <td className="px-6 py-3">
-                                            {user.roles.map(r => (
+                                            {employee.roles.map(r => (
                                                 <span key={r._id} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 mr-1">
                                                     <Shield size={10} className="mr-1" /> {r.name}
                                                 </span>
                                             ))}
                                         </td>
-                                        <td className="px-6 py-3 text-slate-600">{user.department || '-'}</td>
+                                        <td className="px-6 py-3 text-slate-600">{employee.department || '-'}</td>
                                         <td className="px-6 py-3">
                                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                                                {user.employmentType || 'Full Time'}
+                                                {employee.employmentType || 'Full Time'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-3 text-slate-600">
-                                            {user.reportingManagers && user.reportingManagers.length > 0 ? (
+                                            {employee.reportingManagers && employee.reportingManagers.length > 0 ? (
                                                 <div className="flex flex-col space-y-1">
-                                                    {user.reportingManagers.map(mgr => (
+                                                    {employee.reportingManagers.map(mgr => (
                                                         <div key={mgr._id} className="flex flex-col border-l-2 border-slate-200 pl-2">
                                                             <span className="font-medium text-xs text-slate-700">{mgr.firstName} {mgr.lastName}</span>
                                                             <span className="text-[10px] text-slate-400">{mgr.email}</span>
@@ -783,22 +785,22 @@ const Users = () => {
                                             )}
                                         </td>
                                         <td className="px-6 py-3">
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${user.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                                                {user.isActive ? 'Active' : 'Inactive'}
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${employee.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                                {employee.isActive ? 'Active' : 'Inactive'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-3 text-right">
                                             <div className="flex items-center justify-end space-x-2">
                                                 {canEdit && (
-                                                    <button onClick={() => handleEdit(user)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"><Edit2 size={16} /></button>
+                                                    <button onClick={() => handleEdit(employee)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"><Edit2 size={16} /></button>
                                                 )}
 
                                                 {/* View Timesheet Action (Visible if user reports to me or if I am Admin) */}
-                                                {(!canEdit || canEdit) && (!user.reportingManagers?.some(rm => rm._id === user._id)) && (
+                                                {(canEdit || employee.reportingManagers?.some(rm => rm._id === user._id)) && (
                                                     <button
                                                         onClick={() => {
                                                             // Navigate to timesheet with user context
-                                                            window.location.href = `/timesheet?userId=${user._id}&name=${user.firstName} ${user.lastName}`;
+                                                            window.location.href = `/timesheet?userId=${employee._id}&name=${employee.firstName} ${employee.lastName}`;
                                                         }}
                                                         className="text-emerald-600 hover:text-emerald-800 p-1 hover:bg-emerald-50 rounded"
                                                         title="View Timesheet"
@@ -807,14 +809,16 @@ const Users = () => {
                                                     </button>
                                                 )}
 
-                                                {/* View Dossier */}
-                                                <button
-                                                    onClick={() => window.location.href = `/dossier/${user._id}`}
-                                                    className="text-purple-600 hover:text-purple-800 p-1 hover:bg-purple-50 rounded"
-                                                    title="View Dossier"
-                                                >
-                                                    <FileText size={16} />
-                                                </button>
+                                                {/* View Dossier Action */}
+                                                {(canEdit || user?.permissions?.includes('dossier.view')) && (
+                                                    <button
+                                                        onClick={() => navigate(`/dossier/${employee._id}`)}
+                                                        className="text-purple-600 hover:text-purple-800 p-1 hover:bg-purple-50 rounded"
+                                                        title="View Dossier"
+                                                    >
+                                                        <FileText size={16} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
