@@ -1601,6 +1601,7 @@ const EmployeeDossier = () => {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             <Field section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing} label="Alternate Mobile Number" field="alternateNumber" value={profile.contact?.alternateNumber} formData={formData} onChange={handleInputChange} />
                             <Field section="contact" isEditing={isEditing} label="Emergency Number" field="emergencyNumber" value={profile.contact?.emergencyNumber} formData={formData} onChange={handleInputChange} />
                             <Field section="contact" isEditing={isEditing} label="Landline Number" field="landlineNumber" value={profile.contact?.landlineNumber} formData={formData} onChange={handleInputChange} />
                         </div>

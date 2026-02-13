@@ -178,26 +178,30 @@ const Projects = () => {
                                                     {project.isActive ? 'Active' : 'Inactive'}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-3 text-right space-x-3">
-                                                {canUpdate && <button onClick={() => handleEdit(project)} className="text-slate-500 hover:text-blue-600 text-xs font-medium">Edit</button>}
-                                                {user?.permissions?.includes('project.delete') && (
-                                                    <button
-                                                        onClick={() => {
-                                                            if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
-                                                                api.delete(`/projects/${project._id}`)
-                                                                    .then(() => {
+                                            <td className="px-6 py-3">
+                                                <div className="flex items-center justify-end gap-3">
+                                                    {canUpdate && <button onClick={() => handleEdit(project)} className="text-slate-500 hover:text-blue-600 text-xs font-medium whitespace-nowrap">Edit</button>}
+                                                    {user?.permissions?.includes('project.delete') && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            onClick={async () => {
+                                                                if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
+                                                                    try {
+                                                                        await api.delete(`/projects/${project._id}`);
                                                                         toast.success('Project deleted');
                                                                         fetchData();
-                                                                    })
-                                                                    .catch(() => toast.error('Failed to delete project'));
-                                                            }
-                                                        }}
-                                                        className="text-slate-500 hover:text-red-600 text-xs font-medium"
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                )}
-                                                <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">View Modules</a>
+                                                                    } catch (error) {
+                                                                        toast.error('Failed to delete project');
+                                                                    }
+                                                                }
+                                                            }}
+                                                            className="text-slate-500 hover:text-red-600 text-xs font-medium p-0 whitespace-nowrap h-auto"
+                                                        >
+                                                            Delete
+                                                        </Button>
+                                                    )}
+                                                    <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium whitespace-nowrap">View Modules</a>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
@@ -325,7 +329,7 @@ const Projects = () => {
 
                             <div className="flex justify-end space-x-3 pt-4">
                                 <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
-                                <Button type="submit">{editingId ? 'Update' : 'Create'}</Button>
+                                <Button type="submit" isLoading={loading}>{editingId ? 'Update' : 'Create'}</Button>
                             </div>
                         </form>
                     </div>
