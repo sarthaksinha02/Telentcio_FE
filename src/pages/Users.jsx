@@ -435,7 +435,8 @@ const Users = () => {
         joiningDate: '',
         directReports: [],
         reportingManagers: [],
-        employmentType: 'Full Time'
+        employmentType: 'Full Time',
+        workLocation: ''
     });
 
     const fetchData = async () => {
@@ -526,6 +527,7 @@ const Users = () => {
             employeeCode: user.employeeCode || '',
             joiningDate: user.joiningDate ? new Date(user.joiningDate).toISOString().split('T')[0] : '',
             employmentType: user.employmentType || 'Full Time',
+            workLocation: user.workLocation || '',
             directReports: currentReports,
             reportingManagers: user.reportingManagers?.map(rm => rm._id) || []
         });
@@ -544,7 +546,8 @@ const Users = () => {
             department: '',
             employeeCode: '',
             joiningDate: '',
-            employmentType: 'Full Time'
+            employmentType: 'Full Time',
+            workLocation: ''
         });
         setShowModal(true);
     };
@@ -795,8 +798,8 @@ const Users = () => {
                                                     <button onClick={() => handleEdit(employee)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"><Edit2 size={16} /></button>
                                                 )}
 
-                                                {/* View Timesheet Action (Visible if user reports to me or if I am Admin) */}
-                                                {(canEdit || employee.reportingManagers?.some(rm => rm._id === user._id)) && (
+                                                {/* View Timesheet Action (Visible if Admin, manager, or has timesheet.view) */}
+                                                {(canEdit || user?.permissions?.includes('timesheet.view') || employee.reportingManagers?.some(rm => rm._id === user._id)) && (
                                                     <button
                                                         onClick={() => {
                                                             // Navigate to timesheet with user context
@@ -885,6 +888,12 @@ const Users = () => {
                                         <option value="Freelance">Freelance</option>
                                         <option value="Probation">Probation</option>
                                     </select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Work Location</label>
+                                    <input name="workLocation" value={formData.workLocation} onChange={handleChange} placeholder="e.g. Headquarters" className="zoho-input" />
                                 </div>
                             </div>
                             <div>

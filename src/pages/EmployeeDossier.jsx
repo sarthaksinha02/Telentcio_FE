@@ -12,7 +12,7 @@ import { format } from 'date-fns';
 import Button from '../components/Button';
 
 // Helper Components defined outside to prevent re-renders
-const Field = ({ label, value, section, field, type = "text", options = null, isEditing, hideIfEmpty, onChangeOverride, valueOverride, placeholder, formData, onChange, maxLength, error }) => {
+const Field = ({ label, value, section, field, type = "text", options = null, isEditing, hideIfEmpty, onChangeOverride, valueOverride, placeholder, formData, onChange, maxLength, error, required }) => {
     if (!isEditing && !value && hideIfEmpty) return null;
 
     const currentValue = valueOverride !== undefined ? valueOverride : (formData?.[section]?.[field] || '');
@@ -20,7 +20,9 @@ const Field = ({ label, value, section, field, type = "text", options = null, is
 
     return (
         <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                {label} {required && <span className="text-red-500">*</span>}
+            </label>
             {isEditing ? (
                 <>
                     {options ? (
@@ -195,8 +197,9 @@ const documentCategories = [
     }
 ];
 
-const EmployeeDossier = () => {
-    const { userId } = useParams();
+const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
+    const { userId: paramUserId } = useParams();
+    const userId = propUserId || paramUserId;
     const navigate = useNavigate();
     const { user: currentUser } = useAuth();
 
@@ -207,7 +210,7 @@ const EmployeeDossier = () => {
     // State
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('overview');
+    const [activeTab, setActiveTab] = useState('personal');
     const [editMode, setEditMode] = useState(false);
     const [formData, setFormData] = useState({});
     const [historyLogs, setHistoryLogs] = useState([]);
@@ -452,12 +455,11 @@ const EmployeeDossier = () => {
 
     // Handle Tab Change
     const tabs = [
-        { id: 'overview', label: 'Overview', icon: User },
         { id: 'personal', label: 'Personal', icon: User },
-        { id: 'employment', label: 'Employment', icon: Briefcase },
+        { id: 'employment', label: 'Employment History', icon: Briefcase },
         { id: 'documents', label: 'Documents', icon: FileText },
-        { id: 'history', label: 'History', icon: Calendar },
         { id: 'hris', label: 'HRIS', icon: Shield },
+        { id: 'history', label: 'Activities', icon: Calendar },
     ];
 
     const isManager = currentUser?.roles?.some(r => r.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
@@ -525,6 +527,16 @@ const EmployeeDossier = () => {
     };
 
     const handleHRISSave = async () => {
+        // HRIS Validation
+        const p = formData.personal || {};
+        const b = formData.compensation?.bankDetails || {};
+
+        if (!p.firstName || !p.lastName || !p.fullName) return toast.error('All fields are required');
+
+        if (!b.accountNumber || !b.ifscCode || !b.bankName || !b.accountHolderName || !b.branchAddress) {
+            return toast.error('All fields are required');
+        }
+
         try {
             setSavingSection('hris');
             const dataToSubmit = { ...formData };
@@ -572,8 +584,46 @@ const EmployeeDossier = () => {
         }
     };
 
+    // Validation Helper
+    const validateSectionData = (section) => {
+        const data = formData[section] || {};
+
+        if (section === 'personal') {
+            const required = ['dob', 'gender', 'maritalStatus', 'nationality', 'bloodGroup', 'disabilityStatus'];
+            const missing = required.filter(f => !data[f]);
+            if (missing.length > 0) return 'All fields are required'; // Generic warning
+        }
+        if (section === 'contact') {
+            if (!data.personalEmail || !data.mobileNumber || !data.alternateNumber) return 'All fields are required';
+
+            // Check Emergency Contact
+            const ec = data.emergencyContact || {};
+            if (!ec.name || !ec.relation || !ec.phone || !ec.email) return 'All fields are required';
+
+            // Validate Addresses
+            const addresses = data.addresses || [];
+            const hasCurrent = addresses.some(a => a.type === 'Current' && a.street && a.addressLine2 && a.city && a.state && a.zipCode && a.country);
+            const hasPermanent = addresses.some(a => a.type === 'Permanent' && a.street && a.addressLine2 && a.city && a.state && a.zipCode && a.country);
+
+            if (!hasCurrent || !hasPermanent) return 'All fields are required';
+        }
+        if (section === 'identity') {
+            if (!data.aadhaarNumber || !data.panNumber) return 'All fields are required';
+        }
+        if (section === 'family') {
+            if (!data.fatherName || !data.motherName) return 'All fields are required';
+        }
+        return null;
+    };
+
     // Save Changes
     const handleSave = async (section) => {
+        const error = validateSectionData(section);
+        if (error) {
+            toast.error(error);
+            return;
+        }
+
         try {
             setSavingSection(section);
             const updates = formData[section];
@@ -591,110 +641,7 @@ const EmployeeDossier = () => {
 
     // --- RENDER SECTIONS ---
 
-    const renderOverview = () => {
-        if (!profile) return null;
 
-        // Completion Calculation
-        const fields = [
-            profile.personal?.dob, profile.personal?.gender,
-            profile.contact?.mobileNumber, profile.contact?.personalEmail,
-            profile.employment?.joiningDate, profile.documents?.length > 0
-        ];
-        const completed = fields.filter(Boolean).length;
-        const total = fields.length;
-        const percent = Math.round((completed / total) * 100);
-
-        return (
-            <div className="space-y-6">
-                {/* Profile Header Card */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-start space-x-6">
-                    <div className="h-24 w-24 rounded-full bg-slate-100 flex items-center justify-center text-3xl font-bold text-slate-400 border-4 border-white shadow-sm">
-                        {profile.personal?.photo ? (
-                            <img src={profile.personal.photo} alt="Profile" className="h-full w-full rounded-full object-cover" />
-                        ) : (
-                            <span>{profile.user?.firstName?.charAt(0) || 'U'}</span>
-                        )}
-                    </div>
-                    <div className="flex-1">
-                        <h2 className="text-2xl font-bold text-slate-800">
-                            {/* Getting name from populated user object if available, otherwise fallback */}
-                            {profile.user?.firstName || 'Employee'} {profile.user?.lastName}
-                        </h2>
-                        <div className="flex items-center space-x-4 mt-2 text-slate-600 text-sm">
-                            <span className="flex items-center">
-                                <Briefcase size={14} className="mr-1" />
-                                {profile.employment?.designation || profile.user?.roles?.[0]?.name || 'Assign Role'}
-                            </span>
-                            <span className="flex items-center"><Shield size={14} className="mr-1" /> {profile.employment?.status || 'Active'}</span>
-                            <span className="flex items-center">
-                                <Calendar size={14} className="mr-1" />
-                                Joined: {(profile.employment?.joiningDate || profile.user?.joiningDate) ? format(new Date(profile.employment?.joiningDate || profile.user?.joiningDate), 'dd MMM yyyy') : 'N/A'}
-                            </span>
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div className="mt-4 max-w-md">
-                            <div className="flex justify-between text-xs mb-1">
-                                <span className="font-semibold text-slate-500">Profile Completion</span>
-                                <span className="font-bold text-emerald-600">{percent}%</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-2">
-                                <div className="bg-emerald-500 h-2 rounded-full transition-all duration-500" style={{ width: `${percent}%` }}></div>
-                            </div>
-                            <p className="text-xs text-slate-400 mt-1">Complete your profile to unlock all features.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
-                        <h3 className="font-bold text-slate-700 mb-4 flex items-center"><User size={18} className="mr-2" /> Essential Info</h3>
-                        <div className="space-y-3 text-sm">
-                            <div className="flex justify-between border-b border-slate-50 pb-2">
-                                <span className="text-slate-500">Employee ID</span>
-                                <span className="font-medium">{profile.user?.employeeCode || 'N/A'}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-slate-50 pb-2">
-                                <span className="text-slate-500">Email (Work)</span>
-                                <span className="font-medium">{profile.user?.email || 'N/A'}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-slate-50 pb-2">
-                                <span className="text-slate-500">Department</span>
-                                <span className="font-medium">{profile.employment?.department || 'N/A'}</span>
-                            </div>
-                            <div className="flex justify-between pb-2">
-                                <span className="text-slate-500">Reporting To</span>
-                                <span className="font-medium text-blue-600 cursor-pointer">
-                                    {profile.employment?.reportingManager ?
-                                        `${profile.employment.reportingManager.firstName} ${profile.employment.reportingManager.lastName}` :
-                                        'None'}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
-                        <h3 className="font-bold text-slate-700 mb-4 flex items-center"><AlertCircle size={18} className="mr-2" /> Pending Actions</h3>
-                        {/* Placeholder for pending actions */}
-                        {percent < 100 ? (
-                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-start">
-                                <AlertCircle size={16} className="mt-0.5 mr-2 shrink-0" />
-                                <div>
-                                    <p className="font-semibold">Profile Incomplete</p>
-                                    <p className="mt-1 text-xs">Please visit the 'Personal' and 'Documents' tabs to complete your dossier.</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800 flex items-center">
-                                <CheckCircle size={16} className="mr-2" />
-                                <span>All set! Your profile is up to date.</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-        );
-    };
 
     const renderPersonal = () => {
 
@@ -715,24 +662,28 @@ const EmployeeDossier = () => {
                     canEdit={canEdit}
                 >
                     {(isEditing) => (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" value={profile.personal?.dob} type="date" formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Marital Status" field="maritalStatus" value={profile.personal?.maritalStatus} options={['Single', 'Married', 'Divorced', 'Widowed']} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Nationality" field="nationality" value={profile.personal?.nationality} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Blood Group" field="bloodGroup" value={profile.personal?.bloodGroup} formData={formData} onChange={handleInputChange} />
-                            <Field
-                                section="personal"
-                                isEditing={isEditing}
-                                label="Disability Status"
-                                field="disabilityStatus"
-                                value={profile.personal?.disabilityStatus ? 'Yes' : 'No'}
-                                valueOverride={formData.personal?.disabilityStatus ? 'Yes' : 'No'}
-                                options={['No', 'Yes']}
-                                hideIfEmpty
-                                formData={formData}
-                                onChangeOverride={(e) => handleInputChange('personal', 'disabilityStatus', e.target.value === 'Yes')}
-                            />
+                        <div className="space-y-4">
+                            <p className="text-xs text-red-500 italic">* fields are mandatory</p>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" value={profile.personal?.dob} type="date" formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Marital Status" field="maritalStatus" value={profile.personal?.maritalStatus} options={['Single', 'Married', 'Divorced', 'Widowed']} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Nationality" field="nationality" value={profile.personal?.nationality} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Blood Group" field="bloodGroup" value={profile.personal?.bloodGroup} formData={formData} onChange={handleInputChange} required />
+                                <Field
+                                    section="personal"
+                                    isEditing={isEditing}
+                                    label="Disability Status"
+                                    field="disabilityStatus"
+                                    value={profile.personal?.disabilityStatus ? 'Yes' : 'No'}
+                                    valueOverride={formData.personal?.disabilityStatus ? 'Yes' : 'No'}
+                                    options={['No', 'Yes']}
+                                    hideIfEmpty
+                                    formData={formData}
+                                    onChangeOverride={(e) => handleInputChange('personal', 'disabilityStatus', e.target.value === 'Yes')}
+                                    required
+                                />
+                            </div>
                         </div>
                     )}
                 </SectionCard>
@@ -750,8 +701,9 @@ const EmployeeDossier = () => {
                 >
                     {(isEditing) => (
                         <div className="space-y-6">
+                            <p className="text-xs text-red-500 italic">* fields are mandatory</p>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} />
+                                <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
                                 <Field
                                     section="contact" isEditing={isEditing} label="Mobile Number" field="mobileNumber"
                                     value={profile.contact?.mobileNumber} formData={formData}
@@ -761,6 +713,7 @@ const EmployeeDossier = () => {
                                         const val = e.target.value.replace(/\D/g, '');
                                         handleInputChange('contact', 'mobileNumber', val);
                                     }}
+                                    required
                                 />
                                 <Field
                                     section="contact" isEditing={isEditing} label="Alternate Number" field="alternateNumber"
@@ -771,6 +724,7 @@ const EmployeeDossier = () => {
                                         const val = e.target.value.replace(/\D/g, '');
                                         handleInputChange('contact', 'alternateNumber', val);
                                     }}
+                                    required
                                 />
                             </div>
 
@@ -785,6 +739,7 @@ const EmployeeDossier = () => {
                                         valueOverride={formData.contact?.emergencyContact?.name}
                                         onChangeOverride={(e) => handleEmergencyChange('name', e.target.value)}
                                         formData={formData} onChange={handleInputChange}
+                                        required
                                     />
                                     <Field
                                         section="contact" isEditing={isEditing}
@@ -793,6 +748,7 @@ const EmployeeDossier = () => {
                                         valueOverride={formData.contact?.emergencyContact?.relation}
                                         onChangeOverride={(e) => handleEmergencyChange('relation', e.target.value)}
                                         formData={formData} onChange={handleInputChange}
+                                        required
                                     />
                                     <Field
                                         section="contact" isEditing={isEditing}
@@ -806,6 +762,7 @@ const EmployeeDossier = () => {
                                             handleEmergencyChange('phone', val);
                                         }}
                                         formData={formData} onChange={handleInputChange}
+                                        required
                                     />
                                     <Field
                                         section="contact" isEditing={isEditing}
@@ -814,6 +771,7 @@ const EmployeeDossier = () => {
                                         valueOverride={formData.contact?.emergencyContact?.email}
                                         onChangeOverride={(e) => handleEmergencyChange('email', e.target.value)}
                                         formData={formData} onChange={handleInputChange}
+                                        required
                                     />
                                 </div>
                             </div>
@@ -827,25 +785,25 @@ const EmployeeDossier = () => {
                                         <div className="space-y-3">
                                             <Field section="contact" isEditing={isEditing} label="Street" field="C_street" value={getProfileAddress('Current').street}
                                                 valueOverride={getAddress('Current').street} onChangeOverride={(e) => handleAddressChange('Current', 'street', e.target.value)}
-                                                formData={formData} onChange={handleInputChange} />
+                                                formData={formData} onChange={handleInputChange} required />
                                             <Field section="contact" isEditing={isEditing} label="Line 2" field="C_line2" value={getProfileAddress('Current').addressLine2}
                                                 valueOverride={getAddress('Current').addressLine2} onChangeOverride={(e) => handleAddressChange('Current', 'addressLine2', e.target.value)}
-                                                formData={formData} onChange={handleInputChange} />
+                                                formData={formData} onChange={handleInputChange} required />
                                             <div className="grid grid-cols-2 gap-3">
                                                 <Field section="contact" isEditing={isEditing} label="City" field="C_city" value={getProfileAddress('Current').city}
                                                     valueOverride={getAddress('Current').city} onChangeOverride={(e) => handleAddressChange('Current', 'city', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                                    formData={formData} onChange={handleInputChange} required />
                                                 <Field section="contact" isEditing={isEditing} label="State" field="C_state" value={getProfileAddress('Current').state}
                                                     valueOverride={getAddress('Current').state} onChangeOverride={(e) => handleAddressChange('Current', 'state', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                                    formData={formData} onChange={handleInputChange} required />
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <Field section="contact" isEditing={isEditing} label="Pincode" field="C_zip" value={getProfileAddress('Current').zipCode}
                                                     valueOverride={getAddress('Current').zipCode} onChangeOverride={(e) => handleAddressChange('Current', 'zipCode', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                                    formData={formData} onChange={handleInputChange} required />
                                                 <Field section="contact" isEditing={isEditing} label="Country" field="C_country" value={getProfileAddress('Current').country}
                                                     valueOverride={getAddress('Current').country} onChangeOverride={(e) => handleAddressChange('Current', 'country', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                                    formData={formData} onChange={handleInputChange} required />
                                             </div>
                                         </div>
                                     </div>
@@ -876,25 +834,25 @@ const EmployeeDossier = () => {
                                         <div className="space-y-3">
                                             <Field section="contact" isEditing={isEditing} label="Street" field="P_street" value={getProfileAddress('Permanent').street}
                                                 valueOverride={getAddress('Permanent').street} onChangeOverride={(e) => handleAddressChange('Permanent', 'street', e.target.value)}
-                                                formData={formData} onChange={handleInputChange} />
+                                                formData={formData} onChange={handleInputChange} required />
                                             <Field section="contact" isEditing={isEditing} label="Line 2" field="P_line2" value={getProfileAddress('Permanent').addressLine2}
                                                 valueOverride={getAddress('Permanent').addressLine2} onChangeOverride={(e) => handleAddressChange('Permanent', 'addressLine2', e.target.value)}
-                                                formData={formData} onChange={handleInputChange} />
+                                                formData={formData} onChange={handleInputChange} required />
                                             <div className="grid grid-cols-2 gap-3">
                                                 <Field section="contact" isEditing={isEditing} label="City" field="P_city" value={getProfileAddress('Permanent').city}
                                                     valueOverride={getAddress('Permanent').city} onChangeOverride={(e) => handleAddressChange('Permanent', 'city', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                                    formData={formData} onChange={handleInputChange} required />
                                                 <Field section="contact" isEditing={isEditing} label="State" field="P_state" value={getProfileAddress('Permanent').state}
                                                     valueOverride={getAddress('Permanent').state} onChangeOverride={(e) => handleAddressChange('Permanent', 'state', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                                    formData={formData} onChange={handleInputChange} required />
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <Field section="contact" isEditing={isEditing} label="Pincode" field="P_zip" value={getProfileAddress('Permanent').zipCode}
                                                     valueOverride={getAddress('Permanent').zipCode} onChangeOverride={(e) => handleAddressChange('Permanent', 'zipCode', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                                    formData={formData} onChange={handleInputChange} required />
                                                 <Field section="contact" isEditing={isEditing} label="Country" field="P_country" value={getProfileAddress('Permanent').country}
                                                     valueOverride={getAddress('Permanent').country} onChangeOverride={(e) => handleAddressChange('Permanent', 'country', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                                    formData={formData} onChange={handleInputChange} required />
                                             </div>
                                         </div>
                                     </div>
@@ -915,10 +873,13 @@ const EmployeeDossier = () => {
                     isLoading={savingSection === 'identity'}
                 >
                     {(isEditing) => (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <Field section="identity" isEditing={isEditing} label="Aadhaar Number" field="aadhaarNumber" value={profile.identity?.aadhaarNumber} formData={formData} onChange={handleInputChange} />
-                            <Field section="identity" isEditing={isEditing} label="PAN Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} />
-                            <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
+                        <div className="space-y-4">
+                            <p className="text-xs text-red-500 italic">* fields are mandatory</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <Field section="identity" isEditing={isEditing} label="Aadhaar Number" field="aadhaarNumber" value={profile.identity?.aadhaarNumber} formData={formData} onChange={handleInputChange} required />
+                                <Field section="identity" isEditing={isEditing} label="PAN Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
+                                <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
+                            </div>
                         </div>
                     )}
                 </SectionCard>
@@ -963,7 +924,7 @@ const EmployeeDossier = () => {
                     {/* Work Location */}
                     <div>
                         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Work Location</label>
-                        <div className="text-slate-800 font-medium">{profile.employment?.workLocation || 'Office'}</div>
+                        <div className="text-slate-800 font-medium">{profile.user?.workLocation || profile.employment?.workLocation || 'Office'}</div>
                     </div>
 
                     {/* Employment Type */}
@@ -1004,6 +965,32 @@ const EmployeeDossier = () => {
         };
 
         const handleSubmitDocuments = async () => {
+            // Validation: Check for mandatory documents
+            const uploadedTitles = profile.documents?.map(d => d.title.toLowerCase()) || [];
+
+            // 1. Mandatory Identity Docs (Except Passport)
+            const identityCategory = documentCategories.find(c => c.name === 'Identity Documents');
+            const requiredIdentityDocs = identityCategory?.fixedDocs.filter(doc => doc !== 'Passport') || [];
+
+            const missingIdentityDocs = requiredIdentityDocs.filter(reqDoc =>
+                !uploadedTitles.includes(reqDoc.toLowerCase())
+            );
+
+            // 2. Mandatory Qualification Docs
+            const qualificationCategory = documentCategories.find(c => c.name === 'Qualification Certificates');
+            const requiredQualificationDocs = qualificationCategory?.fixedDocs || [];
+
+            const missingQualificationDocs = requiredQualificationDocs.filter(reqDoc =>
+                !uploadedTitles.includes(reqDoc.toLowerCase())
+            );
+
+            const allMissing = [...missingIdentityDocs, ...missingQualificationDocs];
+
+            if (allMissing.length > 0) {
+                toast.error(`All fields are required.`);
+                return;
+            }
+
             try {
                 const targetUserId = userId || currentUser?._id;
                 const response = await api.patch(`/dossier/${targetUserId}/documents/submit`);
@@ -1147,11 +1134,8 @@ const EmployeeDossier = () => {
 
         return (
             <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex justify-between items-center mb-1">
                     <h3 className="text-lg font-bold text-slate-800">Documents</h3>
-
-                    {/* Submit for Approval Button - Always Visible if not verifier OR if own profile */}
-
 
                     {/* Approve All Button for Admins - Always Visible */}
                     {canVerify && (
@@ -1168,8 +1152,8 @@ const EmployeeDossier = () => {
                         </Button>
                     )}
                 </div>
+                <p className="text-xs text-red-500 italic mb-6">* fields are mandatory</p>
 
-                {/* Submission Status Banner */}
                 {/* Submission Status Banner */}
                 {profile.documentSubmissionStatus && profile.documentSubmissionStatus !== 'Draft' && (
                     <div className={`mb-4 p-3 rounded-lg border flex items-center gap-3 shadow-sm transition-all duration-300 ${profile.documentSubmissionStatus === 'Approved' ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900' :
@@ -1238,6 +1222,7 @@ const EmployeeDossier = () => {
                                     {/* Fixed documents (Identity, Education, Bank etc.) */}
                                     {catConfig.fixedDocs?.map((docTitle) => {
                                         const doc = categoryDocs.find(d => d.title.toLowerCase() === docTitle.toLowerCase());
+                                        const isMandatory = (catConfig.name === 'Identity Documents' && docTitle !== 'Passport') || (catConfig.name === 'Qualification Certificates');
 
                                         if (doc) {
                                             return <DocumentCard key={doc._id} doc={doc} />;
@@ -1253,7 +1238,9 @@ const EmployeeDossier = () => {
                                                 <div className="p-3 bg-slate-100 rounded-full text-slate-400 mb-3 group-hover:text-blue-500 group-hover:bg-blue-100 group-hover:scale-110 transition-all">
                                                     <Upload size={20} />
                                                 </div>
-                                                <h4 className="font-semibold text-slate-700 text-sm mb-1 group-hover:text-blue-700 transition-colors">{docTitle}</h4>
+                                                <h4 className="font-semibold text-slate-700 text-sm mb-1 group-hover:text-blue-700 transition-colors">
+                                                    {docTitle} {isMandatory && <span className="text-red-500">*</span>}
+                                                </h4>
                                                 <p className="text-xs text-slate-400">Click to upload</p>
                                             </div>
                                         );
@@ -1475,6 +1462,7 @@ const EmployeeDossier = () => {
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 py-12">
+                    <p className="text-xs text-red-500 italic px-1">* fields are mandatory</p>
                     {/* 1. Basic Details */}
                     <div className="space-y-6">
                         <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
@@ -1483,9 +1471,9 @@ const EmployeeDossier = () => {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <Field section="user" isEditing={false} label="Employee Code" field="employeeCode" value={profile.user?.employeeCode} />
-                            <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} />
-                            <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} />
-                            <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing && !profile.contact?.personalEmail} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
+                            <Field section="identity" isEditing={isEditing && !profile.identity?.panNumber} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
+                            <Field section="identity" isEditing={isEditing && !profile.identity?.passportNumber} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
                         </div>
                     </div>
 
@@ -1496,10 +1484,10 @@ const EmployeeDossier = () => {
                             <h3 className="font-bold text-slate-700">2. Name Details</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="personal" isEditing={isEditing} label="Full Name" field="fullName" value={profile.personal?.fullName} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="First Name" field="firstName" value={profile.personal?.firstName} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Middle Name" field="middleName" value={profile.personal?.middleName} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Last Name" field="lastName" value={profile.personal?.lastName} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing && !profile.personal?.fullName} label="Full Name" field="fullName" value={profile.personal?.fullName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="personal" isEditing={isEditing && !profile.personal?.firstName} label="First Name" field="firstName" value={profile.personal?.firstName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="personal" isEditing={isEditing && !profile.personal?.middleName} label="Middle Name" field="middleName" value={profile.personal?.middleName} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing && !profile.personal?.lastName} label="Last Name" field="lastName" value={profile.personal?.lastName} formData={formData} onChange={handleInputChange} required />
                         </div>
                     </div>
 
@@ -1510,8 +1498,8 @@ const EmployeeDossier = () => {
                             <h3 className="font-bold text-slate-700">3. Personal Information</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing && !profile.personal?.gender} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing && !profile.personal?.dob} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} />
                             <Field section="employment" isEditing={false} label="Date of Joining" field="joiningDate" type="date" value={profile.employment?.joiningDate} />
                         </div>
                     </div>
@@ -1528,30 +1516,35 @@ const EmployeeDossier = () => {
                                 value={profile.compensation?.bankDetails?.accountNumber}
                                 valueOverride={formData.compensation?.bankDetails?.accountNumber}
                                 onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountNumber: e.target.value } } }))}
+                                required
                             />
                             <Field
                                 section="compensation" isEditing={isEditing} label="IFSC Code" field="ifsc"
                                 value={profile.compensation?.bankDetails?.ifscCode}
                                 valueOverride={formData.compensation?.bankDetails?.ifscCode}
                                 onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, ifscCode: e.target.value } } }))}
+                                required
                             />
                             <Field
                                 section="compensation" isEditing={isEditing} label="Bank Name" field="bankName"
                                 value={profile.compensation?.bankDetails?.bankName}
                                 valueOverride={formData.compensation?.bankDetails?.bankName}
                                 onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, bankName: e.target.value } } }))}
+                                required
                             />
                             <Field
                                 section="compensation" isEditing={isEditing} label="Account Holder Name" field="holder"
                                 value={profile.compensation?.bankDetails?.accountHolderName}
                                 valueOverride={formData.compensation?.bankDetails?.accountHolderName}
                                 onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountHolderName: e.target.value } } }))}
+                                required
                             />
                             <Field
                                 section="compensation" isEditing={isEditing} label="Branch Address" field="branchAddress"
                                 value={profile.compensation?.bankDetails?.branchAddress}
                                 valueOverride={formData.compensation?.bankDetails?.branchAddress}
                                 onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, branchAddress: e.target.value } } }))}
+                                required
                             />
                         </div>
                     </div>
@@ -1567,25 +1560,29 @@ const EmployeeDossier = () => {
                                 <div key={type} className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                                     <h4 className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-widest">{type} Address</h4>
                                     <div className="space-y-6">
-                                        <Field section="contact" isEditing={isEditing} label="Street" field={`${type}_street`}
+                                        <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.street} label="Street" field={`${type}_street`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.street}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.street}
                                             onChangeOverride={(e) => handleAddressChange(type, 'street', e.target.value)}
+                                            required={type !== 'Mailing'}
                                         />
-                                        <Field section="contact" isEditing={isEditing} label="City" field={`${type}_city`}
+                                        <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.city} label="City" field={`${type}_city`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.city}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.city}
                                             onChangeOverride={(e) => handleAddressChange(type, 'city', e.target.value)}
+                                            required={type !== 'Mailing'}
                                         />
-                                        <Field section="contact" isEditing={isEditing} label="State" field={`${type}_state`}
+                                        <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.state} label="State" field={`${type}_state`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.state}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.state}
                                             onChangeOverride={(e) => handleAddressChange(type, 'state', e.target.value)}
+                                            required={type !== 'Mailing'}
                                         />
-                                        <Field section="contact" isEditing={isEditing} label="Zip Code" field={`${type}_zip`}
+                                        <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.zipCode} label="Zip Code" field={`${type}_zip`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.zipCode}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.zipCode}
                                             onChangeOverride={(e) => handleAddressChange(type, 'zipCode', e.target.value)}
+                                            required={type !== 'Mailing'}
                                         />
                                     </div>
                                 </div>
@@ -1600,10 +1597,10 @@ const EmployeeDossier = () => {
                             <h3 className="font-bold text-slate-700">6. Contact Details</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
-                            <Field section="contact" isEditing={isEditing} label="Alternate Mobile Number" field="alternateNumber" value={profile.contact?.alternateNumber} formData={formData} onChange={handleInputChange} />
-                            <Field section="contact" isEditing={isEditing} label="Emergency Number" field="emergencyNumber" value={profile.contact?.emergencyNumber} formData={formData} onChange={handleInputChange} />
-                            <Field section="contact" isEditing={isEditing} label="Landline Number" field="landlineNumber" value={profile.contact?.landlineNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing && !profile.contact?.mobileNumber} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing && !profile.contact?.alternateNumber} label="Alternate Mobile Number" field="alternateNumber" value={profile.contact?.alternateNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing && !profile.contact?.emergencyContact?.phone} label="Emergency Mobile (from Personal)" field="emergencyNumber" value={profile.contact?.emergencyContact?.phone} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing && !profile.contact?.landlineNumber} label="Landline Number" field="landlineNumber" value={profile.contact?.landlineNumber} formData={formData} onChange={handleInputChange} />
                         </div>
                     </div>
 
@@ -1614,16 +1611,16 @@ const EmployeeDossier = () => {
                             <h3 className="font-bold text-slate-700">7. Medical Insurance / Family Information</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="family" isEditing={isEditing} label="Father's Name" field="fatherName" value={profile.family?.fatherName} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing} label="Father's Occupation" field="fatherOccupation" value={profile.family?.fatherOccupation} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing} label="Mother's Name" field="motherName" value={profile.family?.motherName} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing} label="Mother's Occupation" field="motherOccupation" value={profile.family?.motherOccupation} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Marital Status" field="maritalStatus" value={profile.personal?.maritalStatus} options={['Single', 'Married', 'Divorced', 'Widowed']} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing} label="Total Siblings" field="totalSiblings" type="number" value={profile.family?.totalSiblings} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Date of Marriage" field="dateOfMarriage" type="date" value={profile.personal?.dateOfMarriage} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing} label="Spouse DOB" field="spouseDob" type="date" value={profile.family?.spouseDob} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Dietary Preference" field="dietaryPreference" value={profile.personal?.dietaryPreference} options={['Veg', 'Non-Veg', 'Vegan', 'Egg']} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing && !profile.family?.fatherName} label="Father's Name" field="fatherName" value={profile.family?.fatherName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="family" isEditing={isEditing && !profile.family?.fatherOccupation} label="Father's Occupation" field="fatherOccupation" value={profile.family?.fatherOccupation} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing && !profile.family?.motherName} label="Mother's Name" field="motherName" value={profile.family?.motherName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="family" isEditing={isEditing && !profile.family?.motherOccupation} label="Mother's Occupation" field="motherOccupation" value={profile.family?.motherOccupation} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Marital Status" field="parentsMaritalStatus" value={profile.family?.parentsMaritalStatus} options={['Married', 'Divorced', 'Widowed', 'Separated']} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing && !profile.family?.totalSiblings} label="Total Siblings" field="totalSiblings" type="number" value={profile.family?.totalSiblings} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing && !profile.personal?.dateOfMarriage} label="Date of Marriage" field="dateOfMarriage" type="date" value={profile.personal?.dateOfMarriage} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing && !profile.family?.spouseName} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing && !profile.family?.spouseDob} label="Spouse DOB" field="spouseDob" type="date" value={profile.family?.spouseDob} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing && !profile.personal?.dietaryPreference} label="Dietary Preference" field="dietaryPreference" value={profile.personal?.dietaryPreference} options={['Veg', 'Non-Veg', 'Vegan', 'Egg']} formData={formData} onChange={handleInputChange} />
                         </div>
 
                         {/* Children List */}
@@ -2094,18 +2091,20 @@ const EmployeeDossier = () => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-50 font-sans">
-            {/* Top Navigation Bar */}
-            <div className="bg-white border-b border-slate-200 sticky top-0 z-10 px-6 py-3 flex justify-between items-center">
-                <div className="flex items-center space-x-3">
-                    <button onClick={() => navigate(-1)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500">
-                        <ArrowLeft size={20} />
-                    </button>
-                    <h1 className="text-lg font-bold text-slate-800">Employee Dossier</h1>
+        <div className={embedded ? "w-full font-sans" : "min-h-screen bg-slate-50 font-sans"}>
+            {/* Top Navigation Bar - Hidden if embedded */}
+            {!embedded && (
+                <div className="bg-white border-b border-slate-200 sticky top-0 z-10 px-6 py-3 flex justify-between items-center">
+                    <div className="flex items-center space-x-3">
+                        <button onClick={() => navigate(-1)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500">
+                            <ArrowLeft size={20} />
+                        </button>
+                        <h1 className="text-lg font-bold text-slate-800">Employee Dossier</h1>
+                    </div>
                 </div>
-            </div>
+            )}
 
-            <div className="max-w-6xl mx-auto p-6 md:p-8">
+            <div className={embedded ? "w-full" : "max-w-6xl mx-auto p-6 md:p-8"}>
 
                 {/* Tabs */}
                 <div className="mb-8 overflow-x-auto">
@@ -2128,13 +2127,13 @@ const EmployeeDossier = () => {
 
                 {/* Content Area */}
                 <div className="min-h-[400px]">
-                    {activeTab === 'overview' && renderOverview()}
+
                     {activeTab === 'personal' && renderPersonal()}
                     {activeTab === 'employment' && renderEmployment()}
 
                     {activeTab === 'documents' && renderDocuments()}
-                    {activeTab === 'history' && renderHistory()}
                     {activeTab === 'hris' && renderHRIS()}
+                    {activeTab === 'history' && renderHistory()}
                     {activeTab === 'requests' && renderHRISRequests()}
                 </div>
 

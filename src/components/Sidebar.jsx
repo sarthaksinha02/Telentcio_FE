@@ -61,9 +61,10 @@ const Sidebar = ({ isOpen, onClose }) => {
             <CalendarDays size={18} />
             <span>Holidays</span>
           </Link>
-          <Link to={`/dossier/${user?._id}`} className={isActive(`/dossier/${user?._id}`)} onClick={onClose}>
-            <FileText size={18} />
-            <span>Employee Dossier</span>
+
+          <Link to="/ta" className={isActive('/ta')} onClick={onClose}>
+            <Briefcase size={18} />
+            <span>Talent Acquisition</span>
           </Link>
 
 

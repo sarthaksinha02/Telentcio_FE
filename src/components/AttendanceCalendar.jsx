@@ -60,8 +60,8 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date 
     return (
         <div className="zoho-card">
             {/* Header */}
-            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                <h3 className="font-semibold text-slate-800">
+            <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                <h3 className="font-semibold text-slate-800 text-sm">
                     {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </h3>
                 <div className="flex space-x-2">
@@ -75,7 +75,7 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date 
             </div>
 
             {/* Grid Header */}
-            <div className="grid grid-cols-7 text-center border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide py-2">
+            <div className="grid grid-cols-7 text-center border-b border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wide py-1.5">
                 <div>Sun</div>
                 <div>Mon</div>
                 <div>Tue</div>
@@ -86,9 +86,9 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date 
             </div>
 
             {/* Calendar Rows */}
-            <div className="grid grid-cols-7 text-sm">
+            <div className="grid grid-cols-7 text-xs">
                 {blanks.map((b) => (
-                    <div key={`blank-${b}`} className="min-h-[100px] border-b border-r border-slate-100 bg-slate-50/30"></div>
+                    <div key={`blank-${b}`} className="min-h-[80px] border-b border-r border-slate-100 bg-slate-50/30"></div>
                 ))}
 
                 {days.map((day) => {
@@ -104,14 +104,14 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date 
                     return (
                         <div
                             key={day.toISOString()}
-                            className={`min-h-[100px] border-b border-r border-slate-100 p-2 relative group hover:bg-slate-50 transition-colors ${isToday ? 'bg-blue-50/30' : ''}`}
+                            className={`min-h-[80px] border-b border-r border-slate-100 p-1.5 relative group hover:bg-slate-50 transition-colors ${isToday ? 'bg-blue-50/30' : ''}`}
                         >
-                            <div className={`text-right mb-2 font-medium ${isToday ? 'text-blue-600' : 'text-slate-400'}`}>
+                            <div className={`text-right mb-1 font-medium text-xs ${isToday ? 'text-blue-600' : 'text-slate-400'}`}>
                                 {day.getDate()}
                             </div>
 
                             {holiday && (
-                                <div className={`mb-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} truncate`} title={holiday.name}>
+                                <div className={`mb-1 text-[9px] font-bold px-1 py-0.5 rounded ${holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} truncate`} title={holiday.name}>
                                     {holiday.name}
                                 </div>
                             )}
@@ -121,14 +121,14 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date 
                                     const finalStatus = record.status || (record.clockIn ? 'PRESENT' : 'ABSENT');
                                     return (
                                         <div className="space-y-1">
-                                            <div className="flex items-center space-x-1.5">
-                                                <div className={`h-2 w-2 rounded-full ${getStatusColor(finalStatus)}`}></div>
-                                                <span className="text-xs font-semibold text-slate-700 capitalize">{finalStatus.toLowerCase()}</span>
+                                            <div className="flex items-center space-x-1">
+                                                <div className={`h-1.5 w-1.5 rounded-full ${getStatusColor(finalStatus)}`}></div>
+                                                <span className="text-[10px] font-semibold text-slate-700 capitalize">{finalStatus.toLowerCase()}</span>
                                             </div>
-                                            <div className="text-[10px] text-slate-500 font-mono pl-3.5">
+                                            <div className="text-[9px] text-slate-500 font-mono pl-2.5">
                                                 In: {record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--:--'}
                                             </div>
-                                            <div className="text-[10px] text-slate-500 font-mono pl-3.5">
+                                            <div className="text-[9px] text-slate-500 font-mono pl-2.5">
                                                 Out: {record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--:--'}
                                             </div>
                                         </div>
