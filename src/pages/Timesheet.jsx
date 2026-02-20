@@ -442,11 +442,11 @@ const Timesheet = () => {
         }
     };
 
-    // Fetch Users List for Dropdown (Admin/Manager)
+    // Fetch Users List for Dropdown (Admin/Manager/timesheet.view)
     useEffect(() => {
         const fetchUsers = async () => {
             try {
-                if (user.roles.includes('Admin')) {
+                if (user.roles.includes('Admin') || user.permissions?.includes('timesheet.view')) {
                     const res = await api.get('/admin/users');
                     setUsersList(res.data);
                 } else if (user.roles.includes('Manager')) {
@@ -458,7 +458,7 @@ const Timesheet = () => {
             }
         };
 
-        if (user && (user.roles.includes('Admin') || user.roles.includes('Manager'))) {
+        if (user && (user.roles.includes('Admin') || user.roles.includes('Manager') || user.permissions?.includes('timesheet.view'))) {
             fetchUsers();
         }
     }, [user]);
@@ -877,10 +877,11 @@ const Timesheet = () => {
     };
 
     const canViewAttendance = user?.roles?.includes('Admin') || user?.permissions?.includes('attendance.view');
+    const canViewTimesheets = user?.roles?.includes('Admin') || user?.permissions?.includes('timesheet.view');
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-            <div className="max-w-7xl mx-auto space-y-6">
+        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10 overflow-x-hidden">
+            <div className="w-full max-w-7xl mx-auto space-y-6 overflow-x-hidden">
 
                 {/* Tabs & Header */}
                 <div className="flex flex-col space-y-4">
@@ -915,6 +916,39 @@ const Timesheet = () => {
                                 </button>
                             )}
                         </div>
+
+                        {/* User Picker — visible to Admin, Manager, or timesheet.view permission */}
+                        {(canViewTimesheets || user?.roles?.includes('Manager')) && usersList.length > 0 && (
+                            <div className="flex items-center space-x-2">
+                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Viewing:</label>
+                                <select
+                                    onChange={handleUserChange}
+                                    value={targetUserId || ''}
+                                    className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-400 outline-none"
+                                >
+                                    <option value="">— Select User —</option>
+                                    {usersList.map(u => (
+                                        <option key={u._id} value={u._id}>
+                                            {u.firstName} {u.lastName}
+                                        </option>
+                                    ))}
+                                </select>
+                                {targetUserId && (
+                                    <button
+                                        onClick={() => {
+                                            const url = new URL(window.location);
+                                            url.searchParams.delete('userId');
+                                            url.searchParams.delete('name');
+                                            window.history.pushState({}, '', url);
+                                            window.location.reload();
+                                        }}
+                                        className="text-xs text-blue-600 hover:underline"
+                                    >
+                                        View Own
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {activeTab === 'timesheet' && (
@@ -1046,54 +1080,64 @@ const Timesheet = () => {
                                 ))}
                             </div>
                         ) : pendingApprovals.length > 0 ? (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-slate-50 text-slate-500 font-medium">
-                                        <tr>
-                                            <th className="px-6 py-3">Employee</th>
-                                            <th className="px-6 py-3">Month</th>
-                                            <th className="px-6 py-3 text-right">Actions</th>
+                            <div className="overflow-x-auto scrollbar-hide">
+                                <table className="w-full text-sm text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
+                                            <th className="px-6 py-4 font-semibold">Employee</th>
+                                            <th className="px-6 py-4 font-semibold">Month</th>
+                                            <th className="px-6 py-4 font-semibold">Submitted On</th>
+                                            <th className="px-6 py-4 font-semibold text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {pendingApprovals.map(ts => (
-                                            <tr key={ts._id} className="hover:bg-slate-50/50">
-                                                <td className="px-6 py-3">
-                                                    <div className="font-medium text-slate-800">{ts.user?.firstName} {ts.user?.lastName}</div>
-                                                    <div className="text-xs text-slate-500">{ts.user?.employeeCode}</div>
+                                            <tr key={ts._id} className="hover:bg-slate-50/70 transition-colors">
+                                                <td className="px-6 py-4 align-middle">
+                                                    <div className="font-semibold text-slate-800">{ts.user?.firstName} {ts.user?.lastName}</div>
+                                                    <div className="text-xs text-slate-400 mt-0.5">{ts.user?.employeeCode}</div>
                                                 </td>
-                                                <td className="px-6 py-3 font-mono text-slate-600">
-                                                    {ts.month}
+                                                <td className="px-6 py-4 align-middle">
+                                                    <span className="font-mono text-slate-600 bg-slate-100 px-2 py-1 rounded text-xs">{ts.month}</span>
                                                 </td>
-                                                <td className="px-6 py-3 text-right space-x-2">
-                                                    <Button
-                                                        onClick={() => {
-                                                            const u = new URL(window.location);
-                                                            u.searchParams.set('userId', ts.user._id);
-                                                            u.searchParams.set('name', `${ts.user.firstName} ${ts.user.lastName}`);
-                                                            u.searchParams.set('month', ts.month); // Pass Month
-                                                            window.history.pushState({}, '', u);
-                                                            window.location.reload();
-                                                        }}
-                                                        variant="ghost"
-                                                        className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded text-xs font-bold transition-colors h-auto"
-                                                    >
-                                                        View Details
-                                                    </Button>
-                                                    <Button
-                                                        onClick={() => handleApprove(ts, 'APPROVED')}
-                                                        variant="ghost"
-                                                        className="px-3 py-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded text-xs font-bold transition-colors h-auto"
-                                                    >
-                                                        Approve
-                                                    </Button>
-                                                    <Button
-                                                        onClick={() => handleApprove(ts, 'REJECTED')}
-                                                        variant="ghost"
-                                                        className="px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded text-xs font-bold transition-colors h-auto"
-                                                    >
-                                                        Reject
-                                                    </Button>
+                                                <td className="px-6 py-4 align-middle">
+                                                    {ts.submittedAt ? (
+                                                        <div>
+                                                            <div className="text-slate-700 font-medium">{format(new Date(ts.submittedAt), 'dd MMM yyyy')}</div>
+                                                            <div className="text-xs text-slate-400 mt-0.5">{format(new Date(ts.submittedAt), 'hh:mm a')}</div>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-400">—</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4 align-middle">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                const u = new URL(window.location);
+                                                                u.searchParams.set('userId', ts.user._id);
+                                                                u.searchParams.set('name', `${ts.user.firstName} ${ts.user.lastName}`);
+                                                                u.searchParams.set('month', ts.month);
+                                                                window.history.pushState({}, '', u);
+                                                                window.location.reload();
+                                                            }}
+                                                            className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md text-xs font-semibold transition-colors border border-blue-100"
+                                                        >
+                                                            View Details
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleApprove(ts, 'APPROVED')}
+                                                            className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-md text-xs font-semibold transition-colors border border-emerald-100"
+                                                        >
+                                                            Approve
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleApprove(ts, 'REJECTED')}
+                                                            className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-md text-xs font-semibold transition-colors border border-red-100"
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -1113,7 +1157,7 @@ const Timesheet = () => {
                     <>
                         {/* Inline Detail View */}
                         <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden mb-6">
-                            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+                            <div className="overflow-x-auto scrollbar-hide">
                                 <table className="w-full text-sm text-left border-collapse">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">

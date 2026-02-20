@@ -37,6 +37,7 @@ const LeaveConfig = () => {
         setEditingPolicy(null);
         setFormData({
             leaveType: '', name: '', description: '', isPaid: true,
+            employeeTypes: [],
             accrualType: 'Monthly', accrualAmount: 0,
             maxLimitPerYear: 0, carryForward: false, maxCarryForward: 0,
             encashmentAllowed: false, sandwichRule: false, allowNegativeBalance: false,
@@ -51,6 +52,7 @@ const LeaveConfig = () => {
             leaveType: policy.leaveType,
             name: policy.name,
             description: policy.description || '',
+            employeeTypes: policy.employeeTypes?.filter(t => t !== 'All') || [],
             isPaid: policy.isPaid,
             accrualType: policy.accrualType,
             accrualAmount: policy.accrualAmount,
@@ -164,6 +166,12 @@ const LeaveConfig = () => {
                                         <span className="text-xs text-slate-400 uppercase font-bold">Carry Fwd</span>
                                         <span className="font-medium">{policy.carryForward ? `Yes (Max ${policy.maxCarryForward})` : 'No'}</span>
                                     </div>
+                                    <div className="col-span-2 flex flex-col mt-2">
+                                        <span className="text-xs text-slate-400 uppercase font-bold">Applicable To</span>
+                                        <span className="font-medium text-xs bg-slate-100 p-1 rounded inline-block">
+                                            {policy.employeeTypes?.filter(t => t !== 'All').join(', ') || 'None'}
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="border-t border-slate-100 pt-3 flex flex-wrap gap-2">
                                     {policy.sandwichRule && <span className="px-2 py-1 bg-orange-50 text-orange-600 text-xs rounded border border-orange-100 flex items-center"><AlertCircle size={10} className="mr-1" /> Sandwich Rule</span>}
@@ -244,6 +252,31 @@ const LeaveConfig = () => {
                                     </div>
                                 </div>
 
+                                {/* Employee Types */}
+                                <div className="space-y-4">
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase border-b pb-2">Applicable Employment Types</h4>
+                                    <div className="flex flex-wrap gap-4">
+                                        {['Full Time', 'Part Time', 'Contract', 'Intern', 'Probation', 'Consultant'].map(type => (
+                                            <label key={type} className="flex items-center space-x-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.employeeTypes?.includes(type)}
+                                                    onChange={(e) => {
+                                                        const current = formData.employeeTypes || [];
+                                                        if (e.target.checked) {
+                                                            setFormData({ ...formData, employeeTypes: [...current, type] });
+                                                        } else {
+                                                            setFormData({ ...formData, employeeTypes: current.filter(t => t !== type) });
+                                                        }
+                                                    }}
+                                                    className="rounded text-blue-600 focus:ring-blue-500"
+                                                />
+                                                <span className="text-sm text-slate-700">{type}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+
                                 {/* Rules */}
                                 <div className="space-y-4">
                                     <h4 className="text-xs font-bold text-slate-400 uppercase border-b pb-2">Business Rules</h4>
@@ -279,11 +312,11 @@ const LeaveConfig = () => {
                                 </div>
                             </form>
                         </div>
-                    </div>
+                    </div >
                 )}
 
-            </div>
-        </div>
+            </div >
+        </div >
     );
 };
 

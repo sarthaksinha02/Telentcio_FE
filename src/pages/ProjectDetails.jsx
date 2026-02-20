@@ -7,6 +7,7 @@ import { Briefcase, Plus, Folder, CheckSquare, User, Calendar, ArrowLeft, Clock,
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import { useAuth } from '../context/AuthContext';
+import Button from '../components/Button';
 import { format, differenceInDays, addDays, isValid, parseISO } from 'date-fns';
 
 const ProjectDetails = () => {
@@ -42,6 +43,7 @@ const ProjectDetails = () => {
     const [editingTaskId, setEditingTaskId] = useState(null);
     const [activeModuleId, setActiveModuleId] = useState(null);
     const [loggingTaskId, setLoggingTaskId] = useState(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const fetchData = async () => {
         try {
@@ -72,6 +74,7 @@ const ProjectDetails = () => {
     // --- Handlers (Keep existing logic mostly) ---
     const handleCreateModule = async (e) => {
         e.preventDefault();
+        setIsSubmitting(true);
         try {
             if (editingModuleId) {
                 await api.put(`/projects/modules/${editingModuleId}`, moduleForm);
@@ -86,11 +89,14 @@ const ProjectDetails = () => {
             fetchData();
         } catch (error) {
             toast.error('Failed to save module');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const handleCreateTask = async (e) => {
         e.preventDefault();
+        setIsSubmitting(true);
         try {
             if (editingTaskId) {
                 await api.put(`/projects/tasks/${editingTaskId}`, taskForm);
@@ -105,11 +111,14 @@ const ProjectDetails = () => {
             fetchData();
         } catch (error) {
             toast.error('Failed to save task');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const handleLogWork = async (e) => {
         e.preventDefault();
+        setIsSubmitting(true);
         try {
             await api.post(`/projects/tasks/${loggingTaskId}/log`, logForm);
             toast.success('Work Logged Successfully');
@@ -117,6 +126,8 @@ const ProjectDetails = () => {
             setLoggingTaskId(null);
         } catch (error) {
             toast.error('Failed to log work');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -180,25 +191,28 @@ const ProjectDetails = () => {
                         </div>
                         <div className="flex items-center gap-2">
                             {canDeleteModule && (
-                                <button
-                                    onClick={() => {
+                                <Button
+                                    variant="ghost"
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
                                         if (window.confirm('Are you sure you want to delete this module? All tasks within it will be deleted.')) {
-                                            api.delete(`/projects/modules/${module._id}`)
-                                                .then(() => {
-                                                    toast.success('Module Deleted');
-                                                    fetchData();
-                                                })
-                                                .catch(() => toast.error('Failed to delete module'));
+                                            try {
+                                                await api.delete(`/projects/modules/${module._id}`);
+                                                toast.success('Module Deleted');
+                                                fetchData();
+                                            } catch (error) {
+                                                toast.error('Failed to delete module');
+                                            }
                                         }
                                     }}
-                                    className="text-slate-400 hover:text-red-600 p-1"
+                                    className="text-slate-400 hover:text-red-600 p-1 h-auto w-auto"
                                     title="Delete Module"
                                 >
                                     <Trash2 size={16} />
-                                </button>
+                                </Button>
                             )}
                             {canCreateTask && (
-                                <button onClick={() => openCreateTaskModal(module._id)} className="text-sm text-blue-600 hover:text-blue-800 flex items-center space-x-1 font-medium">
+                                <button onClick={() => openCreateTaskModal(module._id)} className="text-sm text-blue-600 hover:text-blue-800 flex items-center space-x-1 font-medium bg-transparent border-0 cursor-pointer">
                                     <Plus size={16} /> <span>Add Task</span>
                                 </button>
                             )}
@@ -212,21 +226,24 @@ const ProjectDetails = () => {
                                         <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             {canUpdateTask && <button onClick={() => handleEditTask(task, module._id)} className="text-slate-400 hover:text-blue-500 p-1"><CheckSquare size={16} /></button>}
                                             {canDeleteTask && (
-                                                <button
-                                                    onClick={() => {
+                                                <Button
+                                                    variant="ghost"
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation();
                                                         if (window.confirm('Delete this task?')) {
-                                                            api.delete(`/projects/tasks/${task._id}`)
-                                                                .then(() => {
-                                                                    toast.success('Task Deleted');
-                                                                    fetchData();
-                                                                })
-                                                                .catch(() => toast.error('Failed to delete task'));
+                                                            try {
+                                                                await api.delete(`/projects/tasks/${task._id}`);
+                                                                toast.success('Task Deleted');
+                                                                fetchData();
+                                                            } catch (error) {
+                                                                toast.error('Failed to delete task');
+                                                            }
                                                         }
                                                     }}
-                                                    className="text-slate-400 hover:text-red-500 p-1"
+                                                    className="text-slate-400 hover:text-red-500 p-1 h-auto w-auto"
                                                 >
                                                     <Trash2 size={16} />
-                                                </button>
+                                                </Button>
                                             )}
                                         </div>
                                         <div>
@@ -301,17 +318,24 @@ const ProjectDetails = () => {
                                     <td className="px-6 py-3 text-right">
                                         <div className="flex items-center justify-end gap-2">
                                             {canDeleteModule && (
-                                                <button
-                                                    onClick={() => {
+                                                <Button
+                                                    variant="ghost"
+                                                    onClick={async () => {
                                                         if (window.confirm('Are you sure you want to delete this module?')) {
-                                                            api.delete(`/projects/modules/${module._id}`).then(() => { toast.success('Module Deleted'); fetchData(); }).catch(() => toast.error('Failed'));
+                                                            try {
+                                                                await api.delete(`/projects/modules/${module._id}`);
+                                                                toast.success('Module Deleted');
+                                                                fetchData();
+                                                            } catch (error) {
+                                                                toast.error('Failed');
+                                                            }
                                                         }
                                                     }}
-                                                    className="text-slate-400 hover:text-red-600"
+                                                    className="text-slate-400 hover:text-red-600 p-1 h-auto w-auto"
                                                     title="Delete Module"
                                                 >
                                                     <Trash2 size={14} />
-                                                </button>
+                                                </Button>
                                             )}
                                             {canCreateTask && (
                                                 <button onClick={() => openCreateTaskModal(module._id)} className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center justify-end gap-1">
@@ -372,17 +396,24 @@ const ProjectDetails = () => {
                                                             </>
                                                         )}
                                                         {canDeleteTask && (
-                                                            <button
-                                                                onClick={() => {
+                                                            <Button
+                                                                variant="ghost"
+                                                                onClick={async () => {
                                                                     if (window.confirm('Delete this task?')) {
-                                                                        api.delete(`/projects/tasks/${task._id}`).then(() => { toast.success('Task Deleted'); fetchData(); }).catch(() => toast.error('Failed'));
+                                                                        try {
+                                                                            await api.delete(`/projects/tasks/${task._id}`);
+                                                                            toast.success('Task Deleted');
+                                                                            fetchData();
+                                                                        } catch (error) {
+                                                                            toast.error('Failed');
+                                                                        }
                                                                     }
                                                                 }}
                                                                 title="Delete"
-                                                                className="text-slate-400 hover:text-red-600"
+                                                                className="text-slate-400 hover:text-red-600 p-1 h-auto w-auto"
                                                             >
                                                                 <Trash2 size={16} />
-                                                            </button>
+                                                            </Button>
                                                         )}
                                                     </div>
                                                 </td>
@@ -954,7 +985,7 @@ const ProjectDetails = () => {
                                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Date</label><input type="date" className="zoho-input" value={moduleForm.startDate} onChange={e => setModuleForm({ ...moduleForm, startDate: e.target.value })} /></div>
                                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label><input type="date" className="zoho-input" value={moduleForm.dueDate} onChange={e => setModuleForm({ ...moduleForm, dueDate: e.target.value })} /></div>
                             </div>
-                            <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowModuleModal(false)} className="zoho-btn-secondary">Cancel</button><button type="submit" className="zoho-btn-primary">{editingModuleId ? 'Update' : 'Create'}</button></div>
+                            <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowModuleModal(false)} className="zoho-btn-secondary">Cancel</button><Button type="submit" isLoading={isSubmitting}>{editingModuleId ? 'Update' : 'Create'}</Button></div>
                         </form>
                     </div>
                 </div>
@@ -992,7 +1023,7 @@ const ProjectDetails = () => {
                                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label><input type="date" className="zoho-input" value={taskForm.dueDate} onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })} /></div>
                                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Est. Hours</label><input type="number" className="zoho-input" value={taskForm.estimatedHours} onChange={e => setTaskForm({ ...taskForm, estimatedHours: e.target.value })} /></div>
                             </div>
-                            <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowTaskModal(false)} className="zoho-btn-secondary">Cancel</button><button type="submit" className="zoho-btn-primary">{editingTaskId ? 'Update' : 'Save'}</button></div>
+                            <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowTaskModal(false)} className="zoho-btn-secondary">Cancel</button><Button type="submit" isLoading={isSubmitting}>{editingTaskId ? 'Update' : 'Save'}</Button></div>
                         </form>
                     </div>
                 </div>
@@ -1009,7 +1040,7 @@ const ProjectDetails = () => {
                             <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label><input type="date" required className="zoho-input" value={logForm.date} onChange={e => setLogForm({ ...logForm, date: e.target.value })} /></div>
                             <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hours Spent</label><input type="number" step="0.1" required className="zoho-input" value={logForm.hours} onChange={e => setLogForm({ ...logForm, hours: e.target.value })} placeholder="e.g. 2.5" /></div>
                             <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label><textarea className="zoho-input" value={logForm.description} onChange={e => setLogForm({ ...logForm, description: e.target.value })} rows="3" /></div>
-                            <div className="flex justify-end space-x-3 pt-2"><button type="button" onClick={() => setShowLogModal(false)} className="zoho-btn-secondary">Cancel</button><button type="submit" className="zoho-btn-primary bg-green-600 hover:bg-green-700">Log Time</button></div>
+                            <div className="flex justify-end space-x-3 pt-2"><button type="button" onClick={() => setShowLogModal(false)} className="zoho-btn-secondary">Cancel</button><Button type="submit" isLoading={isSubmitting} className="zoho-btn-primary bg-green-600 hover:bg-green-700">Log Time</Button></div>
                         </form>
                     </div>
                 </div>

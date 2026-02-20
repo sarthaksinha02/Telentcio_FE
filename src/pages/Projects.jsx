@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { Briefcase, Plus, Search, Building } from 'lucide-react';
+import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import Button from '../components/Button';
@@ -65,6 +65,18 @@ const Projects = () => {
     }, []);
 
     const [editingId, setEditingId] = useState(null);
+    const [openMenuId, setOpenMenuId] = useState(null);
+
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (openMenuId && !event.target.closest('.action-menu-container')) {
+                setOpenMenuId(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [openMenuId]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -96,7 +108,7 @@ const Projects = () => {
             name: proj.name,
             client: proj.client?._id || '',
             description: proj.description || '',
-            status: proj.isActive ? 'Active' : 'Inactive',
+            status: proj.status || (proj.isActive ? 'Active' : 'Completed'),
             startDate: proj.startDate ? new Date(proj.startDate).toISOString().split('T')[0] : '',
             dueDate: proj.dueDate ? new Date(proj.dueDate).toISOString().split('T')[0] : '',
             members: proj.members?.map(m => m._id) || []
@@ -112,6 +124,17 @@ const Projects = () => {
     };
 
     // if (loading) return <div className="p-8 text-center">Loading...</div>;
+
+    const handleStatusChange = async (project, newStatus) => {
+        const isActive = newStatus !== 'Completed';
+        try {
+            await api.put(`/projects/${project._id}`, { status: newStatus, isActive });
+            toast.success(`Project marked as ${newStatus}`);
+            fetchData();
+        } catch (error) {
+            toast.error('Failed to update project status');
+        }
+    };
 
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
@@ -139,8 +162,8 @@ const Projects = () => {
                             <thead className="bg-slate-50 text-slate-500 font-medium">
                                 <tr>
                                     <th className="px-6 py-3">Project Name</th>
-                                    <th className="px-6 py-3">Client</th>
-                                    <th className="px-6 py-3">Manager</th>
+
+
                                     <th className="px-6 py-3">Status</th>
                                     <th className="px-6 py-3 text-right">Action</th>
                                 </tr>
@@ -150,14 +173,14 @@ const Projects = () => {
                                     Array.from({ length: 5 }).map((_, i) => (
                                         <tr key={i}>
                                             <td className="px-6 py-3"><Skeleton className="h-8 w-48" /></td>
-                                            <td className="px-6 py-3"><Skeleton className="h-6 w-32" /></td>
-                                            <td className="px-6 py-3"><Skeleton className="h-6 w-32" /></td>
+
+
                                             <td className="px-6 py-3"><Skeleton className="h-6 w-16" /></td>
                                             <td className="px-6 py-3"><Skeleton className="h-6 w-24 ml-auto" /></td>
                                         </tr>
                                     ))
                                 ) : projects.length > 0 ? (
-                                    projects.map((project) => (
+                                    projects.map((project, index) => (
                                         <tr key={project._id} className="hover:bg-slate-50/50">
                                             <td className="px-6 py-3 font-medium text-slate-800">
                                                 <div className="flex items-center space-x-2">
@@ -167,37 +190,110 @@ const Projects = () => {
                                                     <span>{project.name}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-3 text-slate-600">
-                                                {project.client?.name || <span className="text-slate-400 italic">Internal</span>}
-                                            </td>
-                                            <td className="px-6 py-3 text-slate-600">
-                                                {project.manager ? `${project.manager.firstName} ${project.manager.lastName}` : '-'}
-                                            </td>
+
+
+
                                             <td className="px-6 py-3">
-                                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${project.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                                                    {project.isActive ? 'Active' : 'Inactive'}
+                                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${project.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                    project.status === 'On Hold' ? 'bg-orange-50 text-orange-600 border-orange-100' :
+                                                        'bg-slate-100 text-slate-500 border-slate-200'
+                                                    }`}>
+                                                    {project.status || (project.isActive ? 'Active' : 'Completed')}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-3 text-right space-x-3">
-                                                {canUpdate && <button onClick={() => handleEdit(project)} className="text-slate-500 hover:text-blue-600 text-xs font-medium">Edit</button>}
-                                                {user?.permissions?.includes('project.delete') && (
-                                                    <button
-                                                        onClick={() => {
-                                                            if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
-                                                                api.delete(`/projects/${project._id}`)
-                                                                    .then(() => {
-                                                                        toast.success('Project deleted');
-                                                                        fetchData();
-                                                                    })
-                                                                    .catch(() => toast.error('Failed to delete project'));
-                                                            }
-                                                        }}
-                                                        className="text-slate-500 hover:text-red-600 text-xs font-medium"
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                )}
-                                                <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">View Modules</a>
+                                            <td className="px-6 py-3">
+                                                <div className="flex items-center justify-end gap-3 action-menu-container relative">
+                                                    <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium whitespace-nowrap">View Modules</a>
+
+                                                    {canUpdate && (
+                                                        <div className="relative">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setOpenMenuId(openMenuId === project._id ? null : project._id);
+                                                                }}
+                                                                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+                                                            >
+                                                                <MoreVertical size={16} />
+                                                            </button>
+
+                                                            {openMenuId === project._id && (
+                                                                <div className={`absolute right-0 ${index >= projects.length - 2 ? 'bottom-full mb-1' : 'top-full mt-1'} w-40 bg-white rounded-lg shadow-lg border border-slate-100 py-1 z-50`}>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            handleEdit(project);
+                                                                            setOpenMenuId(null);
+                                                                        }}
+                                                                        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
+                                                                    >
+                                                                        <Edit2 size={13} />
+                                                                        Edit
+                                                                    </button>
+
+                                                                    {project.status !== 'Completed' && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleStatusChange(project, 'Completed');
+                                                                                setOpenMenuId(null);
+                                                                            }}
+                                                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-emerald-600 flex items-center gap-2"
+                                                                        >
+                                                                            <XCircle size={13} />
+                                                                            Close
+                                                                        </button>
+                                                                    )}
+
+                                                                    {project.status === 'Active' && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleStatusChange(project, 'On Hold');
+                                                                                setOpenMenuId(null);
+                                                                            }}
+                                                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-orange-600 flex items-center gap-2"
+                                                                        >
+                                                                            <PauseCircle size={13} />
+                                                                            On Hold
+                                                                        </button>
+                                                                    )}
+
+                                                                    {(project.status === 'On Hold' || project.status === 'Completed' || project.status === 'Inactive') && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleStatusChange(project, 'Active');
+                                                                                setOpenMenuId(null);
+                                                                            }}
+                                                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
+                                                                        >
+                                                                            <Briefcase size={13} />
+                                                                            Mark as Active
+                                                                        </button>
+                                                                    )}
+
+                                                                    {user?.permissions?.includes('project.delete') && (
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
+                                                                                    try {
+                                                                                        await api.delete(`/projects/${project._id}`);
+                                                                                        toast.success('Project deleted');
+                                                                                        fetchData();
+                                                                                    } catch (error) {
+                                                                                        toast.error('Failed to delete project');
+                                                                                    }
+                                                                                }
+                                                                                setOpenMenuId(null);
+                                                                            }}
+                                                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-red-600 flex items-center gap-2 border-t border-slate-50 mt-1 pt-2"
+                                                                        >
+                                                                            <Trash2 size={13} />
+                                                                            Delete
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
@@ -286,6 +382,8 @@ const Projects = () => {
                                         onChange={e => setFormData({ ...formData, status: e.target.value })}
                                     >
                                         <option value="Active">Active</option>
+                                        <option value="On Hold">On Hold</option>
+                                        <option value="Completed">Completed</option>
                                         <option value="Inactive">Inactive</option>
                                     </select>
                                 </div>
@@ -325,7 +423,7 @@ const Projects = () => {
 
                             <div className="flex justify-end space-x-3 pt-4">
                                 <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
-                                <Button type="submit">{editingId ? 'Update' : 'Create'}</Button>
+                                <Button type="submit" isLoading={loading}>{editingId ? 'Update' : 'Create'}</Button>
                             </div>
                         </form>
                     </div>

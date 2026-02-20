@@ -509,9 +509,9 @@ const Attendance = () => {
     const formatTimeSimple = (date) => new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
     if (loading) return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-            <div className="max-w-7xl mx-auto space-y-8">
-                <div className="flex justify-between items-center">
+        <div className="h-[calc(100vh-64px)] w-full bg-slate-100 font-sans flex flex-col overflow-hidden">
+            <div className="flex-none px-4 pt-4 md:px-6 md:pt-6">
+                <div className="flex justify-between items-center mb-6">
                     <div>
                         <Skeleton className="h-8 w-48 mb-2" />
                         <Skeleton className="h-4 w-32" />
@@ -521,8 +521,10 @@ const Attendance = () => {
                         <Skeleton className="h-3 w-40" />
                     </div>
                 </div>
-                <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-                    <div className="xl:col-span-1 space-y-6">
+            </div>
+            <div className="flex-1 overflow-hidden px-4 pb-4 md:px-6 md:pb-6">
+                <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 h-full">
+                    <div className="xl:col-span-1 space-y-6 overflow-y-auto pr-2 h-full custom-scrollbar pb-2">
                         <div className="bg-white p-6 rounded-lg shadow-sm border-t-4 border-t-slate-200 flex flex-col items-center">
                             <Skeleton className="w-36 h-36 rounded-full mb-6" />
                             <Skeleton className="h-6 w-24 mb-2" />
@@ -537,8 +539,8 @@ const Attendance = () => {
                             </div>
                         </div>
                     </div>
-                    <div className="xl:col-span-3">
-                        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 h-[500px]">
+                    <div className="xl:col-span-3 flex flex-col h-full overflow-hidden">
+                        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 flex-1 overflow-y-auto">
                             <div className="flex justify-between mb-6">
                                 <Skeleton className="h-8 w-48" />
                                 <div className="flex space-x-2">
@@ -561,11 +563,10 @@ const Attendance = () => {
     const isClockedOut = status?.clockIn && status?.clockOut;
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-            <div className="max-w-7xl mx-auto space-y-8">
-
-                {/* Header */}
-                <div className="flex justify-between items-center">
+        <div className="h-[calc(100vh-64px)] w-full bg-slate-100 font-sans flex flex-col overflow-hidden">
+            {/* Header - Fixed */}
+            <div className="flex-none px-4 pt-4 md:px-6 md:pt-6">
+                <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800">Attendance</h1>
                         <p className="text-sm text-slate-500">Track and manage your work hours</p>
@@ -580,10 +581,6 @@ const Attendance = () => {
                             </div>
                         </div>
 
-
-
-
-
                         {/* Export Button - Permission Check */
                             (user?.roles?.includes('Admin') || user?.roles?.includes('Manager') || user?.role === 'Admin' || usersList.length > 0 || user?.permissions?.includes('attendance.export')) && (
                                 <Button
@@ -597,11 +594,14 @@ const Attendance = () => {
                             )}
                     </div>
                 </div>
+            </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+            {/* Main Content - Flex/Grid taking remaining height */}
+            <div className="flex-1 overflow-hidden px-4 pb-4 md:px-6 md:pb-6">
+                <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 h-full">
 
-                    {/* Widget Column */}
-                    <div className="xl:col-span-1 space-y-6">
+                    {/* Widget Column - Scrollable */}
+                    <div className="xl:col-span-1 space-y-6 overflow-y-auto pr-2 h-full custom-scrollbar pb-2">
                         {/* Clock Widget */}
                         <div className="zoho-card p-6 flex flex-col items-center justify-center text-center border-t-4 border-t-blue-500">
                             <div className="mb-6 relative group">
@@ -733,10 +733,10 @@ const Attendance = () => {
                         </div>
                     </div>
 
-                    {/* Main Content Column with Tabs */}
-                    <div className="xl:col-span-3">
-                        {/* Tab Navigation */}
-                        <div className="flex border-b border-slate-200 bg-white rounded-t-lg px-4 pt-2 mb-0">
+                    {/* Main Content Column with Tabs - Flex Column */}
+                    <div className="xl:col-span-3 flex flex-col h-full overflow-hidden">
+                        {/* Tab Navigation - Fixed */}
+                        <div className="flex-none flex border-b border-slate-200 bg-white rounded-t-lg px-4 pt-2 mb-0">
                             <button
                                 onClick={() => setActiveTab('history')}
                                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'history' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
@@ -751,7 +751,8 @@ const Attendance = () => {
                             </button>
                         </div>
 
-                        <div className="bg-white rounded-b-lg shadow-sm border border-t-0 border-slate-200 p-6 min-h-[500px]">
+                        {/* Scrollable Content Area */}
+                        <div className="flex-1 bg-white rounded-b-lg shadow-sm border border-t-0 border-slate-200 p-6 overflow-y-auto custom-scrollbar relative">
                             {activeTab === 'history' ? (
                                 <AttendanceCalendar history={history} onMonthChange={fetchMonthHistory} user={user} holidays={holidays} />
                             ) : (

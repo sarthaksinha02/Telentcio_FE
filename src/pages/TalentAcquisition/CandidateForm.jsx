@@ -1,0 +1,697 @@
+import React, { useState, useEffect } from 'react';
+import { X, Upload, Loader, ArrowLeft, Plus, Trash } from 'lucide-react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import api from '../../api/axios';
+import toast from 'react-hot-toast';
+
+const CandidateForm = () => {
+    const { hiringRequestId, candidateId } = useParams();
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    const isViewMode = location.pathname.includes('/view');
+    const isEditMode = location.pathname.includes('/edit');
+    const isAddMode = !isViewMode && !isEditMode;
+
+    const [loading, setLoading] = useState(false);
+    const [fetching, setFetching] = useState(false);
+    const [resumeFile, setResumeFile] = useState(null);
+    const [resumeUrl, setResumeUrl] = useState('');
+    const [resumePublicId, setResumePublicId] = useState('');
+    const [uploading, setUploading] = useState(false);
+
+    const [formData, setFormData] = useState({
+        candidateName: '',
+        email: '',
+        mobile: '',
+        source: 'Job Portal',
+        referralName: '',
+        profilePulledBy: '',
+        currentCTC: '',
+        expectedCTC: '',
+        preference: 'Neutral / Average',
+        totalExperience: '',
+        qualification: '',
+        currentCompany: '',
+        pastExperience: [{ companyName: '', experienceYears: '' }],
+        currentLocation: '',
+        preferredLocation: '',
+        tatToJoin: '',
+        noticePeriod: '',
+        status: 'Interested',
+        remark: ''
+    });
+
+    const [sourceOptions, setSourceOptions] = useState([]);
+
+    useEffect(() => {
+        fetchSourceOptions();
+        if (candidateId) {
+            fetchCandidateDetails();
+        }
+    }, [candidateId]);
+
+    const fetchSourceOptions = async () => {
+        try {
+            const res = await api.get('/ta/candidates/sources');
+            setSourceOptions(res.data || []);
+        } catch (error) {
+            console.error('Failed to fetch source options', error);
+            setSourceOptions(['Job Portal', 'Referral', 'Other']);
+        }
+    };
+
+    const fetchCandidateDetails = async () => {
+        try {
+            setFetching(true);
+            const response = await api.get(`/ta/candidates/${hiringRequestId}`);
+            // The API returns all candidates for a request. We need to find the specific one or fetch by ID if endpoint exists.
+            // Based on previous code, there is likely a Get Single Candidate endpoint or we filter.
+            // Let's try fetching specific candidate if endpoint exists, otherwise filter. 
+            // Actually, best to check if there is a get by ID. 
+            // WORKAROUND: The previous code passed `candidateToEdit`. current API usage in list is `/ta/candidates/${hiringRequestId}`.
+            // There isn't a clear "get candidate by ID" endpoint visible in previous context, but usually `api.put('/ta/candidates/:id')` exists.
+            // I will assume logic to filter from the list or I should check if there is a single get endpoint.
+            // Let's try to fetch the single candidate using the list endpoint and filtering for now to be safe,
+            // or better, let's assume standard REST patterns. 
+            // Wait, looking at `CandidateList.jsx`: `api.delete('/ta/candidates/${candidateId}')` exists.
+            // So `api.get('/ta/candidates/${candidateId}')` might exist? 
+            // Let's stick to fetching all and filtering for this iteration to ensuring no 404s if I guess wrong.
+            // Actually, the `CandidateForm` props previously took `candidateToEdit`. 
+            // Let's try to fetch the specific candidate. 
+            // If I look at `CandidateForm.jsx` previously: `api.put('/ta/candidates/${candidateToEdit._id}')` 
+            // I'll try fetching the single candidate.
+
+            // To be safe regarding endpoints, I will fetch the list and find the candidate.
+            const res = await api.get(`/ta/candidates/${hiringRequestId}`);
+            const candidate = res.data.candidates.find(c => c._id === candidateId);
+
+            if (candidate) {
+                setFormData({
+                    candidateName: candidate.candidateName || '',
+                    email: candidate.email || '',
+                    mobile: candidate.mobile || '',
+                    source: candidate.source || 'Job Portal',
+                    profilePulledBy: candidate.profilePulledBy || '',
+                    currentCTC: candidate.currentCTC || '',
+                    expectedCTC: candidate.expectedCTC || '',
+                    preference: candidate.preference || 'Neutral / Average',
+                    totalExperience: candidate.totalExperience || '',
+                    qualification: candidate.qualification || '',
+                    currentCompany: candidate.currentCompany || '',
+                    pastExperience: candidate.pastExperience && candidate.pastExperience.length > 0
+                        ? candidate.pastExperience
+                        : [{ companyName: '', experienceYears: '' }],
+                    currentLocation: candidate.currentLocation || '',
+                    preferredLocation: candidate.preferredLocation || '',
+                    tatToJoin: candidate.tatToJoin || '',
+                    noticePeriod: candidate.noticePeriod || '',
+                    status: candidate.status || 'Interested',
+                    remark: candidate.remark || ''
+                });
+                setResumeUrl(candidate.resumeUrl || '');
+                setResumePublicId(candidate.resumePublicId || '');
+            } else {
+                toast.error('Candidate not found');
+                navigate(`/ta/view/${hiringRequestId}`); // Go back to list
+            }
+        } catch (error) {
+            console.error('Error fetching candidate:', error);
+            toast.error('Failed to load candidate details');
+        } finally {
+            setFetching(false);
+        }
+    };
+
+    const handleFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Validate file type
+        if (file.type !== 'application/pdf') {
+            toast.error('Only PDF files are allowed');
+            return;
+        }
+
+        // Validate file size (5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('File size must be less than 5MB');
+            return;
+        }
+
+        setResumeFile(file);
+        // Deferred upload: File is stored in state, upload happens on submit
+    };
+
+    const uploadResume = async (file) => {
+        try {
+            setUploading(true);
+            const formData = new FormData();
+            formData.append('resume', file);
+
+            const response = await api.post(`/ta/candidates/upload-resume/${hiringRequestId}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            return {
+                resumeUrl: response.data.resumeUrl,
+                resumePublicId: response.data.resumePublicId
+            };
+        } catch (error) {
+            console.error('Error uploading resume:', error);
+            throw error;
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSourceChange = (e) => {
+        const { value } = e.target;
+        if (value === 'Other') {
+            setFormData(prev => ({ ...prev, source: '' })); // Clear for input
+        } else {
+            setFormData(prev => ({ ...prev, source: value }));
+        }
+    };
+
+    const handleAddExperience = () => {
+        setFormData(prev => ({
+            ...prev,
+            pastExperience: [...prev.pastExperience, { companyName: '', experienceYears: '' }]
+        }));
+    };
+
+    const handleRemoveExperience = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            pastExperience: prev.pastExperience.filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleExperienceChange = (index, field, value) => {
+        const newExperience = [...formData.pastExperience];
+        newExperience[index][field] = value;
+        setFormData(prev => ({ ...prev, pastExperience: newExperience }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        // Validation
+        if (!isEditMode && !resumeFile && !resumeUrl && isAddMode) {
+            toast.error('Please select a resume file');
+            return;
+        }
+
+        if (!formData.candidateName || !formData.email || !formData.mobile || !formData.totalExperience) {
+            toast.error('Please fill all required fields');
+            return;
+        }
+
+        try {
+            setLoading(true);
+
+            let uploadedResumeUrl = resumeUrl;
+            let uploadedResumePublicId = resumePublicId;
+
+            // Upload resume if a new file is selected
+            if (resumeFile) {
+                try {
+                    const uploadData = await uploadResume(resumeFile);
+                    uploadedResumeUrl = uploadData.resumeUrl;
+                    uploadedResumePublicId = uploadData.resumePublicId;
+                    toast.success('Resume uploaded successfully');
+                } catch (uploadError) {
+                    toast.error('Failed to upload resume. Please try again.');
+                    setLoading(false);
+                    return; // Stop submission
+                }
+            }
+
+            const payload = {
+                ...formData,
+                hiringRequestId,
+                resumeUrl: uploadedResumeUrl,
+                resumePublicId: uploadedResumePublicId,
+                currentCTC: formData.currentCTC ? Number(formData.currentCTC) : undefined,
+                expectedCTC: formData.expectedCTC ? Number(formData.expectedCTC) : undefined,
+                preference: formData.preference,
+                pastExperience: formData.pastExperience.filter(exp => exp.companyName && exp.experienceYears),
+                totalExperience: Number(formData.totalExperience),
+                tatToJoin: formData.tatToJoin ? Number(formData.tatToJoin) : undefined,
+                noticePeriod: formData.noticePeriod ? Number(formData.noticePeriod) : undefined
+            };
+
+            if (isEditMode) {
+                await api.put(`/ta/candidates/${candidateId}`, payload);
+                toast.success('Candidate updated successfully');
+            } else {
+                await api.post('/ta/candidates', payload);
+                toast.success('Candidate created successfully');
+            }
+
+            navigate(`/ta/view/${hiringRequestId}?tab=applications`);
+        } catch (error) {
+            console.error('Error saving candidate:', error);
+            toast.error(error.response?.data?.message || 'Failed to save candidate');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCancel = () => {
+        navigate(`/ta/view/${hiringRequestId}?tab=applications`);
+    };
+
+    if (fetching) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-slate-50">
+                <Loader className="animate-spin text-blue-600" size={32} />
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-slate-50 pb-12">
+            <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+                <div className="max-w-4xl mx-auto px-6 py-4">
+                    <div className="flex items-center gap-4">
+                        <button onClick={handleCancel} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
+                            <ArrowLeft size={20} />
+                        </button>
+                        <h1 className="text-xl font-bold text-slate-800">
+                            {isViewMode ? 'Candidate Details' : (isEditMode ? 'Edit Candidate' : 'Add New Candidate')}
+                        </h1>
+                    </div>
+                </div>
+            </div>
+
+            <div className="max-w-4xl mx-auto p-6">
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    {/* Form */}
+                    <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                        {/* Resume Upload - Only show upload if NOT readOnly */}
+                        {!isViewMode && !isEditMode && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                                    Upload Resume (PDF) *
+                                </label>
+                                <div className="flex items-center gap-4">
+                                    <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer transition-colors">
+                                        <Upload size={18} />
+                                        {uploading ? 'Uploading...' : 'Choose File'}
+                                        <input
+                                            type="file"
+                                            accept="application/pdf"
+                                            onChange={handleFileChange}
+                                            className="hidden"
+                                            disabled={uploading}
+                                        />
+                                    </label>
+                                    {resumeFile && <span className="text-sm text-slate-600">{resumeFile.name}</span>}
+                                    {uploading && <Loader className="animate-spin text-blue-600" size={20} />}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Always show View Resume link if URL exists */}
+                        {(resumeUrl || resumeFile) && (
+                            <div className={`${!isViewMode && !isEditMode ? 'mt-2' : 'mb-4'}`}>
+                                {resumeUrl && (
+                                    <a href={resumeUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline font-medium p-2 bg-slate-50 rounded-lg w-fit">
+                                        <Upload size={16} /> View Uploaded Resume
+                                    </a>
+                                )}
+                                {resumeFile && !resumeUrl && (
+                                    <div className="flex items-center gap-2 text-sm text-slate-600 font-medium p-2 bg-slate-50 rounded-lg w-fit">
+                                        <Upload size={16} /> Selected: {resumeFile.name} (Will be uploaded on submit)
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Status & Remark (Moved to Top) */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-slate-100 mb-6">
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Status *</label>
+                                <select
+                                    name="status"
+                                    value={formData.status}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                    required
+                                    disabled={isViewMode}
+                                >
+                                    <option value="Interested">Interested</option>
+                                    <option value="Not Interested">Not Interested</option>
+                                    <option value="Not Relevant">Not Relevant</option>
+                                    <option value="Not Picking">Not Picking</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Remark</label>
+                                <textarea
+                                    name="remark"
+                                    value={formData.remark}
+                                    onChange={handleChange}
+                                    rows={1}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Basic Information */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Candidate Name *</label>
+                                <input
+                                    type="text"
+                                    name="candidateName"
+                                    value={formData.candidateName}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    required
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Email *</label>
+                                <input
+                                    type="email"
+                                    name="email"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    required
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Mobile Number *</label>
+                                <input
+                                    type="tel"
+                                    name="mobile"
+                                    value={formData.mobile}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    required
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Source *</label>
+                                <div className="space-y-3">
+                                    <select
+                                        name="sourceSelect"
+                                        value={sourceOptions.includes(formData.source) ? formData.source : (formData.source ? 'Other' : '')}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === 'Other') {
+                                                setFormData(prev => ({ ...prev, source: 'Other' }));
+                                            } else {
+                                                setFormData(prev => ({ ...prev, source: val }));
+                                            }
+                                        }}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                        required
+                                        disabled={isViewMode}
+                                    >
+                                        <option value="">Select Source</option>
+                                        {sourceOptions.map(opt => (
+                                            <option key={opt} value={opt}>{opt}</option>
+                                        ))}
+                                        {!sourceOptions.includes('Other') && <option value="Other">Other</option>}
+                                    </select>
+
+                                    {/* Referral Name Input */}
+                                    {formData.source === 'Referral' && (
+                                        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <label className="block text-xs font-medium text-slate-500 mb-1">Referral Name *</label>
+                                            <input
+                                                type="text"
+                                                name="referralName"
+                                                value={formData.referralName || ''}
+                                                onChange={handleChange}
+                                                placeholder="Who referred this candidate?"
+                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                                required
+                                                disabled={isViewMode}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Other Source Input */}
+                                    {(formData.source === 'Other' || (!sourceOptions.includes(formData.source) && formData.source !== 'Referral' && formData.source !== '')) && (
+                                        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <label className="block text-xs font-medium text-slate-500 mb-1">Specify Source *</label>
+                                            <input
+                                                type="text"
+                                                name="source"
+                                                value={formData.source === 'Other' ? '' : formData.source}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, source: e.target.value }))}
+                                                placeholder="Enter source name"
+                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                                required
+                                                disabled={isViewMode}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Profile Pulled By</label>
+                                <input
+                                    type="text"
+                                    name="profilePulledBy"
+                                    value={formData.profilePulledBy}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Total Experience (years) *</label>
+                                <input
+                                    type="number"
+                                    name="totalExperience"
+                                    value={formData.totalExperience}
+                                    onChange={handleChange}
+                                    min="0"
+                                    step="0.5"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    required
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Compensation */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Current CTC</label>
+                                <input
+                                    type="number"
+                                    name="currentCTC"
+                                    value={formData.currentCTC}
+                                    onChange={handleChange}
+                                    min="0"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Expected CTC</label>
+                                <input
+                                    type="number"
+                                    name="expectedCTC"
+                                    value={formData.expectedCTC}
+                                    onChange={handleChange}
+                                    min="0"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Preference</label>
+                                <select
+                                    name="preference"
+                                    value={formData.preference}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                    disabled={isViewMode}
+                                >
+                                    <option value="Highly Recommended">Highly Recommended</option>
+                                    <option value="Recommended">Recommended</option>
+                                    <option value="Neutral / Average">Neutral / Average</option>
+                                    <option value="Not Recommended">Not Recommended</option>
+                                    <option value="Very Poor">Very Poor</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Professional Details */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Qualification</label>
+                                <input
+                                    type="text"
+                                    name="qualification"
+                                    value={formData.qualification}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Current Company</label>
+                                <input
+                                    type="text"
+                                    name="currentCompany"
+                                    value={formData.currentCompany}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Past Experience */}
+                        <div className="space-y-3">
+                            <label className="block text-sm font-semibold text-slate-700">Past Experience</label>
+                            {formData.pastExperience.map((exp, index) => (
+                                <div key={index} className="flex gap-4 items-start">
+                                    <div className="flex-1">
+                                        <input
+                                            type="text"
+                                            placeholder="Company Name"
+                                            value={exp.companyName}
+                                            onChange={(e) => handleExperienceChange(index, 'companyName', e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                            disabled={isViewMode}
+                                        />
+                                    </div>
+                                    <div className="w-32">
+                                        <input
+                                            type="number"
+                                            placeholder="Years"
+                                            min="0"
+                                            step="0.1"
+                                            value={exp.experienceYears}
+                                            onChange={(e) => handleExperienceChange(index, 'experienceYears', e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                            disabled={isViewMode}
+                                        />
+                                    </div>
+                                    {!isViewMode && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveExperience(index)}
+                                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors mt-0.5"
+                                            title="Remove Experience"
+                                        >
+                                            <Trash size={18} />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                            {!isViewMode && (
+                                <button
+                                    type="button"
+                                    onClick={handleAddExperience}
+                                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors w-fit"
+                                >
+                                    <Plus size={16} /> Add Past Experience
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Location */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Current Location</label>
+                                <input
+                                    type="text"
+                                    name="currentLocation"
+                                    value={formData.currentLocation}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Preferred Location</label>
+                                <input
+                                    type="text"
+                                    name="preferredLocation"
+                                    value={formData.preferredLocation}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Availability */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">TAT to Join (days)</label>
+                                <input
+                                    type="number"
+                                    name="tatToJoin"
+                                    value={formData.tatToJoin}
+                                    onChange={handleChange}
+                                    min="0"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Notice Period (days)</label>
+                                <input
+                                    type="number"
+                                    name="noticePeriod"
+                                    value={formData.noticePeriod}
+                                    onChange={handleChange}
+                                    min="0"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                        </div>
+
+
+
+                        {/* Actions */}
+                        <div className="flex justify-end gap-3 pt-6 border-t border-slate-200 mt-2">
+                            <button
+                                type="button"
+                                onClick={handleCancel}
+                                className="px-6 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                            >
+                                {isViewMode ? 'Close' : 'Cancel'}
+                            </button>
+                            {!isViewMode && (
+                                <button
+                                    type="submit"
+                                    disabled={loading || uploading}
+                                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    {loading && <Loader className="animate-spin" size={16} />}
+                                    {isEditMode ? 'Update Candidate' : 'Add Candidate'}
+                                </button>
+                            )}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default CandidateForm;

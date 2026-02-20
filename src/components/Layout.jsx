@@ -6,10 +6,10 @@ const Layout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
 
     return (
-        <div className="min-h-screen bg-slate-100 flex font-sans">
+        <div className="min-h-screen bg-slate-100 flex font-sans overflow-x-hidden w-screen">
             <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
-            <main className="flex-1 flex flex-col md:pl-64 transition-all duration-300 min-h-screen">
+            <main className="flex-1 flex flex-col md:pl-64 transition-all duration-300 min-h-screen overflow-x-hidden min-w-0">
                 {/* Mobile Header - Visible only on mobile */}
                 <div className="md:hidden h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sticky top-0 z-30 shadow-sm">
                     <button

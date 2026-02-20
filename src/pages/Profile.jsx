@@ -2,10 +2,14 @@ import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { User, Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
+import EmployeeDossier from './EmployeeDossier';
 
 const Profile = () => {
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
+
+
+    const [uploading, setUploading] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -22,12 +26,40 @@ const Profile = () => {
         fetchProfile();
     }, []);
 
+    const handleImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        setUploading(true);
+        const loadingToast = toast.loading('Uploading profile picture...');
+
+        try {
+            const res = await api.post('/auth/upload-profile-picture', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            setProfile(prev => ({ ...prev, profilePicture: res.data.profilePicture }));
+            toast.success('Profile picture updated!');
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to upload image');
+        } finally {
+            setUploading(false);
+            toast.dismiss(loadingToast);
+        }
+    };
+
     if (loading) return <div className="p-8 text-center text-slate-500">Loading Profile...</div>;
     if (!profile) return <div className="p-8 text-center text-red-500">Profile not found</div>;
 
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div className="max-w-7xl mx-auto space-y-6">
 
                 {/* Header Card */}
                 <div className="bg-white rounded-xl shadow-md overflow-hidden border border-slate-200">
@@ -35,13 +67,29 @@ const Profile = () => {
                     <div className="px-8 pb-8">
                         <div className="relative flex justify-between items-end -mt-12 mb-6">
                             <div className="flex items-end">
-                                <div className="h-24 w-24 rounded-full bg-white p-1 shadow-lg">
-                                    <div className="h-full w-full rounded-full bg-slate-200 flex items-center justify-center text-3xl font-bold text-slate-500">
-                                        {profile.firstName?.charAt(0)}
+                                <div className="h-24 w-24 rounded-full bg-white p-1 shadow-lg relative group">
+                                    <div className="h-full w-full rounded-full bg-slate-200 flex items-center justify-center text-3xl font-bold text-slate-500 overflow-hidden relative">
+                                        {profile.profilePicture ? (
+                                            <img src={profile.profilePicture} alt="Profile" className="h-full w-full object-cover" />
+                                        ) : (
+                                            profile.firstName?.charAt(0)
+                                        )}
+
+                                        {/* Overlay for Upload */}
+                                        <label htmlFor="profile-upload" className="absolute inset-0 bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                                            <div className="text-xs text-center font-medium">Change<br />Photo</div>
+                                            <input
+                                                type="file"
+                                                id="profile-upload"
+                                                className="hidden"
+                                                accept="image/*"
+                                                onChange={handleImageUpload}
+                                            />
+                                        </label>
                                     </div>
                                 </div>
-                                <div className="ml-4 mb-1">
-                                    <h1 className="text-2xl font-bold text-slate-800">{profile.firstName} {profile.lastName}</h1>
+                                <div className="ml-4">
+                                    <h1 className="text-2xl font-bold mt-12 text-slate-800">{profile.firstName} {profile.lastName}</h1>
                                     <p className="text-slate-500 flex items-center text-sm">
                                         <Mail size={14} className="mr-1" /> {profile.email}
                                     </p>
@@ -91,7 +139,14 @@ const Profile = () => {
                                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Location</label>
                                     <div className="flex items-center mt-1 text-slate-700">
                                         <MapPin size={18} className="mr-2 text-slate-400" />
-                                        <span>Headquarters</span>
+                                        <span>{profile.workLocation || 'Headquarters'}</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Work Email</label>
+                                    <div className="flex items-center mt-1 text-slate-700">
+                                        <Mail size={18} className="mr-2 text-slate-400" />
+                                        <span>{profile.email}</span>
                                     </div>
                                 </div>
                             </div>
@@ -170,6 +225,9 @@ const Profile = () => {
                         </div>
                     </div>
                 )}
+
+                {/* Embedded Dossier */}
+                <EmployeeDossier userId={profile._id} embedded={true} />
             </div>
         </div>
     );

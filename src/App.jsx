@@ -12,6 +12,8 @@ import Users from './pages/Users';
 import Roles from './pages/Roles';
 import BusinessUnits from './pages/BusinessUnits';
 import Clients from './pages/Clients';
+import ClientForm from './pages/ClientForm';
+import ClientView from './pages/ClientView';
 import Projects from './pages/Projects';
 import ProjectDetails from './pages/ProjectDetails';
 import Profile from './pages/Profile';
@@ -19,6 +21,11 @@ import Holidays from './pages/Holidays';
 import LeaveConfig from './pages/LeaveConfig';
 import Leaves from './pages/Leaves';
 import EmployeeDossier from './pages/EmployeeDossier';
+import HiringRequestList from './pages/TalentAcquisition/HiringRequestList';
+import CreateHiringRequest from './pages/TalentAcquisition/CreateHiringRequest';
+import HiringRequestDetails from './pages/TalentAcquisition/HiringRequestDetails';
+import WorkflowSettings from './pages/TalentAcquisition/WorkflowSettings';
+import CandidateForm from './pages/TalentAcquisition/CandidateForm';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleRoute from './components/RoleRoute';
@@ -49,6 +56,16 @@ function App() {
               <Route path="/leaves" element={<Leaves />} />
               <Route path="/dossier/:userId" element={<EmployeeDossier />} />
 
+              {/* Talent Acquisition */}
+              <Route path="/ta" element={<HiringRequestList />} />
+              <Route path="/ta/workflows" element={<WorkflowSettings />} />
+              <Route path="/ta/create-request" element={<CreateHiringRequest />} />
+              <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
+              <Route path="/ta/view/:id" element={<HiringRequestDetails />} />
+              <Route path="/ta/hiring-request/:hiringRequestId/add-candidate" element={<CandidateForm />} />
+              <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/edit" element={<CandidateForm />} />
+              <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/view" element={<CandidateForm />} />
+
               <Route path="/profile" element={<Profile />} />
               <Route path="/holidays" element={<Holidays />} />
 
@@ -56,6 +73,9 @@ function App() {
               <Route element={<RoleRoute requiredPermissions={['project.read', 'project.create']} requiredRoles={['Admin']} />}>
                 <Route path="/business-units" element={<BusinessUnits />} />
                 <Route path="/clients" element={<Clients />} />
+                <Route path="/clients/new" element={<ClientForm />} />
+                <Route path="/clients/:id/edit" element={<ClientForm />} />
+                <Route path="/clients/:id/view" element={<ClientView />} />
               </Route>
 
               {/* Accessible to all (backend filtered) */}

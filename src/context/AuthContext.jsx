@@ -9,22 +9,43 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (token) {
-      // In a real app, verify token validity with an API call here.
-      // For now, we decode basic info or just trust persistence until 401.
-      // We stored some user info in localStorage for convenience, or we can fetch /me
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
+    const loadUser = async () => {
+      if (token) {
+        try {
+          // Always fetch fresh user data from server so permissions are up-to-date
+          const response = await api.get('/auth/profile');
+          const freshUser = response.data;
+          // Normalise roles to flat string array (roleNames) for uniform AuthContext usage
+          // (Profile.jsx fetches separately and gets full role objects)
+          const normalisedUser = {
+            ...freshUser,
+            roles: freshUser.roleNames || (Array.isArray(freshUser.roles) ? freshUser.roles.map(r => r.name || r) : [])
+          };
+          setUser(normalisedUser);
+          localStorage.setItem('user', JSON.stringify(normalisedUser));
+        } catch (err) {
+          // Token invalid or expired — fall back to localStorage, then clear if 401
+          if (err.response?.status === 401) {
+            setToken(null);
+            setUser(null);
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+          } else {
+            // Network error — use cached data
+            const storedUser = localStorage.getItem('user');
+            if (storedUser) setUser(JSON.parse(storedUser));
+          }
+        }
       }
-    }
-    setLoading(false);
+      setLoading(false);
+    };
+    loadUser();
   }, [token]);
 
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
     const { token: newToken, ...userData } = response.data;
-    
+
     setToken(newToken);
     setUser(userData);
     localStorage.setItem('token', newToken);
