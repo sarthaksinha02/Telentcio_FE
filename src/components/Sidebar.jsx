@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase, Settings, FileText, Check, X } from 'lucide-react';
+import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase, Settings, FileText, Check, X, ClipboardList, LifeBuoy } from 'lucide-react';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
@@ -61,11 +61,21 @@ const Sidebar = ({ isOpen, onClose }) => {
             <CalendarDays size={18} />
             <span>Holidays</span>
           </Link>
-
-          <Link to="/ta" className={isActive('/ta')} onClick={onClose}>
-            <Briefcase size={18} />
-            <span>Talent Acquisition</span>
+          <Link to="/meetings" className={isActive('/meetings')} onClick={onClose}>
+            <ClipboardList size={18} />
+            <span>Meetings</span>
           </Link>
+          <Link to="/helpdesk" className={isActive('/helpdesk')} onClick={onClose}>
+            <LifeBuoy size={18} />
+            <span>Help Desk</span>
+          </Link>
+
+          {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view')) && (
+            <Link to="/ta" className={isActive('/ta')} onClick={onClose}>
+              <Briefcase size={18} />
+              <span>Talent Acquisition</span>
+            </Link>
+          )}
 
 
 

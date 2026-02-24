@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -55,6 +56,7 @@ const Input = ({ label, name, value, onChange, type = "text", required, options,
 );
 
 const CreateHiringRequest = () => {
+    const { user } = useAuth();
     const navigate = useNavigate();
     const { id } = useParams(); // Get ID for edit mode
     const [loading, setLoading] = useState(false);
@@ -250,20 +252,48 @@ const CreateHiringRequest = () => {
                     </div>
                 </div>
                 <div className="flex gap-3">
-                    <button
-                        onClick={() => handleSubmit(true)}
-                        disabled={loading}
-                        className="px-4 py-2 text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors"
-                    >
-                        <Save size={16} /> Save Draft
-                    </button>
-                    <button
-                        onClick={() => handleSubmit(false)}
-                        disabled={loading}
-                        className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium text-sm flex items-center gap-2 shadow-sm transition-colors"
-                    >
-                        <Send size={16} /> Submit for Approval
-                    </button>
+                    {/* Permission Check for Actions */}
+                    {id ? (
+                        // Edit Mode
+                        (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                            <>
+                                <button
+                                    onClick={() => handleSubmit(true)}
+                                    disabled={loading}
+                                    className="px-4 py-2 text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors"
+                                >
+                                    <Save size={16} /> Save Draft
+                                </button>
+                                <button
+                                    onClick={() => handleSubmit(false)}
+                                    disabled={loading}
+                                    className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium text-sm flex items-center gap-2 shadow-sm transition-colors"
+                                >
+                                    <Send size={16} /> Submit for Approval
+                                </button>
+                            </>
+                        )
+                    ) : (
+                        // Create Mode
+                        (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                            <>
+                                <button
+                                    onClick={() => handleSubmit(true)}
+                                    disabled={loading}
+                                    className="px-4 py-2 text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors"
+                                >
+                                    <Save size={16} /> Save Draft
+                                </button>
+                                <button
+                                    onClick={() => handleSubmit(false)}
+                                    disabled={loading}
+                                    className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium text-sm flex items-center gap-2 shadow-sm transition-colors"
+                                >
+                                    <Send size={16} /> Submit for Approval
+                                </button>
+                            </>
+                        )
+                    )}
                 </div>
             </div>
 

@@ -26,6 +26,11 @@ import CreateHiringRequest from './pages/TalentAcquisition/CreateHiringRequest';
 import HiringRequestDetails from './pages/TalentAcquisition/HiringRequestDetails';
 import WorkflowSettings from './pages/TalentAcquisition/WorkflowSettings';
 import CandidateForm from './pages/TalentAcquisition/CandidateForm';
+import Meetings from './pages/Meetings';
+import MeetingForm from './pages/MeetingForm';
+import MeetingDetails from './pages/MeetingDetails';
+import HelpDesk from './pages/HelpDesk';
+import QueryDetails from './pages/QueryDetails';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleRoute from './components/RoleRoute';
@@ -57,17 +62,29 @@ function App() {
               <Route path="/dossier/:userId" element={<EmployeeDossier />} />
 
               {/* Talent Acquisition */}
-              <Route path="/ta" element={<HiringRequestList />} />
-              <Route path="/ta/workflows" element={<WorkflowSettings />} />
-              <Route path="/ta/create-request" element={<CreateHiringRequest />} />
-              <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
-              <Route path="/ta/view/:id" element={<HiringRequestDetails />} />
-              <Route path="/ta/hiring-request/:hiringRequestId/add-candidate" element={<CandidateForm />} />
-              <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/edit" element={<CandidateForm />} />
-              <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/view" element={<CandidateForm />} />
+              <Route element={<RoleRoute requiredPermissions={['ta.view', 'ta.create', 'ta.edit']} requiredRoles={['Admin']} />}>
+                <Route path="/ta" element={<HiringRequestList />} />
+                <Route path="/ta/workflows" element={<WorkflowSettings />} />
+                <Route path="/ta/create-request" element={<CreateHiringRequest />} />
+                <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
+                <Route path="/ta/view/:id" element={<HiringRequestDetails />} />
+                <Route path="/ta/hiring-request/:hiringRequestId/add-candidate" element={<CandidateForm />} />
+                <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/edit" element={<CandidateForm />} />
+                <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/view" element={<CandidateForm />} />
+              </Route>
 
               <Route path="/profile" element={<Profile />} />
               <Route path="/holidays" element={<Holidays />} />
+
+              {/* MoM Routes */}
+              <Route path="/meetings" element={<Meetings />} />
+              <Route path="/meetings/new" element={<MeetingForm />} />
+              <Route path="/meetings/:id/edit" element={<MeetingForm />} />
+              <Route path="/meetings/:id" element={<MeetingDetails />} />
+
+              {/* Help Desk Routes */}
+              <Route path="/helpdesk" element={<HelpDesk />} />
+              <Route path="/helpdesk/:id" element={<QueryDetails />} />
 
               {/* Project Management Routes */}
               <Route element={<RoleRoute requiredPermissions={['project.read', 'project.create']} requiredRoles={['Admin']} />}>

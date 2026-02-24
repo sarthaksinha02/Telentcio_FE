@@ -221,6 +221,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
     // Preview State
     const [previewFile, setPreviewFile] = useState(null);
     const [previewUrl, setPreviewUrl] = useState(null);
+    const [isDocumentDeclared, setIsDocumentDeclared] = useState(false);
     const [showUploadPreview, setShowUploadPreview] = useState(false);
     const [uploadCategory, setUploadCategory] = useState(null);
     const fileInputRef = useRef(null);
@@ -314,6 +315,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
             });
             toast.dismiss(toastId);
             toast.success('Document uploaded successfully');
+            setIsDocumentDeclared(false);
             fetchDossier(); // Refresh
             if (activeTab === 'history') fetchHistory(); // Refresh history if needed
             handleCancelUpload(); // Close and reset
@@ -355,6 +357,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
             await api.delete(`/dossier/${userId}/documents/${docId}`);
             toast.dismiss(toastId);
             toast.success('Document deleted successfully');
+            setIsDocumentDeclared(false);
             fetchDossier(); // Refresh
             if (activeTab === 'history') fetchHistory();
         } catch (error) {
@@ -588,30 +591,32 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
     const validateSectionData = (section) => {
         const data = formData[section] || {};
 
+        const isEmpty = (val) => val === undefined || val === null || val === '';
+
         if (section === 'personal') {
             const required = ['dob', 'gender', 'maritalStatus', 'nationality', 'bloodGroup', 'disabilityStatus'];
-            const missing = required.filter(f => !data[f]);
+            const missing = required.filter(f => isEmpty(data[f]));
             if (missing.length > 0) return 'All fields are required'; // Generic warning
         }
         if (section === 'contact') {
-            if (!data.personalEmail || !data.mobileNumber || !data.alternateNumber) return 'All fields are required';
+            if (isEmpty(data.personalEmail) || isEmpty(data.mobileNumber)) return 'Email and Mobile Number are required';
 
             // Check Emergency Contact
             const ec = data.emergencyContact || {};
-            if (!ec.name || !ec.relation || !ec.phone || !ec.email) return 'All fields are required';
+            if (isEmpty(ec.name) || isEmpty(ec.relation) || isEmpty(ec.phone)) return 'Name, relation, and phone for emergency contact are required';
 
             // Validate Addresses
             const addresses = data.addresses || [];
-            const hasCurrent = addresses.some(a => a.type === 'Current' && a.street && a.addressLine2 && a.city && a.state && a.zipCode && a.country);
-            const hasPermanent = addresses.some(a => a.type === 'Permanent' && a.street && a.addressLine2 && a.city && a.state && a.zipCode && a.country);
+            const hasCurrent = addresses.some(a => a.type === 'Current' && !isEmpty(a.street) && !isEmpty(a.city) && !isEmpty(a.state) && !isEmpty(a.zipCode) && !isEmpty(a.country));
+            const hasPermanent = addresses.some(a => a.type === 'Permanent' && !isEmpty(a.street) && !isEmpty(a.city) && !isEmpty(a.state) && !isEmpty(a.zipCode) && !isEmpty(a.country));
 
             if (!hasCurrent || !hasPermanent) return 'All fields are required';
         }
         if (section === 'identity') {
-            if (!data.aadhaarNumber || !data.panNumber) return 'All fields are required';
+            if (isEmpty(data.aadhaarNumber) || isEmpty(data.panNumber)) return 'All fields are required';
         }
         if (section === 'family') {
-            if (!data.fatherName || !data.motherName) return 'All fields are required';
+            if (isEmpty(data.fatherName) || isEmpty(data.motherName)) return 'All fields are required';
         }
         return null;
     };
@@ -717,14 +722,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                 />
                                 <Field
                                     section="contact" isEditing={isEditing} label="Alternate Number" field="alternateNumber"
-                                    value={profile.contact?.alternateNumber} hideIfEmpty formData={formData}
+                                    value={profile.contact?.alternateNumber} formData={formData}
                                     maxLength={10}
                                     error={formData.contact?.alternateNumber?.length > 0 && formData.contact?.alternateNumber?.length < 10 ? 'Must be 10 digits' : null}
                                     onChangeOverride={(e) => {
                                         const val = e.target.value.replace(/\D/g, '');
                                         handleInputChange('contact', 'alternateNumber', val);
                                     }}
-                                    required
                                 />
                             </div>
 
@@ -771,7 +775,6 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                         valueOverride={formData.contact?.emergencyContact?.email}
                                         onChangeOverride={(e) => handleEmergencyChange('email', e.target.value)}
                                         formData={formData} onChange={handleInputChange}
-                                        required
                                     />
                                 </div>
                             </div>
@@ -781,29 +784,29 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     {/* Current Address */}
                                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                                        <h4 className="text-sm font-bold text-slate-700 mb-4">Current Address</h4>
+                                        <h4 className="text-sm font-bold text-slate-700 mb-4">Current Address <span className="text-red-500">*</span></h4>
                                         <div className="space-y-3">
                                             <Field section="contact" isEditing={isEditing} label="Street" field="C_street" value={getProfileAddress('Current').street}
                                                 valueOverride={getAddress('Current').street} onChangeOverride={(e) => handleAddressChange('Current', 'street', e.target.value)}
-                                                formData={formData} onChange={handleInputChange} required />
+                                                formData={formData} onChange={handleInputChange} />
                                             <Field section="contact" isEditing={isEditing} label="Line 2" field="C_line2" value={getProfileAddress('Current').addressLine2}
                                                 valueOverride={getAddress('Current').addressLine2} onChangeOverride={(e) => handleAddressChange('Current', 'addressLine2', e.target.value)}
-                                                formData={formData} onChange={handleInputChange} required />
+                                                formData={formData} onChange={handleInputChange} />
                                             <div className="grid grid-cols-2 gap-3">
                                                 <Field section="contact" isEditing={isEditing} label="City" field="C_city" value={getProfileAddress('Current').city}
                                                     valueOverride={getAddress('Current').city} onChangeOverride={(e) => handleAddressChange('Current', 'city', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} required />
+                                                    formData={formData} onChange={handleInputChange} />
                                                 <Field section="contact" isEditing={isEditing} label="State" field="C_state" value={getProfileAddress('Current').state}
                                                     valueOverride={getAddress('Current').state} onChangeOverride={(e) => handleAddressChange('Current', 'state', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} required />
+                                                    formData={formData} onChange={handleInputChange} />
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <Field section="contact" isEditing={isEditing} label="Pincode" field="C_zip" value={getProfileAddress('Current').zipCode}
                                                     valueOverride={getAddress('Current').zipCode} onChangeOverride={(e) => handleAddressChange('Current', 'zipCode', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} required />
+                                                    formData={formData} onChange={handleInputChange} />
                                                 <Field section="contact" isEditing={isEditing} label="Country" field="C_country" value={getProfileAddress('Current').country}
                                                     valueOverride={getAddress('Current').country} onChangeOverride={(e) => handleAddressChange('Current', 'country', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} required />
+                                                    formData={formData} onChange={handleInputChange} />
                                             </div>
                                         </div>
                                     </div>
@@ -811,7 +814,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                     {/* Permanent Address */}
                                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                                         <div className="flex justify-between items-center mb-4">
-                                            <h4 className="text-sm font-bold text-slate-700">Permanent Address</h4>
+                                            <h4 className="text-sm font-bold text-slate-700">Permanent Address <span className="text-red-500">*</span></h4>
                                             {isEditing && (
                                                 <label className="flex items-center space-x-2 text-xs text-slate-600 cursor-pointer select-none">
                                                     <input
@@ -834,25 +837,25 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                         <div className="space-y-3">
                                             <Field section="contact" isEditing={isEditing} label="Street" field="P_street" value={getProfileAddress('Permanent').street}
                                                 valueOverride={getAddress('Permanent').street} onChangeOverride={(e) => handleAddressChange('Permanent', 'street', e.target.value)}
-                                                formData={formData} onChange={handleInputChange} required />
+                                                formData={formData} onChange={handleInputChange} />
                                             <Field section="contact" isEditing={isEditing} label="Line 2" field="P_line2" value={getProfileAddress('Permanent').addressLine2}
                                                 valueOverride={getAddress('Permanent').addressLine2} onChangeOverride={(e) => handleAddressChange('Permanent', 'addressLine2', e.target.value)}
-                                                formData={formData} onChange={handleInputChange} required />
+                                                formData={formData} onChange={handleInputChange} />
                                             <div className="grid grid-cols-2 gap-3">
                                                 <Field section="contact" isEditing={isEditing} label="City" field="P_city" value={getProfileAddress('Permanent').city}
                                                     valueOverride={getAddress('Permanent').city} onChangeOverride={(e) => handleAddressChange('Permanent', 'city', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} required />
+                                                    formData={formData} onChange={handleInputChange} />
                                                 <Field section="contact" isEditing={isEditing} label="State" field="P_state" value={getProfileAddress('Permanent').state}
                                                     valueOverride={getAddress('Permanent').state} onChangeOverride={(e) => handleAddressChange('Permanent', 'state', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} required />
+                                                    formData={formData} onChange={handleInputChange} />
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <Field section="contact" isEditing={isEditing} label="Pincode" field="P_zip" value={getProfileAddress('Permanent').zipCode}
                                                     valueOverride={getAddress('Permanent').zipCode} onChangeOverride={(e) => handleAddressChange('Permanent', 'zipCode', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} required />
+                                                    formData={formData} onChange={handleInputChange} />
                                                 <Field section="contact" isEditing={isEditing} label="Country" field="P_country" value={getProfileAddress('Permanent').country}
                                                     valueOverride={getAddress('Permanent').country} onChangeOverride={(e) => handleAddressChange('Permanent', 'country', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} required />
+                                                    formData={formData} onChange={handleInputChange} />
                                             </div>
                                         </div>
                                     </div>
@@ -1265,23 +1268,61 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                     })}
                 </div>
 
-                {/* Submit for Approval Button - Bottom */}
+                {/* Document Final Declaration */}
+                {(!canVerify || isSelf) && profile.documentSubmissionStatus !== 'Approved' && (
+                    <div className="mt-10 pt-10 border-t border-slate-200">
+                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 flex flex-col items-center text-center">
+                            <h3 className="font-bold text-slate-800 text-lg mb-2">Final Declaration</h3>
+                            <p className="text-sm text-slate-600 max-w-2xl mb-6">
+                                I hereby declare that all the documents provided above are true and accurate to the best of my knowledge.
+                                I understand that any false information or forged documents may lead to disciplinary action or termination of employment.
+                            </p>
+
+                            {profile.documentSubmissionStatus === 'Submitted' ? (
+                                <div className="space-y-4 flex flex-col items-center">
+                                    <div className="flex items-center text-emerald-600 space-x-2 font-bold bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100">
+                                        <CheckCircle size={20} />
+                                        <span>Declared on {profile.updatedAt ? format(new Date(profile.updatedAt), 'dd MMM yyyy') : 'Recently'}</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-4 flex flex-col items-center">
+                                    <label className="flex items-center space-x-3 cursor-pointer group">
+                                        <input
+                                            type="checkbox"
+                                            checked={isDocumentDeclared}
+                                            onChange={(e) => setIsDocumentDeclared(e.target.checked)}
+                                            className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 group-hover:border-blue-400 transition"
+                                        />
+                                        <span className="text-sm font-semibold text-slate-700 select-none">I agree to the declaration</span>
+                                    </label>
+                                    {isDocumentDeclared && (
+                                        <p className="text-xs text-blue-600 font-medium animate-pulse">
+                                            Ready to submit! Click "Submit for Approval" below to finish.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Submit for Approval Button - Bottom */}
                 {(!canVerify || isSelf) && !(profile.documentSubmissionStatus === 'Approved' && !hasPendingDocs) && (
                     <div className="mt-8 flex justify-end border-t border-slate-100 pt-6">
-                        <Button
+                        <button
                             onClick={handleSubmitDocuments}
-                            disabled={!profile.documents?.length || profile.documentSubmissionStatus === 'Submitted'}
-                            className={`flex items-center gap-2 shadow-sm ${!profile.documents?.length || profile.documentSubmissionStatus === 'Submitted'
+                            disabled={!profile.documents?.length || profile.documentSubmissionStatus === 'Submitted' || !isDocumentDeclared}
+                            className={`flex items-center gap-2 shadow-sm px-6 py-2.5 rounded-xl font-semibold outline-none ${!profile.documents?.length || profile.documentSubmissionStatus === 'Submitted' || !isDocumentDeclared
                                 ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
                                 }`}
                         >
                             <Shield size={18} />
                             {profile.documentSubmissionStatus === 'Submitted' ? 'Submitted for Approval' :
                                 profile.documentSubmissionStatus === 'Approved' && hasPendingDocs ? 'Submit New Documents' :
                                     'Submit for Approval'}
-                        </Button>
+                        </button>
                     </div>
                 )}
 
@@ -1564,25 +1605,21 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.street}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.street}
                                             onChangeOverride={(e) => handleAddressChange(type, 'street', e.target.value)}
-                                            required={type !== 'Mailing'}
                                         />
                                         <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.city} label="City" field={`${type}_city`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.city}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.city}
                                             onChangeOverride={(e) => handleAddressChange(type, 'city', e.target.value)}
-                                            required={type !== 'Mailing'}
                                         />
                                         <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.state} label="State" field={`${type}_state`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.state}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.state}
                                             onChangeOverride={(e) => handleAddressChange(type, 'state', e.target.value)}
-                                            required={type !== 'Mailing'}
                                         />
                                         <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.zipCode} label="Zip Code" field={`${type}_zip`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.zipCode}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.zipCode}
                                             onChangeOverride={(e) => handleAddressChange(type, 'zipCode', e.target.value)}
-                                            required={type !== 'Mailing'}
                                         />
                                     </div>
                                 </div>
@@ -1620,7 +1657,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                             <Field section="personal" isEditing={isEditing && !profile.personal?.dateOfMarriage} label="Date of Marriage" field="dateOfMarriage" type="date" value={profile.personal?.dateOfMarriage} formData={formData} onChange={handleInputChange} />
                             <Field section="family" isEditing={isEditing && !profile.family?.spouseName} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} />
                             <Field section="family" isEditing={isEditing && !profile.family?.spouseDob} label="Spouse DOB" field="spouseDob" type="date" value={profile.family?.spouseDob} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing && !profile.personal?.dietaryPreference} label="Dietary Preference" field="dietaryPreference" value={profile.personal?.dietaryPreference} options={['Veg', 'Non-Veg', 'Vegan', 'Egg']} formData={formData} onChange={handleInputChange} />
+
                         </div>
 
                         {/* Children List */}

@@ -14,7 +14,7 @@ const LeaveConfig = () => {
         accrualType: 'Monthly', accrualAmount: 0,
         maxLimitPerYear: 0, carryForward: false, maxCarryForward: 0,
         encashmentAllowed: false, sandwichRule: false, allowNegativeBalance: false,
-        allowBackdated: true
+        allowBackdated: true, proRata: true, proofRequiredAbove: 0
     });
 
     const fetchPolicies = async () => {
@@ -41,7 +41,7 @@ const LeaveConfig = () => {
             accrualType: 'Monthly', accrualAmount: 0,
             maxLimitPerYear: 0, carryForward: false, maxCarryForward: 0,
             encashmentAllowed: false, sandwichRule: false, allowNegativeBalance: false,
-            allowBackdated: true
+            allowBackdated: true, proRata: true, proofRequiredAbove: 0
         });
         setShowModal(true);
     };
@@ -62,7 +62,9 @@ const LeaveConfig = () => {
             encashmentAllowed: policy.encashmentAllowed,
             sandwichRule: policy.sandwichRule,
             allowNegativeBalance: policy.allowNegativeBalance,
-            allowBackdated: policy.allowBackdated
+            allowBackdated: policy.allowBackdated,
+            proRata: policy.proRata ?? true,
+            proofRequiredAbove: policy.proofRequiredAbove || 0
         });
         setShowModal(true);
     };
@@ -85,6 +87,33 @@ const LeaveConfig = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        // Validation Rules
+        const parsedMaxLimit = Number(formData.maxLimitPerYear);
+        const parsedAmount = Number(formData.accrualAmount);
+        const parsedMaxCarry = Number(formData.maxCarryForward);
+
+        if (parsedAmount < 0 || parsedMaxLimit < 0 || parsedMaxCarry < 0) {
+            return toast.error('Amounts cannot be negative numbers.');
+        }
+
+        if (parsedMaxLimit > 365) {
+            return toast.error('Max Limit Per Year cannot exceed 365 days.');
+        }
+
+        if (formData.accrualType === 'Yearly') {
+            if (parsedAmount === 0 && parsedMaxLimit > 0) {
+                return toast.error('If Amount is Unlimited (0), the Max Limit must also be Unlimited (0).');
+            }
+            if (parsedAmount > 0 && parsedMaxLimit > 0 && parsedAmount > parsedMaxLimit) {
+                return toast.error('Yearly Initial Amount cannot exceed the Max Limit Per Year.');
+            }
+        }
+
+        if (formData.carryForward && parsedMaxCarry > parsedMaxLimit && parsedMaxLimit !== 0) {
+            return toast.error('Max Carry Forward cannot exceed the Max Limit Per Year.');
+        }
+
         try {
             await api.post('/leaves/config', formData);
             toast.success('Policy Updated Successfully');
@@ -152,7 +181,7 @@ const LeaveConfig = () => {
                                 <div className="grid grid-cols-2 gap-y-2 text-slate-600">
                                     <div className="flex flex-col">
                                         <span className="text-xs text-slate-400 uppercase font-bold">Accrual</span>
-                                        <span className="font-medium">{policy.accrualType} ({policy.accrualAmount})</span>
+                                        <span className="font-medium">{policy.accrualType} ({policy.accrualAmount === 0 ? 'Unlimited' : policy.accrualAmount})</span>
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="text-xs text-slate-400 uppercase font-bold">Max / Year</span>
@@ -225,6 +254,10 @@ const LeaveConfig = () => {
                                                 <option value="false">No (Unpaid)</option>
                                             </select>
                                         </div>
+                                        <div className="col-span-2">
+                                            <label className="zoho-label">Description</label>
+                                            <textarea name="description" value={formData.description} onChange={handleChange} className="zoho-input" rows="2" placeholder="Policy details..."></textarea>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -242,12 +275,12 @@ const LeaveConfig = () => {
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="zoho-label">Amount</label>
-                                            <input type="number" step="0.5" name="accrualAmount" value={formData.accrualAmount} onChange={handleChange} className="zoho-input" />
+                                            <label className="zoho-label">Amount (0 = Unlimited)</label>
+                                            <input type="number" step="0.5" min="0" name="accrualAmount" value={formData.accrualAmount} onChange={handleChange} className="zoho-input" required />
                                         </div>
                                         <div>
-                                            <label className="zoho-label">Max / Year</label>
-                                            <input type="number" name="maxLimitPerYear" value={formData.maxLimitPerYear} onChange={handleChange} className="zoho-input" />
+                                            <label className="zoho-label">Max / Year (0 = Unlimited)</label>
+                                            <input type="number" name="maxLimitPerYear" min="0" max="365" value={formData.maxLimitPerYear} onChange={handleChange} className="zoho-input" />
                                         </div>
                                     </div>
                                 </div>
@@ -296,13 +329,28 @@ const LeaveConfig = () => {
                                         {formData.carryForward && (
                                             <div>
                                                 <label className="zoho-label">Max Carry Fwd</label>
-                                                <input type="number" name="maxCarryForward" value={formData.maxCarryForward} onChange={handleChange} className="zoho-input" />
+                                                <input type="number" name="maxCarryForward" min="0" value={formData.maxCarryForward} onChange={handleChange} className="zoho-input" />
                                             </div>
                                         )}
                                         <label className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-slate-50 cursor-pointer">
                                             <input type="checkbox" name="encashmentAllowed" checked={formData.encashmentAllowed} onChange={handleChange} className="rounded text-blue-600 focus:ring-blue-500" />
                                             <span className="text-sm font-medium text-slate-700">Allow Encashment</span>
                                         </label>
+                                        <label className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-slate-50 cursor-pointer">
+                                            <input type="checkbox" name="allowNegativeBalance" checked={formData.allowNegativeBalance} onChange={handleChange} className="rounded text-blue-600 focus:ring-blue-500" />
+                                            <span className="text-sm font-medium text-slate-700">Allow Negative Balance</span>
+                                        </label>
+                                        <label className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-slate-50 cursor-pointer">
+                                            <input type="checkbox" name="proRata" checked={formData.proRata} onChange={handleChange} className="rounded text-blue-600 focus:ring-blue-500" />
+                                            <span className="text-sm font-medium text-slate-700">Calculate Pro-Rata (Mid-month joining)</span>
+                                        </label>
+                                        <div className="flex flex-col justify-center">
+                                            <label className="zoho-label">Proof Required Above (Days)</label>
+                                            <div className="flex items-center space-x-2">
+                                                <input type="number" name="proofRequiredAbove" value={formData.proofRequiredAbove} onChange={handleChange} className="zoho-input flex-1" min="0" />
+                                                <span className="text-xs text-slate-400 w-24">0 = Never</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
