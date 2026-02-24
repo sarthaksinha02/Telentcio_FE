@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
-import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers } from 'lucide-react';
+import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers, Loader2, LogOut } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -29,6 +29,9 @@ const Attendance = () => {
     const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks'
     const [expandedLogTaskId, setExpandedLogTaskId] = useState(null);
     const [editingLogId, setEditingLogId] = useState(null);
+
+    // Location Error State
+    const [loadingLocation, setLoadingLocation] = useState(false);
 
     const fetchApprovals = async () => {
         // Removed for move to Timesheet page
@@ -147,29 +150,111 @@ const Attendance = () => {
     };
 
     const handleClockIn = async () => {
-        try {
-            await api.post('/attendance/clock-in');
-            toast.success('Clocked In Successfully');
-            await fetchTodayStatus();
-            // fetchAssignedTasks(); // Already fetched
-            const now = new Date();
-            fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Error Clocking In');
+        const executeClockIn = async (locationData = null) => {
+            setLoadingLocation(true);
+            try {
+                const payload = locationData ? { location: locationData } : {};
+                await api.post('/attendance/clock-in', payload);
+                toast.success('Clocked In Successfully');
+                await fetchTodayStatus();
+                const now = new Date();
+                fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
+            } catch (error) {
+                toast.error(error.response?.data?.message || 'Error Clocking In');
+            } finally {
+                setLoadingLocation(false);
+            }
+        };
+
+        if (!navigator.geolocation) {
+            toast.error('Geolocation is not supported by your browser. Please use a modern browser.');
+            return;
         }
+
+        setLoadingLocation(true);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const isCached = (Date.now() - position.timestamp) > 60000;
+                if (!position.coords.accuracy || position.coords.accuracy > 300 || isCached) {
+                    toast.error('Please Enable location');
+                    setLoadingLocation(false);
+                    return;
+                }
+
+                executeClockIn({
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                    accuracy: position.coords.accuracy
+                }).catch(err => {
+                    console.error("Unhandled error during clock in:", err);
+                    toast.error("An unexpected error occurred during clock in.");
+                    setLoadingLocation(false);
+                });
+            },
+            (error) => {
+                toast.error('Please Enable location');
+                setLoadingLocation(false);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
     };
 
     const handleClockOut = async () => {
-        try {
-            await api.post('/attendance/clock-out');
-            toast.success('Clocked Out Successfully');
-            fetchTodayStatus();
-            // setAssignedTasks([]); // Don't clear tasks so they remain visible
-            const now = new Date();
-            fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Error Clocking Out');
+        const executeClockOut = async (locationData = null) => {
+            setLoadingLocation(true);
+            try {
+                const payload = locationData ? { location: locationData } : {};
+                await api.post('/attendance/clock-out', payload);
+                toast.success('Clocked Out Successfully');
+                fetchTodayStatus();
+                const now = new Date();
+                fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
+            } catch (error) {
+                toast.error(error.response?.data?.message || 'Error Clocking Out');
+            } finally {
+                setLoadingLocation(false);
+            }
+        };
+
+        if (!navigator.geolocation) {
+            toast.error('Geolocation is not supported by your browser. Please use a modern browser.');
+            return;
         }
+
+        setLoadingLocation(true);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const isCached = (Date.now() - position.timestamp) > 60000;
+                if (!position.coords.accuracy || position.coords.accuracy > 300 || isCached) {
+                    toast.error('Please Enable location');
+                    setLoadingLocation(false);
+                    return;
+                }
+
+                executeClockOut({
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                    accuracy: position.coords.accuracy
+                }).catch(err => {
+                    console.error("Unhandled error during clock out:", err);
+                    toast.error("An unexpected error occurred during clock out.");
+                    setLoadingLocation(false);
+                });
+            },
+            (error) => {
+                toast.error('Please Enable location');
+                setLoadingLocation(false);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
     };
 
     const toggleLogForm = (taskId, existingLog = null) => {
@@ -246,12 +331,13 @@ const Attendance = () => {
 
     const formatTime = (dateString, istString) => {
         if (istString && istString.includes(',')) {
-            return istString.split(',')[1]?.trim() || '';
+            const timePart = istString.split(',')[1]?.trim() || '';
+            return timePart.toLowerCase();
         }
         if (!dateString) return '--:--';
         return new Date(dateString).toLocaleTimeString('en-US', {
-            hour: '2-digit', minute: '2-digit'
-        });
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        }).toLowerCase();
     };
 
     const calculateDuration = (start, end) => {
@@ -260,14 +346,14 @@ const Attendance = () => {
         const endTime = end ? new Date(end) : currentTime;
 
         // Prevent negative duration if system time somehow lags (rare but possible)
-        if (endTime < startTime) return '0h 0m';
+        if (endTime < startTime) return '0h 0m 0s';
 
         const diffString = Math.abs(endTime - startTime);
         const hours = Math.floor(diffString / (1000 * 60 * 60));
         const minutes = Math.floor((diffString % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diffString % (1000 * 60)) / 1000); // Optional: add seconds
+        const seconds = Math.floor((diffString % (1000 * 60)) / 1000);
 
-        return `${hours}h ${minutes}m ${isClockedIn ? `${seconds}s` : ''}`;
+        return `${hours}h ${minutes}m ${seconds}s`;
     };
 
     const handleExportAttendance = async () => {
@@ -596,6 +682,7 @@ const Attendance = () => {
                 </div>
             </div>
 
+
             {/* Main Content - Flex/Grid taking remaining height */}
             <div className="flex-1 overflow-hidden px-4 pb-4 md:px-6 md:pb-6">
                 <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 h-full">
@@ -605,34 +692,56 @@ const Attendance = () => {
                         {/* Clock Widget */}
                         <div className="zoho-card p-6 flex flex-col items-center justify-center text-center border-t-4 border-t-blue-500">
                             <div className="mb-6 relative group">
-                                <div className={`h-36 w-36 rounded-full flex items-center justify-center border-[6px] transition-all duration-500 ${isClockedIn ? 'border-emerald-500 bg-emerald-50 shadow-emerald-200' : 'border-slate-200 bg-white shadow-sm'}`}>
-                                    <Clock size={48} className={isClockedIn ? 'text-emerald-500' : 'text-slate-400'} />
+                                <div className={`h-36 w-36 rounded-full flex items-center justify-center border-[6px] transition-all duration-500 ${isClockedIn ? 'border-[#08B87B] bg-[#EAF7F2] shadow-sm' : 'border-slate-200 bg-white shadow-sm'}`}>
+                                    <Clock size={48} className={isClockedIn ? 'text-[#08B87B]' : 'text-slate-400'} />
                                 </div>
                                 {isClockedIn && (
-                                    <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-emerald-600 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider animate-pulse shadow-md">
-                                        Active
+                                    <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-[#08B87B] text-white text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider shadow-md">
+                                        ACTIVE
                                     </div>
                                 )}
                             </div>
 
                             <div className="space-y-1 mb-6">
                                 <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Status</div>
-                                <div className={`text-xl font-bold ${isClockedIn ? 'text-emerald-600' : isClockedOut ? 'text-slate-500' : 'text-slate-700'}`}>
+                                <div className={`text-xl font-bold ${isClockedIn ? 'text-[#08B87B]' : isClockedOut ? 'text-slate-500' : 'text-slate-700'}`}>
                                     {isClockedIn ? 'Clocked In' : isClockedOut ? 'Shift Ended' : 'Not Started'}
                                 </div>
                             </div>
 
                             <div className="w-full space-y-3">
                                 {!isClockedIn && !isClockedOut && (
-                                    <Button onClick={handleClockIn} className="w-full">
-                                        Check In
-                                    </Button>
+                                    <button
+                                        onClick={handleClockIn}
+                                        disabled={loadingLocation}
+                                        className={`w-full flex items-center justify-center gap-2 py-3 bg-[#1B5FF3] text-white font-bold rounded-[10px] shadow-[0_4px_16px_rgba(27,95,243,0.35)] hover:bg-blue-700 active:scale-95 transition-all text-[15px] tracking-wide ${loadingLocation ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    >
+                                        {loadingLocation ? (
+                                            <>
+                                                <Loader2 className="animate-spin" size={18} />
+                                                <span>Loading...</span>
+                                            </>
+                                        ) : (
+                                            <span>Check In</span>
+                                        )}
+                                    </button>
                                 )}
 
                                 {isClockedIn && (
-                                    <Button onClick={handleClockOut} variant="danger" className="w-full">
-                                        Check Out
-                                    </Button>
+                                    <button
+                                        onClick={handleClockOut}
+                                        disabled={loadingLocation}
+                                        className={`w-full flex items-center justify-center gap-2 py-3 bg-[#e60000] text-white font-bold rounded-[10px] shadow-[0_4px_16px_rgba(230,0,0,0.35)] hover:bg-[#cc0000] active:scale-95 transition-all text-[15px] tracking-wide ${loadingLocation ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    >
+                                        {loadingLocation ? (
+                                            <>
+                                                <Loader2 className="animate-spin" size={18} />
+                                                <span>Fetching Location...</span>
+                                            </>
+                                        ) : (
+                                            <span>Check Out</span>
+                                        )}
+                                    </button>
                                 )}
 
                                 {isClockedOut && (
@@ -643,21 +752,21 @@ const Attendance = () => {
                             </div>
 
                             <div className="mt-6 w-full bg-slate-50 rounded border border-slate-100 divide-y divide-slate-100">
-                                <div className="flex justify-between p-3 text-sm">
+                                <div className="flex justify-between p-3 text-sm flex-col sm:flex-row gap-1 sm:gap-0">
                                     <span className="text-slate-500">In Time</span>
-                                    <span className="font-mono font-medium text-slate-700">
+                                    <span className="font-mono font-medium text-slate-700 sm:text-right">
                                         {formatTime(status?.clockIn, status?.clockInIST)}
                                     </span>
                                 </div>
-                                <div className="flex justify-between p-3 text-sm">
+                                <div className="flex justify-between p-3 text-sm flex-col sm:flex-row gap-1 sm:gap-0">
                                     <span className="text-slate-500">Out Time</span>
-                                    <span className="font-mono font-medium text-slate-700">
+                                    <span className="font-mono font-medium text-slate-700 sm:text-right">
                                         {formatTime(status?.clockOut, status?.clockOutIST)}
                                     </span>
                                 </div>
-                                <div className="flex justify-between p-3 text-sm bg-slate-100/50">
-                                    <span className="font-bold text-slate-600">Total Hours</span>
-                                    <span className="font-mono font-bold text-blue-600">
+                                <div className="flex justify-between p-3 text-sm bg-slate-100/30 flex-col sm:flex-row gap-1 sm:gap-0 rounded-b">
+                                    <span className="font-bold text-slate-700">Total Hours</span>
+                                    <span className="font-mono font-bold text-[#1B5FF3] sm:text-right">
                                         {status?.clockIn ? calculateDuration(status.clockIn, status.clockOut) : '--'}
                                     </span>
                                 </div>

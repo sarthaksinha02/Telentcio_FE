@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { X, Upload, Loader, ArrowLeft, Plus, Trash } from 'lucide-react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
 const CandidateForm = () => {
+    const { user } = useAuth();
     const { hiringRequestId, candidateId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
@@ -677,14 +679,31 @@ const CandidateForm = () => {
                                 {isViewMode ? 'Close' : 'Cancel'}
                             </button>
                             {!isViewMode && (
-                                <button
-                                    type="submit"
-                                    disabled={loading || uploading}
-                                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                >
-                                    {loading && <Loader className="animate-spin" size={16} />}
-                                    {isEditMode ? 'Update Candidate' : 'Add Candidate'}
-                                </button>
+                                <>
+                                    {isEditMode ? (
+                                        (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                            <button
+                                                type="submit"
+                                                disabled={loading || uploading}
+                                                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                            >
+                                                {loading && <Loader className="animate-spin" size={16} />}
+                                                Update Candidate
+                                            </button>
+                                        )
+                                    ) : (
+                                        (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                                            <button
+                                                type="submit"
+                                                disabled={loading || uploading}
+                                                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                            >
+                                                {loading && <Loader className="animate-spin" size={16} />}
+                                                Add Candidate
+                                            </button>
+                                        )
+                                    )}
+                                </>
                             )}
                         </div>
                     </form>

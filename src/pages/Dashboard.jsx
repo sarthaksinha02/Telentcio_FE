@@ -7,6 +7,41 @@ import { Link, useNavigate } from 'react-router-dom';
 import { LogOut, Users, Clock, Calendar, Search, Bell, Menu, ChevronDown, Shield, Building, Briefcase, UserX, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
+const LocationLink = ({ location }) => {
+    const [cityName, setCityName] = useState('Map...');
+
+    useEffect(() => {
+        if (!location || !location.lat || !location.lng) return;
+
+        const fetchCity = async () => {
+            try {
+                // Using Nominatim API for reverse geocoding
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=10&addressdetails=1`);
+                const data = await res.json();
+                if (data && data.address) {
+                    const city = data.address.city || data.address.town || data.address.village || data.address.county || data.address.state_district || 'Map';
+                    setCityName(city);
+                } else {
+                    setCityName('Map');
+                }
+            } catch (error) {
+                console.error("Error fetching city name", error);
+                setCityName('Map');
+            }
+        };
+
+        fetchCity();
+    }, [location]);
+
+    if (!location || !location.lat) return <span className="text-[12px] text-slate-400 whitespace-nowrap">N/A</span>;
+
+    return (
+        <a href={`https://maps.google.com/?q=${location.lat},${location.lng}`} target="_blank" rel="noopener noreferrer" className="text-[12.5px] text-blue-600 hover:text-blue-800 hover:underline font-medium whitespace-nowrap" title="View Map">
+            {cityName}
+        </a>
+    );
+};
+
 const Dashboard = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
@@ -103,69 +138,62 @@ const Dashboard = () => {
                         {/* Tables Section - Side by Side */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                             {/* Recent Attendance */}
-                            <div className="zoho-card">
-                                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
-                                    <h3 className="font-semibold text-slate-800 text-sm">Todays Attendance</h3>
-                                    <Link to="/attendance" className="text-xs text-blue-600 hover:underline">View All</Link>
+                            <div className="bg-white rounded-lg border border-slate-100 shadow-sm flex flex-col h-full">
+                                <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-lg">
+                                    <h3 className="font-semibold text-slate-800 text-base">Todays Attendance</h3>
+                                    {/* <Link to="/attendance" className="text-sm text-blue-600 hover:underline">View All</Link> */}
                                 </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-slate-50 text-slate-500 font-medium">
-                                            <tr>
-                                                <th className="px-6 py-3">Employee</th>
-                                                <th className="px-6 py-3">Check In</th>
-                                                <th className="px-6 py-3">Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {loading ? (
-                                                [1, 2, 3].map(i => (
-                                                    <tr key={i}>
-                                                        <td className="px-6 py-4"><Skeleton className="h-10 w-32" /></td>
-                                                        <td className="px-6 py-4"><Skeleton className="h-6 w-16" /></td>
-                                                        <td className="px-6 py-4"><Skeleton className="h-6 w-16" /></td>
-                                                    </tr>
-                                                ))
-                                            ) : recentActivity.filter(r => r.status === 'PRESENT').length > 0 ? (
-                                                recentActivity.filter(r => r.status === 'PRESENT').map((record) => (
-                                                    <tr key={record.id} className="hover:bg-slate-50/50 transition-colors">
-                                                        <td className="px-6 py-3">
-                                                            <div className="flex items-center space-x-3">
-                                                                <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500">
-                                                                    {record.user.name.charAt(0)}
-                                                                </div>
-                                                                <div>
-                                                                    <div className="font-medium text-slate-800">{record.user.name}</div>
-                                                                    <div className="text-xs text-slate-500">{record.user.role}</div>
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-3 text-slate-600">
-                                                            {record.time ? format(new Date(record.time), 'hh:mm a') : '-'}
-                                                        </td>
-                                                        <td className="px-6 py-3">
-                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${record.status === 'PRESENT' ? 'bg-emerald-100 text-emerald-800' :
-                                                                record.status === 'HALF_DAY' ? 'bg-yellow-100 text-yellow-800' :
-                                                                    record.status === 'ABSENT' ? 'bg-red-100 text-red-800' :
-                                                                        'bg-slate-100 text-slate-800'
-                                                                }`}>
-                                                                {record.status}
-                                                            </span>
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            ) : (
-                                                <tr>
-                                                    <td colSpan="2" className="px-6 py-8 text-center text-slate-500">
-                                                        <div className="flex flex-col items-center">
-                                                            <AlertCircle size={24} className="mb-2 text-slate-300" />
-                                                            <p>No attendance activity today.</p>
+                                <div className="flex flex-col flex-1">
+                                    <div className="flex items-center px-4 lg:px-6 py-4 bg-[#f8fafc] text-slate-600 font-semibold border-b border-slate-100 text-[13.5px]">
+                                        <div className="flex-1 min-w-0 pr-2">Employee</div>
+                                        <div className="w-20 shrink-0 flex-none text-left">Check In</div>
+                                        <div className="w-[84px] shrink-0 flex-none text-left">Status</div>
+                                        <div className="w-16 sm:w-[72px] shrink-0 flex-none text-right">Location</div>
+                                    </div>
+                                    <div className="divide-y divide-slate-100 bg-white">
+                                        {loading ? (
+                                            [1, 2, 3].map(i => (
+                                                <div key={i} className="flex items-center px-4 lg:px-6 py-4">
+                                                    <div className="flex-1 pr-4"><Skeleton className="h-10 w-full max-w-[180px]" /></div>
+                                                    <div className="w-20"><Skeleton className="h-6 w-14" /></div>
+                                                    <div className="w-[84px]"><Skeleton className="h-6 w-16" /></div>
+                                                    <div className="w-16 sm:w-[72px]"><Skeleton className="h-6 w-12 ml-auto" /></div>
+                                                </div>
+                                            ))
+                                        ) : recentActivity.filter(r => r.status === 'PRESENT').length > 0 ? (
+                                            recentActivity.filter(r => r.status === 'PRESENT').map((record) => (
+                                                <div key={record.id} className="flex items-center px-4 lg:px-6 py-3.5 hover:bg-slate-50/50 transition-colors">
+                                                    <div className="flex-1 flex items-center min-w-0 pr-3 sm:pr-4 space-x-3.5">
+                                                        <div className="h-9 w-9 rounded-full bg-[#E2E8F0] flex items-center justify-center text-[14px] font-bold text-[#475569] shrink-0">
+                                                            {record.user.name.charAt(0).toUpperCase()}
                                                         </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
+                                                        <div className="min-w-0">
+                                                            <div className="font-semibold text-slate-800 text-[14px] truncate">{record.user.name}</div>
+                                                            <div className="text-[12.5px] text-slate-500 mt-0.5 truncate">Employee</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-20 shrink-0 flex-none text-left">
+                                                        <span className="text-[13.5px] text-slate-600 font-medium whitespace-nowrap">
+                                                            {record.time ? format(new Date(record.time), 'hh:mm a').toUpperCase() : '-'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="w-[84px] shrink-0 flex-none text-left">
+                                                        <span className="inline-flex items-center px-2 py-1 rounded bg-[#EAF7F2] text-[#08B87B] text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
+                                                            {record.status}
+                                                        </span>
+                                                    </div>
+                                                    <div className="w-16 sm:w-[72px] shrink-0 flex-none text-right">
+                                                        <LocationLink location={record.location} />
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="px-6 py-10 text-center text-slate-500 flex flex-col items-center">
+                                                <AlertCircle size={28} className="mb-3 text-slate-300" />
+                                                <p className="text-sm">No positive attendance activity today.</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -187,8 +215,8 @@ const Dashboard = () => {
                                         <tbody className="divide-y divide-slate-100">
                                             {loading ? (
                                                 <tr><td colSpan="3" className="px-6 py-4"><Skeleton className="h-6 w-full" /></td></tr>
-                                            ) : projects.length > 0 ? (
-                                                projects.map((project) => (
+                                            ) : projects.filter(p => p.status === 'Active').length > 0 ? (
+                                                projects.filter(p => p.status === 'Active').map((project) => (
                                                     <tr
                                                         key={project._id}
                                                         className="hover:bg-slate-50/50 transition-colors cursor-pointer"

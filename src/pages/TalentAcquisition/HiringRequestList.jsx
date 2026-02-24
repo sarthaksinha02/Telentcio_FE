@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 import { Plus, Search, Filter, Briefcase, Clock, CheckCircle, XCircle, AlertCircle, Settings } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
 
 const HiringRequestList = () => {
+    const { user } = useAuth();
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState('Approved'); // Default to Approved
@@ -61,12 +63,14 @@ const HiringRequestList = () => {
                         >
                             <Settings size={18} /> Workflows
                         </Link>
-                        <Link
-                            to="/ta/create-request"
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium text-sm"
-                        >
-                            <Plus size={18} /> Raising Requisition
-                        </Link>
+                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                            <Link
+                                to="/ta/create-request"
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium text-sm"
+                            >
+                                <Plus size={18} /> Raising Requisition
+                            </Link>
+                        )}
                     </div>
                 </div>
             </div>

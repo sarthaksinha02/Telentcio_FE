@@ -22,7 +22,7 @@ const WorkflowSettings = () => {
 
     const fetchWorkflows = async () => {
         try {
-            const res = await api.get('/workflows');
+            const res = await api.get('/workflows?module=TA');
             setWorkflows(res.data);
         } catch (error) {
             console.error(error);
@@ -96,7 +96,8 @@ const WorkflowSettings = () => {
         try {
             await api.post('/workflows', {
                 name: newName,
-                levels
+                levels,
+                module: 'TA'
             });
             toast.success('Workflow created');
             setShowCreate(false);

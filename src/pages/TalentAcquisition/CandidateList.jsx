@@ -4,8 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import { useAuth } from '../../context/AuthContext';
 
 const CandidateList = ({ hiringRequestId }) => {
+    const { user } = useAuth();
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -135,13 +137,15 @@ const CandidateList = ({ hiringRequestId }) => {
                     <h3 className="text-lg font-bold text-slate-800">Candidates</h3>
                     <p className="text-sm text-slate-500">{candidates.length} candidate(s) uploaded</p>
                 </div>
-                <button
-                    onClick={handleAddNew}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                >
-                    <Plus size={18} />
-                    Add Candidate
-                </button>
+                {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                    <button
+                        onClick={handleAddNew}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                    >
+                        <Plus size={18} />
+                        Add Candidate
+                    </button>
+                )}
             </div>
 
             {/* Filters */}
@@ -221,12 +225,14 @@ const CandidateList = ({ hiringRequestId }) => {
                     <Upload className="mx-auto text-slate-300 mb-4" size={48} />
                     <h3 className="text-lg font-semibold text-slate-700 mb-2">No Candidates Yet</h3>
                     <p className="text-slate-500 mb-4">Start by uploading candidate resumes and filling their details</p>
-                    <button
-                        onClick={handleAddNew}
-                        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                    >
-                        Upload First Resume
-                    </button>
+                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                        <button
+                            onClick={handleAddNew}
+                            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                        >
+                            Upload First Resume
+                        </button>
+                    )}
                 </div>
             ) : (
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -295,6 +301,7 @@ const CandidateList = ({ hiringRequestId }) => {
                                                     onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
                                                     className={`px-2 py-1 text-xs font-semibold rounded-lg border border-slate-300 bg-white outline-none cursor-pointer transition-colors hover:border-blue-500 hover:ring-1 hover:ring-blue-200 ${getDecisionColor(candidate.decision || 'None')}`}
                                                     onClick={(e) => e.stopPropagation()}
+                                                    disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.decision'))}
                                                 >
                                                     <option value="None" className="text-slate-600">None</option>
                                                     <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
@@ -347,29 +354,33 @@ const CandidateList = ({ hiringRequestId }) => {
                                                             View Resume
                                                         </a>
 
-                                                        <button
-                                                            onClick={() => {
-                                                                handleEdit(candidate);
-                                                                setActiveMenu(null);
-                                                            }}
-                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                                                        >
-                                                            <Edit size={16} className="text-slate-500" />
-                                                            Edit Candidate
-                                                        </button>
+                                                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    handleEdit(candidate);
+                                                                    setActiveMenu(null);
+                                                                }}
+                                                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                                            >
+                                                                <Edit size={16} className="text-slate-500" />
+                                                                Edit Candidate
+                                                            </button>
+                                                        )}
 
                                                         <div className="border-t border-slate-100 my-1"></div>
 
-                                                        <button
-                                                            onClick={() => {
-                                                                handleDelete(candidate._id);
-                                                                setActiveMenu(null);
-                                                            }}
-                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                            Delete Candidate
-                                                        </button>
+                                                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.delete')) && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    handleDelete(candidate._id);
+                                                                    setActiveMenu(null);
+                                                                }}
+                                                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                                Delete Candidate
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 )}
                                             </td>
