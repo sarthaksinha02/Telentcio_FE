@@ -3,7 +3,7 @@ import api from '../api/axios';
 import { Calendar, Plus, Clock, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
 
@@ -58,6 +58,27 @@ const Meetings = () => {
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-6xl mx-auto space-y-6">
+
+                {/* View Toggle */}
+                {(user?.roles?.includes('Admin') || user?.permissions?.includes('discussion.read')) && (
+                    <div className="flex justify-center mb-8">
+                        <div className="inline-flex bg-slate-200/70 p-1 rounded-lg">
+                            <button
+                                onClick={() => navigate('/meetings')}
+                                className="px-6 py-2 text-sm font-medium rounded-md transition-all shadow-sm bg-white text-slate-800"
+                            >
+                                Meetings
+                            </button>
+                            <button
+                                onClick={() => navigate('/discussions')}
+                                className="px-6 py-2 text-sm font-medium rounded-md transition-all text-slate-600 hover:text-slate-800"
+                            >
+                                Discussions
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Header */}
                 <div className="flex justify-between items-center">
                     <div>

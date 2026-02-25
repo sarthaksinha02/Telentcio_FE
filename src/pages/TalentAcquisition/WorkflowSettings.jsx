@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
-import { Plus, Trash2, Save, X, Check, ArrowRight } from 'lucide-react';
+import { Plus, Trash2, Save, X, Check, ArrowRight, Loader } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Skeleton from '../../components/Skeleton';
 
@@ -18,6 +18,7 @@ const WorkflowSettings = () => {
     const [workflows, setWorkflows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
+    const [actionLoading, setActionLoading] = useState(false);
 
     // Create/Edit Approval State
     const [newName, setNewName] = useState('');
@@ -30,6 +31,7 @@ const WorkflowSettings = () => {
     const [interviewWorkflows, setInterviewWorkflows] = useState([]);
     const [loadingInterview, setLoadingInterview] = useState(true);
     const [showCreateInterview, setShowCreateInterview] = useState(false);
+    const [actionLoadingInterview, setActionLoadingInterview] = useState(false);
 
     // Create/Edit Interview State
     const [newInterviewName, setNewInterviewName] = useState('');
@@ -104,6 +106,7 @@ const WorkflowSettings = () => {
         }
 
         try {
+            setActionLoading(true);
             if (editingId) {
                 await api.put(`/workflows/${editingId}`, { name: newName, levels, module: 'TA' });
                 toast.success('Hiring workflow updated');
@@ -118,6 +121,8 @@ const WorkflowSettings = () => {
             fetchWorkflows();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to save');
+        } finally {
+            setActionLoading(false);
         }
     };
 
@@ -135,10 +140,10 @@ const WorkflowSettings = () => {
     };
 
     const handleDelete = async (id) => {
-        if (!window.confirm('Are you sure you want to deactivate this workflow?')) return;
+        if (!window.confirm('Are you sure you want to delete this workflow?')) return;
         try {
             await api.delete(`/workflows/${id}`);
-            toast.success('Workflow deactivated');
+            toast.success('Workflow deleted');
             fetchWorkflows();
         } catch (error) {
             toast.error('Failed to delete');
@@ -177,6 +182,7 @@ const WorkflowSettings = () => {
         }
 
         try {
+            setActionLoadingInterview(true);
             if (editingInterviewId) {
                 await api.put(`/ta/interview-workflows/${editingInterviewId}`, { name: newInterviewName, description: newInterviewDesc, rounds: interviewRounds });
                 toast.success('Interview Workflow updated');
@@ -192,6 +198,8 @@ const WorkflowSettings = () => {
             fetchInterviewWorkflows();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to save');
+        } finally {
+            setActionLoadingInterview(false);
         }
     };
 
@@ -327,8 +335,8 @@ const WorkflowSettings = () => {
                             </div>
 
                             <div className="flex justify-end">
-                                <button onClick={handleCreateWorkflow} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                                    <Save size={18} /> Save Hiring Workflow
+                                <button onClick={handleCreateWorkflow} disabled={actionLoading} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50">
+                                    {actionLoading ? <Loader size={18} className="animate-spin" /> : <Save size={18} />} Save Hiring Workflow
                                 </button>
                             </div>
                         </div>
@@ -388,11 +396,9 @@ const WorkflowSettings = () => {
                                                         <button onClick={() => handleEdit(wf)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit Workflow">
                                                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                                                         </button>
-                                                        {wf.isActive && (
-                                                            <button onClick={() => handleDelete(wf._id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Deactivate Workflow">
-                                                                <Trash2 size={18} />
-                                                            </button>
-                                                        )}
+                                                        <button onClick={() => handleDelete(wf._id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete Workflow">
+                                                            <Trash2 size={18} />
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -476,8 +482,8 @@ const WorkflowSettings = () => {
                             </div>
 
                             <div className="flex justify-end">
-                                <button onClick={handleCreateInterviewWorkflow} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                                    <Save size={18} /> Save Interview Workflow
+                                <button onClick={handleCreateInterviewWorkflow} disabled={actionLoadingInterview} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50">
+                                    {actionLoadingInterview ? <Loader size={18} className="animate-spin" /> : <Save size={18} />} Save Interview Workflow
                                 </button>
                             </div>
                         </div>

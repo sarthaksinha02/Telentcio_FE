@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase, Settings, FileText, Check, X, ClipboardList, LifeBuoy } from 'lucide-react';
+import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase, Settings, FileText, Check, X, ClipboardList, LifeBuoy, MessageSquare } from 'lucide-react';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
@@ -61,7 +61,11 @@ const Sidebar = ({ isOpen, onClose }) => {
             <CalendarDays size={18} />
             <span>Holidays</span>
           </Link>
-          <Link to="/meetings" className={isActive('/meetings')} onClick={onClose}>
+          <Link
+            to={(user?.roles?.includes('Admin') || user?.permissions?.includes('discussion.read')) ? "/discussions" : "/meetings"}
+            className={(location.pathname === '/meetings' || location.pathname.startsWith('/discussions')) ? "zoho-sidebar-link-active" : "zoho-sidebar-link"}
+            onClick={onClose}
+          >
             <ClipboardList size={18} />
             <span>Meetings</span>
           </Link>

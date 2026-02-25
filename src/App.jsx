@@ -32,6 +32,8 @@ import MeetingForm from './pages/MeetingForm';
 import MeetingDetails from './pages/MeetingDetails';
 import HelpDesk from './pages/HelpDesk';
 import QueryDetails from './pages/QueryDetails';
+import Discussions from './pages/Discussions';
+import DiscussionForm from './pages/DiscussionForm';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleRoute from './components/RoleRoute';
@@ -84,6 +86,11 @@ function App() {
               {/* Help Desk Routes */}
               <Route path="/helpdesk" element={<HelpDesk />} />
               <Route path="/helpdesk/:id" element={<QueryDetails />} />
+
+              {/* Discussion Routes */}
+              <Route path="/discussions" element={<Discussions />} />
+              <Route path="/discussions/new" element={<DiscussionForm />} />
+              <Route path="/discussions/:id/edit" element={<DiscussionForm />} />
 
               {/* Project Management Routes */}
               <Route element={<RoleRoute requiredPermissions={['project.read', 'project.create']} requiredRoles={['Admin']} />}>
