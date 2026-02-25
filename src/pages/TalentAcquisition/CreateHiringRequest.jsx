@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign } from 'lucide-react';
+import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import WorkflowSettings from './WorkflowSettings';
 
 const Section = ({ title, icon: Icon, children }) => (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
@@ -63,6 +64,7 @@ const CreateHiringRequest = () => {
     const [formData, setFormData] = useState({
         client: '', // New field
         workflowId: '', // Workflow selection
+        interviewWorkflowId: '', // Interview Workflow template selection
 
         // Role Info
         title: '',
@@ -91,17 +93,24 @@ const CreateHiringRequest = () => {
     });
 
     const [workflows, setWorkflows] = useState([]); // Store available workflows
+    const [interviewWorkflows, setInterviewWorkflows] = useState([]); // Store interview templates
+    const [showWorkflowModal, setShowWorkflowModal] = useState(false);
+
+    const fetchWorkflowsData = async () => {
+        try {
+            const [wfRes, intWfRes] = await Promise.all([
+                api.get('/workflows'),
+                api.get('/ta/interview-workflows')
+            ]);
+            setWorkflows(wfRes.data.filter(w => w.isActive));
+            setInterviewWorkflows(intWfRes.data.filter(w => w.isActive));
+        } catch (error) {
+            console.error("Failed to fetch workflow data", error);
+        }
+    };
 
     useEffect(() => {
-        const fetchWorkflows = async () => {
-            try {
-                const res = await api.get('/workflows');
-                setWorkflows(res.data.filter(w => w.isActive));
-            } catch (error) {
-                console.error("Failed to fetch workflows", error);
-            }
-        };
-        fetchWorkflows();
+        fetchWorkflowsData();
     }, []);
 
     // Fetch data if in edit mode
@@ -116,6 +125,7 @@ const CreateHiringRequest = () => {
                     setFormData({
                         client: data.client || '',
                         workflowId: data.workflowId?._id || data.workflowId || '', // Handle both populated and non-populated
+                        interviewWorkflowId: data.interviewWorkflowId?._id || data.interviewWorkflowId || '',
                         title: data.roleDetails.title,
                         department: data.roleDetails.department,
                         employmentType: data.roleDetails.employmentType,
@@ -157,12 +167,31 @@ const CreateHiringRequest = () => {
 
             // 1. Validation Logic
             if (!isDraft) {
-                if (!formData.client.trim()) {
+                if (!formData.client?.trim()) {
                     toast.error('Client name is required');
                     setLoading(false);
                     return;
                 }
-                // ... existing validations
+                if (!formData.title?.trim()) {
+                    toast.error('Job Title is required');
+                    setLoading(false);
+                    return;
+                }
+                if (!formData.department?.trim()) {
+                    toast.error('Department is required');
+                    setLoading(false);
+                    return;
+                }
+                if (!formData.employmentType) {
+                    toast.error('Employment Type is required');
+                    setLoading(false);
+                    return;
+                }
+                if (!formData.purpose) {
+                    toast.error('Hiring Purpose is required');
+                    setLoading(false);
+                    return;
+                }
                 if (Number(formData.experienceMin) > Number(formData.experienceMax)) {
                     toast.error('Min Experience cannot be greater than Max Experience');
                     setLoading(false);
@@ -189,6 +218,7 @@ const CreateHiringRequest = () => {
             const payload = {
                 client: formData.client,
                 workflowId: formData.workflowId, // Send selected workflow ID
+                interviewWorkflowId: formData.interviewWorkflowId || undefined, // Send selected interview workflow
                 roleDetails: {
                     title: formData.title,
                     department: formData.department,
@@ -300,18 +330,52 @@ const CreateHiringRequest = () => {
             <div className="max-w-4xl mx-auto p-6 md:p-8">
 
                 <Section title="1. Role Information" icon={Briefcase}>
-                    <div className="md:col-span-2">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                            Approval Workflow
-                        </label>
+                    <div className="md:col-span-1">
+                        <div className="flex justify-between items-end gap-2 mb-1.5">
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                Approval Workflow
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => setShowWorkflowModal('APPROVAL')}
+                                className="text-[10px] text-blue-600 hover:text-blue-800 font-bold uppercase tracking-wider"
+                            >
+                                + Add New
+                            </button>
+                        </div>
                         <select
                             name="workflowId"
                             value={formData.workflowId || ''}
                             onChange={handleChange}
                             className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all"
                         >
-                            <option value="">Select a Workflow (Default will be used if empty)</option>
+                            <option value="">Select an Approval Workflow</option>
                             {workflows.map(w => (
+                                <option key={w._id} value={w._id}>{w.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="md:col-span-1">
+                        <div className="flex justify-between items-end gap-2 mb-1.5">
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                Interview Workflow
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => setShowWorkflowModal('INTERVIEW')}
+                                className="text-[10px] text-blue-600 hover:text-blue-800 font-bold uppercase tracking-wider"
+                            >
+                                + Add New
+                            </button>
+                        </div>
+                        <select
+                            name="interviewWorkflowId"
+                            value={formData.interviewWorkflowId || ''}
+                            onChange={handleChange}
+                            className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+                        >
+                            <option value="">Select an Interview Template (Optional)</option>
+                            {interviewWorkflows.map(w => (
                                 <option key={w._id} value={w._id}>{w.name}</option>
                             ))}
                         </select>
@@ -350,6 +414,38 @@ const CreateHiringRequest = () => {
                 </Section>
 
             </div>
+
+            {/* Workflow Creation Modal */}
+            {showWorkflowModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-slate-50 rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-200 overflow-hidden">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200 shrink-0 sticky top-0 z-10">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-800">
+                                    {showWorkflowModal === 'APPROVAL' ? 'Manage Approval Workflows' : 'Manage Interview Workflows'}
+                                </h2>
+                                <p className="text-sm text-slate-500">Create or modify sequence templates. Close this window to safely return to your draft.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowWorkflowModal(false);
+                                    fetchWorkflowsData(); // Refresh dropdowns with whatever was created
+                                }}
+                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors bg-white shadow-sm border border-slate-200"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        {/* Modal Body: WorkflowSettings rendered inside */}
+                        <div className="flex-1 overflow-y-auto">
+                            <WorkflowSettings />
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

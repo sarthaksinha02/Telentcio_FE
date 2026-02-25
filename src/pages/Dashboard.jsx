@@ -147,7 +147,7 @@ const Dashboard = () => {
                                     <div className="flex items-center px-4 lg:px-6 py-4 bg-[#f8fafc] text-slate-600 font-semibold border-b border-slate-100 text-[13.5px]">
                                         <div className="flex-1 min-w-0 pr-2">Employee</div>
                                         <div className="w-20 shrink-0 flex-none text-left">Check In</div>
-                                        <div className="w-[84px] shrink-0 flex-none text-left">Status</div>
+                                        <div className="w-[100px] shrink-0 flex-none text-left">Role</div>
                                         <div className="w-16 sm:w-[72px] shrink-0 flex-none text-right">Location</div>
                                     </div>
                                     <div className="divide-y divide-slate-100 bg-white">
@@ -156,7 +156,7 @@ const Dashboard = () => {
                                                 <div key={i} className="flex items-center px-4 lg:px-6 py-4">
                                                     <div className="flex-1 pr-4"><Skeleton className="h-10 w-full max-w-[180px]" /></div>
                                                     <div className="w-20"><Skeleton className="h-6 w-14" /></div>
-                                                    <div className="w-[84px]"><Skeleton className="h-6 w-16" /></div>
+                                                    <div className="w-[100px]"><Skeleton className="h-6 w-16" /></div>
                                                     <div className="w-16 sm:w-[72px]"><Skeleton className="h-6 w-12 ml-auto" /></div>
                                                 </div>
                                             ))
@@ -169,7 +169,7 @@ const Dashboard = () => {
                                                         </div>
                                                         <div className="min-w-0">
                                                             <div className="font-semibold text-slate-800 text-[14px] truncate">{record.user.name}</div>
-                                                            <div className="text-[12.5px] text-slate-500 mt-0.5 truncate">Employee</div>
+                                                            <div className="text-[12.5px] text-slate-500 mt-0.5 truncate">{record.user.employmentType || 'Employee'}</div>
                                                         </div>
                                                     </div>
                                                     <div className="w-20 shrink-0 flex-none text-left">
@@ -177,9 +177,9 @@ const Dashboard = () => {
                                                             {record.time ? format(new Date(record.time), 'hh:mm a').toUpperCase() : '-'}
                                                         </span>
                                                     </div>
-                                                    <div className="w-[84px] shrink-0 flex-none text-left">
-                                                        <span className="inline-flex items-center px-2 py-1 rounded bg-[#EAF7F2] text-[#08B87B] text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
-                                                            {record.status}
+                                                    <div className="w-[100px] shrink-0 flex-none text-left">
+                                                        <span className="text-[13px] text-slate-600 truncate block">
+                                                            {record.user.role}
                                                         </span>
                                                     </div>
                                                     <div className="w-16 sm:w-[72px] shrink-0 flex-none text-right">
@@ -216,7 +216,7 @@ const Dashboard = () => {
                                             {loading ? (
                                                 <tr><td colSpan="3" className="px-6 py-4"><Skeleton className="h-6 w-full" /></td></tr>
                                             ) : projects.filter(p => p.status === 'Active').length > 0 ? (
-                                                projects.filter(p => p.status === 'Active').map((project) => (
+                                                projects.filter(p => p.status === 'Active').slice(0, 5).map((project) => (
                                                     <tr
                                                         key={project._id}
                                                         className="hover:bg-slate-50/50 transition-colors cursor-pointer"
@@ -224,7 +224,11 @@ const Dashboard = () => {
                                                     >
                                                         <td className="px-6 py-3 font-medium text-slate-800">{project.name}</td>
                                                         <td className="px-6 py-3">
-                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${project.status === 'Active' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'
+                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                                                project.status === 'Active' ? 'bg-blue-100 text-blue-800' :
+                                                                project.status === 'On Hold' ? 'bg-orange-100 text-orange-800' :
+                                                                project.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
+                                                                'bg-slate-100 text-slate-800'
                                                                 }`}>
                                                                 {project.status}
                                                             </span>

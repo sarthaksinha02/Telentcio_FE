@@ -14,6 +14,8 @@ const Projects = () => {
     const [projects, setProjects] = useState([]);
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [submitLoading, setSubmitLoading] = useState(false);
+    const [actionLoading, setActionLoading] = useState(null); // stores the id of the project being acted on
     const [showModal, setShowModal] = useState(false);
     const [formData, setFormData] = useState({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
 
@@ -80,6 +82,7 @@ const Projects = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setSubmitLoading(true);
         try {
             // Prepare payload: Convert empty strings to null for ObjectId/Date fields
             const payload = { ...formData };
@@ -100,6 +103,8 @@ const Projects = () => {
             fetchData();
         } catch (error) {
             toast.error(editingId ? 'Failed to update' : 'Failed to create');
+        } finally {
+            setSubmitLoading(false);
         }
     };
 
@@ -127,12 +132,15 @@ const Projects = () => {
 
     const handleStatusChange = async (project, newStatus) => {
         const isActive = newStatus !== 'Completed';
+        setActionLoading(project._id);
         try {
             await api.put(`/projects/${project._id}`, { status: newStatus, isActive });
             toast.success(`Project marked as ${newStatus}`);
-            fetchData();
+            await fetchData();
         } catch (error) {
             toast.error('Failed to update project status');
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -212,9 +220,14 @@ const Projects = () => {
                                                                     e.stopPropagation();
                                                                     setOpenMenuId(openMenuId === project._id ? null : project._id);
                                                                 }}
-                                                                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+                                                                disabled={actionLoading === project._id}
+                                                                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors disabled:opacity-50"
                                                             >
-                                                                <MoreVertical size={16} />
+                                                                {actionLoading === project._id ? (
+                                                                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+                                                                ) : (
+                                                                    <MoreVertical size={16} />
+                                                                )}
                                                             </button>
 
                                                             {openMenuId === project._id && (
@@ -273,12 +286,15 @@ const Projects = () => {
                                                                         <button
                                                                             onClick={async () => {
                                                                                 if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
+                                                                                    setActionLoading(project._id);
                                                                                     try {
                                                                                         await api.delete(`/projects/${project._id}`);
                                                                                         toast.success('Project deleted');
-                                                                                        fetchData();
+                                                                                        await fetchData();
                                                                                     } catch (error) {
                                                                                         toast.error('Failed to delete project');
+                                                                                    } finally {
+                                                                                        setActionLoading(null);
                                                                                     }
                                                                                 }
                                                                                 setOpenMenuId(null);
@@ -423,7 +439,7 @@ const Projects = () => {
 
                             <div className="flex justify-end space-x-3 pt-4">
                                 <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
-                                <Button type="submit" isLoading={loading}>{editingId ? 'Update' : 'Create'}</Button>
+                                <Button type="submit" isLoading={submitLoading}>{editingId ? 'Update' : 'Create'}</Button>
                             </div>
                         </form>
                     </div>

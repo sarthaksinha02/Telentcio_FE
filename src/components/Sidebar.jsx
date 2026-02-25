@@ -70,7 +70,8 @@ const Sidebar = ({ isOpen, onClose }) => {
             <span>Help Desk</span>
           </Link>
 
-          {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view')) && (
+          {/* TA is visible to admins, users with 'ta.view' permission, or those actively participating in a workflow */}
+          {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view') || user?.isTAParticipant) && (
             <Link to="/ta" className={isActive('/ta')} onClick={onClose}>
               <Briefcase size={18} />
               <span>Talent Acquisition</span>

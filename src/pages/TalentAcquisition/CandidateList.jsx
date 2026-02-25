@@ -99,7 +99,7 @@ const CandidateList = ({ hiringRequestId }) => {
 
     const handleDecisionChange = async (candidateId, newDecision) => {
         try {
-            await api.put(`/ta/candidates/${candidateId}`, { decision: newDecision });
+            await api.patch(`/ta/candidates/${candidateId}/decision`, { decision: newDecision });
             toast.success('Decision updated');
             setCandidates(prev => prev.map(c =>
                 c._id === candidateId ? { ...c, decision: newDecision } : c
@@ -235,8 +235,8 @@ const CandidateList = ({ hiringRequestId }) => {
                     )}
                 </div>
             ) : (
-                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    <div className="overflow-x-auto">
+                <div className="bg-white rounded-xl border border-slate-200 overflow-visible mb-24">
+                    <div className="overflow-visible">
                         <table className="w-full">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr key="header-row">
@@ -301,7 +301,7 @@ const CandidateList = ({ hiringRequestId }) => {
                                                     onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
                                                     className={`px-2 py-1 text-xs font-semibold rounded-lg border border-slate-300 bg-white outline-none cursor-pointer transition-colors hover:border-blue-500 hover:ring-1 hover:ring-blue-200 ${getDecisionColor(candidate.decision || 'None')}`}
                                                     onClick={(e) => e.stopPropagation()}
-                                                    disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.decision'))}
+                                                    disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
                                                 >
                                                     <option value="None" className="text-slate-600">None</option>
                                                     <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
@@ -315,13 +315,13 @@ const CandidateList = ({ hiringRequestId }) => {
                                                     <p className="text-xs text-slate-500">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</p>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 relative">
+                                            <td className="px-4 py-3 relative isolate">
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         setActiveMenu(activeMenu === candidate._id ? null : candidate._id);
                                                     }}
-                                                    className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors"
+                                                    className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors relative"
                                                 >
                                                     <MoreVertical size={18} />
                                                 </button>
@@ -329,7 +329,7 @@ const CandidateList = ({ hiringRequestId }) => {
                                                 {/* Dropdown Menu */}
                                                 {activeMenu === candidate._id && (
                                                     <div
-                                                        className="absolute right-0 top-18 z-50 w-48 bg-white rounded-lg shadow-lg border border-slate-100 py-1"
+                                                        className="absolute right-0 top-12 z-[100] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
                                                         <button

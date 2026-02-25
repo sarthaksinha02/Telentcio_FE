@@ -56,13 +56,17 @@ const HiringRequestDetails = () => {
         ? request.approvalChain[request.currentApprovalLevel - 1]
         : null;
 
+    const hasSuperApprove = user?.permissions?.includes('ta.super_approve') || user?.permissions?.includes('*');
+
     const canApprove = request && isDynamic
         ? (
             (request.status === 'Pending_Approval' || request.status === 'Submitted') &&
             currentStep &&
             currentStep.status === 'Pending' &&
-            currentStep.approvers &&
-            currentStep.approvers.some(a => a._id === user?._id || a === user?._id)
+            (
+                hasSuperApprove ||
+                (currentStep.approvers && currentStep.approvers.some(a => a._id === user?._id || a === user?._id))
+            )
         )
         : request && (request.status === 'Pending_L1' || request.status === 'Pending_Final');
 
@@ -162,7 +166,7 @@ const HiringRequestDetails = () => {
 
                         {/* Center: Tabs with Pill Design */}
                         <div className="hidden md:flex bg-slate-100/50 p-1 rounded-xl">
-                            {['overview', 'applications'].map((tab) => (
+                            {['overview', ...(request.status === 'Approved' ? ['applications'] : [])].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -206,7 +210,7 @@ const HiringRequestDetails = () => {
                                     </span>
                                 </div>
                                 <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
-                                    <div className="md:col-span-2 group">
+                                    <div className="group">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Client / Project</h4>
                                         <p className="text-slate-900 font-bold text-base">{request.client}</p>
                                     </div>
@@ -224,6 +228,10 @@ const HiringRequestDetails = () => {
                                             <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
                                             {request.roleDetails.employmentType}
                                         </p>
+                                    </div>
+                                    <div className="group">
+                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Interview Template</h4>
+                                        <p className="text-slate-800 font-medium text-sm">{request.interviewWorkflowId?.name || 'Custom (None)'}</p>
                                     </div>
                                     <div className="group">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Hiring Purpose</h4>
@@ -307,12 +315,11 @@ const HiringRequestDetails = () => {
                                                             <p className="text-sm font-bold text-slate-800">
                                                                 Level {step.level} <span className="font-normal text-slate-500 mx-1">/</span> {step.roleName || 'Approver'}
                                                             </p>
-                                                            {step.status === 'Pending' ? (
-                                                                <p className="text-xs text-slate-500 mt-1">
-                                                                    Waiting for: <span className="font-medium text-slate-700">{step.approvers?.map(a => `${a.firstName} ${a.lastName}`).join(', ')}</span>
-                                                                </p>
-                                                            ) : (
-                                                                <p className="text-xs text-slate-500 mt-1">
+                                                            <p className="text-xs text-slate-500 mt-1">
+                                                                {step.status === 'Pending' ? 'Waiting for:' : 'Assigned to:'} <span className="font-medium text-slate-700">{step.approvers?.map(a => `${a.firstName} ${a.lastName}`).join(', ')}</span>
+                                                            </p>
+                                                            {step.status !== 'Pending' && (
+                                                                <p className="text-xs text-slate-500 mt-0.5">
                                                                     {step.status} by <span className="font-medium text-slate-700">{step.approvedBy?.firstName} {step.approvedBy?.lastName}</span>
                                                                 </p>
                                                             )}

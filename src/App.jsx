@@ -26,6 +26,7 @@ import CreateHiringRequest from './pages/TalentAcquisition/CreateHiringRequest';
 import HiringRequestDetails from './pages/TalentAcquisition/HiringRequestDetails';
 import WorkflowSettings from './pages/TalentAcquisition/WorkflowSettings';
 import CandidateForm from './pages/TalentAcquisition/CandidateForm';
+import CandidateDetails from './pages/TalentAcquisition/CandidateDetails';
 import Meetings from './pages/Meetings';
 import MeetingForm from './pages/MeetingForm';
 import MeetingDetails from './pages/MeetingDetails';
@@ -62,16 +63,14 @@ function App() {
               <Route path="/dossier/:userId" element={<EmployeeDossier />} />
 
               {/* Talent Acquisition */}
-              <Route element={<RoleRoute requiredPermissions={['ta.view', 'ta.create', 'ta.edit']} requiredRoles={['Admin']} />}>
-                <Route path="/ta" element={<HiringRequestList />} />
-                <Route path="/ta/workflows" element={<WorkflowSettings />} />
-                <Route path="/ta/create-request" element={<CreateHiringRequest />} />
-                <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
-                <Route path="/ta/view/:id" element={<HiringRequestDetails />} />
-                <Route path="/ta/hiring-request/:hiringRequestId/add-candidate" element={<CandidateForm />} />
-                <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/edit" element={<CandidateForm />} />
-                <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/view" element={<CandidateForm />} />
-              </Route>
+              <Route path="/ta" element={<HiringRequestList />} />
+              <Route path="/ta/workflows" element={<WorkflowSettings />} />
+              <Route path="/ta/create-request" element={<CreateHiringRequest />} />
+              <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
+              <Route path="/ta/view/:id" element={<HiringRequestDetails />} />
+              <Route path="/ta/hiring-request/:hiringRequestId/add-candidate" element={<CandidateForm />} />
+              <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/edit" element={<CandidateForm />} />
+              <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/view" element={<CandidateDetails />} />
 
               <Route path="/profile" element={<Profile />} />
               <Route path="/holidays" element={<Holidays />} />
