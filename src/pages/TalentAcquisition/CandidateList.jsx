@@ -5,6 +5,7 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
+import Skeleton from '../../components/Skeleton';
 
 const CandidateList = ({ hiringRequestId }) => {
     const { user } = useAuth();
@@ -41,7 +42,7 @@ const CandidateList = ({ hiringRequestId }) => {
         const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
         const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
         const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
-        
+
         // Interview filtering logic
         let matchInterviewStatus = true;
         if (filterInterviewStatus !== 'All') {
@@ -138,7 +139,7 @@ const CandidateList = ({ hiringRequestId }) => {
 
     const getInterviewStatusSummary = (rounds = []) => {
         if (!rounds || rounds.length === 0) return { label: 'None', color: 'text-slate-400 bg-slate-50 border-slate-200' };
-        
+
         const pending = rounds.filter(r => r.status === 'Pending' || r.status === 'Scheduled').length;
         const passed = rounds.filter(r => r.status === 'Passed').length;
         const failedRounds = rounds.filter(r => r.status === 'Failed');
@@ -151,14 +152,41 @@ const CandidateList = ({ hiringRequestId }) => {
         }
         if (pending > 0) return { label: `${passed}/${total} Completed`, color: 'text-amber-700 bg-amber-50 border-amber-200' };
         if (passed === total) return { label: 'All Passed', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-        
+
         return { label: 'In Progress', color: 'text-blue-700 bg-blue-50 border-blue-200' };
     };
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center py-12">
-                <Loader className="animate-spin text-blue-600" size={32} />
+            <div className="space-y-4">
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <Skeleton className="h-6 w-32 mb-2" />
+                        <Skeleton className="h-4 w-48" />
+                    </div>
+                    <Skeleton className="h-10 w-36" />
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 flex gap-4">
+                    <Skeleton className="h-10 w-32" />
+                    <Skeleton className="h-10 w-32" />
+                    <Skeleton className="h-10 w-32" />
+                    <Skeleton className="h-10 w-32" />
+                </div>
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="p-4 border-b border-slate-200 bg-slate-50 flex gap-4">
+                        <Skeleton className="h-4 w-1/6" />
+                        <Skeleton className="h-4 w-1/6" />
+                        <Skeleton className="h-4 w-1/6" />
+                        <Skeleton className="h-4 w-1/6" />
+                        <Skeleton className="h-4 w-1/6" />
+                        <Skeleton className="h-4 w-1/6" />
+                    </div>
+                    {[...Array(5)].map((_, i) => (
+                        <div key={i} className="p-4 border-b border-slate-100 flex gap-4 items-center">
+                            <Skeleton className="h-10 w-full" />
+                        </div>
+                    ))}
+                </div>
             </div>
         );
     }

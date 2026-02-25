@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Upload, Loader, ArrowLeft, Plus, Trash } from 'lucide-react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import Skeleton from '../../components/Skeleton';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
@@ -117,7 +118,7 @@ const CandidateForm = () => {
                 setResumePublicId(candidate.resumePublicId || '');
             } else {
                 toast.error('Candidate not found');
-                navigate(`/ta/view/${hiringRequestId}`); // Go back to list
+                navigate(`/ta/view/${hiringRequestId}?tab=applications`); // Go back to list
             }
         } catch (error) {
             console.error('Error fetching candidate:', error);
@@ -275,8 +276,28 @@ const CandidateForm = () => {
 
     if (fetching) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-50">
-                <Loader className="animate-spin text-blue-600" size={32} />
+            <div className="min-h-screen bg-slate-50 pb-12">
+                <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+                    <div className="max-w-4xl mx-auto px-6 py-4">
+                        <div className="flex items-center gap-4">
+                            <Skeleton className="h-10 w-10 rounded-full" />
+                            <Skeleton className="h-6 w-48" />
+                        </div>
+                    </div>
+                </div>
+                <div className="max-w-4xl mx-auto p-6">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 space-y-6">
+                        <Skeleton className="h-20 w-full" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <Skeleton className="h-16 w-full" />
+                            <Skeleton className="h-16 w-full" />
+                            <Skeleton className="h-16 w-full" />
+                            <Skeleton className="h-16 w-full" />
+                            <Skeleton className="h-16 w-full" />
+                            <Skeleton className="h-16 w-full" />
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }

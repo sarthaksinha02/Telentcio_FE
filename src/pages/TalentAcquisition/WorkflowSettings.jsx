@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import { Plus, Trash2, Save, X, Check, ArrowRight } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import Skeleton from '../../components/Skeleton';
 
 const WorkflowSettings = () => {
     // Tabs Support
@@ -17,7 +18,7 @@ const WorkflowSettings = () => {
     const [workflows, setWorkflows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
-    
+
     // Create/Edit Approval State
     const [newName, setNewName] = useState('');
     const [levels, setLevels] = useState([{ levelCheck: 1, role: '', approvers: [], isFinal: false }]);
@@ -242,14 +243,14 @@ const WorkflowSettings = () => {
 
             {/* Tabs Navigation */}
             <div className="flex gap-4 border-b border-slate-200 mb-6 font-medium">
-                <button 
-                    onClick={() => setActiveTab('APPROVAL')} 
+                <button
+                    onClick={() => setActiveTab('APPROVAL')}
                     className={`pb-3 px-4 transition-colors ${activeTab === 'APPROVAL' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                     Hiring Approvals
                 </button>
-                <button 
-                    onClick={() => setActiveTab('INTERVIEW')} 
+                <button
+                    onClick={() => setActiveTab('INTERVIEW')}
                     className={`pb-3 px-4 transition-colors ${activeTab === 'INTERVIEW' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                     Candidate Interviews
@@ -308,7 +309,7 @@ const WorkflowSettings = () => {
                                                                 roleUsers.length > 0 ? (
                                                                     roleUsers.map(u => (
                                                                         <div key={u._id} className="flex items-center gap-2 mb-1 last:mb-0">
-                                                                            <input type="checkbox" id={`lvl-${index}-u-${u._id}`} checked={level.approvers?.includes(u._id)} onChange={() => handleApproverChange(index, u._id)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"/>
+                                                                            <input type="checkbox" id={`lvl-${index}-u-${u._id}`} checked={level.approvers?.includes(u._id)} onChange={() => handleApproverChange(index, u._id)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
                                                                             <label htmlFor={`lvl-${index}-u-${u._id}`} className="text-sm text-slate-700 cursor-pointer select-none">{u.firstName} {u.lastName}</label>
                                                                         </div>
                                                                     ))
@@ -336,7 +337,11 @@ const WorkflowSettings = () => {
                     {/* Data Table */}
                     <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-300">
                         {loading ? (
-                            <div className="p-6 text-center text-slate-500">Loading workflows...</div>
+                            <div className="p-6">
+                                {[...Array(3)].map((_, i) => (
+                                    <Skeleton key={i} className="h-12 w-full mb-3 last:mb-0" />
+                                ))}
+                            </div>
                         ) : workflows.length === 0 ? (
                             <div className="p-6 text-center text-slate-500">No hiring workflows found. Add one above.</div>
                         ) : (
@@ -481,7 +486,11 @@ const WorkflowSettings = () => {
                     {/* Data Table */}
                     <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-300">
                         {loadingInterview ? (
-                            <div className="p-6 text-center text-slate-500">Loading templates...</div>
+                            <div className="p-6">
+                                {[...Array(3)].map((_, i) => (
+                                    <Skeleton key={i} className="h-12 w-full mb-3 last:mb-0" />
+                                ))}
+                            </div>
                         ) : interviewWorkflows.length === 0 ? (
                             <div className="p-6 text-center text-slate-500">No interview workflows found. Add one above.</div>
                         ) : (

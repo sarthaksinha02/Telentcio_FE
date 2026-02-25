@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign, X } from 'lucide-react';
+import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign, X, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 import WorkflowSettings from './WorkflowSettings';
 
@@ -291,16 +291,16 @@ const CreateHiringRequest = () => {
                                 <button
                                     onClick={() => handleSubmit(true)}
                                     disabled={loading}
-                                    className="px-4 py-2 text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors"
+                                    className="px-4 py-2 text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <Save size={16} /> Save Draft
+                                    {loading ? <Loader className="animate-spin" size={16} /> : <Save size={16} />} Save Draft
                                 </button>
                                 <button
                                     onClick={() => handleSubmit(false)}
                                     disabled={loading}
-                                    className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium text-sm flex items-center gap-2 shadow-sm transition-colors"
+                                    className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium text-sm flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <Send size={16} /> Submit for Approval
+                                    {loading ? <Loader className="animate-spin" size={16} /> : <Send size={16} />} Submit for Approval
                                 </button>
                             </>
                         )
@@ -311,16 +311,16 @@ const CreateHiringRequest = () => {
                                 <button
                                     onClick={() => handleSubmit(true)}
                                     disabled={loading}
-                                    className="px-4 py-2 text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors"
+                                    className="px-4 py-2 text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <Save size={16} /> Save Draft
+                                    {loading ? <Loader className="animate-spin" size={16} /> : <Save size={16} />} Save Draft
                                 </button>
                                 <button
                                     onClick={() => handleSubmit(false)}
                                     disabled={loading}
-                                    className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium text-sm flex items-center gap-2 shadow-sm transition-colors"
+                                    className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium text-sm flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <Send size={16} /> Submit for Approval
+                                    {loading ? <Loader className="animate-spin" size={16} /> : <Send size={16} />} Submit for Approval
                                 </button>
                             </>
                         )

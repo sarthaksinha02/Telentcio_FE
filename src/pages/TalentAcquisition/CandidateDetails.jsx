@@ -5,6 +5,7 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
+import Skeleton from '../../components/Skeleton';
 
 const CandidateDetails = () => {
     const { user } = useAuth();
@@ -233,8 +234,51 @@ const CandidateDetails = () => {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-50">
-                <Loader className="animate-spin text-blue-600" size={32} />
+            <div className="min-h-screen bg-slate-50 pb-12">
+                <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+                    <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                            <Skeleton className="h-10 w-10 rounded-full" />
+                            <div>
+                                <Skeleton className="h-6 w-48 mb-2" />
+                                <Skeleton className="h-4 w-64" />
+                            </div>
+                        </div>
+                        <div className="flex gap-3">
+                            <Skeleton className="h-10 w-36" />
+                            <Skeleton className="h-10 w-36" />
+                        </div>
+                    </div>
+                </div>
+                <div className="max-w-7xl mx-auto px-6 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-1 space-y-6">
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                            <Skeleton className="h-6 w-40 mb-6" />
+                            <div className="space-y-6">
+                                <Skeleton className="h-12 w-full" />
+                                <Skeleton className="h-12 w-full" />
+                                <Skeleton className="h-12 w-full" />
+                                <Skeleton className="h-12 w-full" />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="lg:col-span-2 space-y-6">
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="flex justify-between items-center mb-6">
+                                <Skeleton className="h-6 w-48" />
+                                <div className="flex gap-2">
+                                    <Skeleton className="h-9 w-32" />
+                                    <Skeleton className="h-9 w-40" />
+                                </div>
+                            </div>
+                            <div className="space-y-6">
+                                <Skeleton className="h-32 w-full" />
+                                <Skeleton className="h-32 w-full" />
+                                <Skeleton className="h-32 w-full" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -289,50 +333,98 @@ const CandidateDetails = () => {
                         <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Profile Summary</h3>
 
                         <div className="space-y-4">
-                            <div>
-                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Status</p>
-                                <div className="flex items-center gap-2">
-                                    <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-medium border border-slate-200">
-                                        {candidate.status}
-                                    </span>
-                                    {candidate.decision !== 'None' && (
-                                        <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.decision === 'Hired' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                            candidate.decision === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                'bg-amber-50 text-amber-700 border-amber-200'
-                                            }`}>
-                                            Decison: {candidate.decision}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Status</p>
+                                    <div className="flex items-center gap-2 flex-wrap mt-1">
+                                        <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-medium border border-slate-200">
+                                            {candidate.status}
                                         </span>
-                                    )}
+                                        {candidate.decision && candidate.decision !== 'None' && (
+                                            <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.decision === 'Hired' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                candidate.decision === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                    'bg-amber-50 text-amber-700 border-amber-200'
+                                                }`}>
+                                                Decision: {candidate.decision}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-
-                            <div>
-                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Source</p>
-                                <p className="text-slate-700 font-medium">{candidate.source} {candidate.referralName && `(${candidate.referralName})`}</p>
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Source</p>
+                                    <p className="text-slate-700 font-medium">{candidate.source} {candidate.referralName && `(${candidate.referralName})`}</p>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Experience</p>
-                                    <p className="text-slate-700 font-medium">{candidate.totalExperience} Years</p>
+                                    <p className="text-slate-700 font-medium">{candidate.totalExperience !== undefined ? `${candidate.totalExperience} Years` : 'N/A'}</p>
                                 </div>
                                 <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">CTC (Expected)</p>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Qualification</p>
+                                    <p className="text-slate-700 font-medium">{candidate.qualification || 'N/A'}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current CTC</p>
+                                    <p className="text-slate-700 font-medium">{candidate.currentCTC ? `₹${candidate.currentCTC?.toLocaleString()}` : 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Expected CTC</p>
                                     <p className="text-slate-700 font-medium">{candidate.expectedCTC ? `₹${candidate.expectedCTC?.toLocaleString()}` : 'N/A'}</p>
                                 </div>
                             </div>
 
-                            <div>
-                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Notice Period</p>
-                                <p className="text-slate-700 font-medium">{candidate.noticePeriod ? `${candidate.noticePeriod} Days` : 'N/A'}</p>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Location</p>
+                                    <p className="text-slate-700 font-medium">{candidate.currentLocation || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Preferred Location</p>
+                                    <p className="text-slate-700 font-medium">{candidate.preferredLocation || 'N/A'}</p>
+                                </div>
                             </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Notice Period</p>
+                                    <p className="text-slate-700 font-medium">{candidate.noticePeriod ? `${candidate.noticePeriod} Days` : 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">TAT To Join</p>
+                                    <p className="text-slate-700 font-medium">{candidate.tatToJoin ? `${candidate.tatToJoin} Days` : 'N/A'}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Last Working Day</p>
+                                    <p className="text-slate-700 font-medium">{candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd MMM yyyy') : 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Preference</p>
+                                    <p className="text-slate-700 font-medium">{candidate.preference || 'N/A'}</p>
+                                </div>
+                            </div>
+
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Company</p>
                                 <p className="text-slate-700 font-medium">{candidate.currentCompany || 'N/A'}</p>
                             </div>
 
+                            {candidate.remark && (
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Remark</p>
+                                    <p className="text-slate-700 font-medium text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 mt-1">{candidate.remark}</p>
+                                </div>
+                            )}
+
                             {candidate.pastExperience && candidate.pastExperience.length > 0 && (
-                                <div className="pt-2 border-t border-slate-100">
+                                <div className="pt-2 border-t border-slate-100 mt-2">
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Past Experience</p>
                                     <ul className="space-y-2">
                                         {candidate.pastExperience.map((exp, idx) => (

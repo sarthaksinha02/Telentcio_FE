@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
-import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Construction } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Construction, Loader } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/Button'; // Assuming Button component exists
 import CandidateList from './CandidateList';
+import Skeleton from '../../components/Skeleton';
 
 const DetailRow = ({ label, value }) => (
     <div className="flex justify-between py-2 border-b border-slate-50 last:border-0">
@@ -122,7 +123,43 @@ const HiringRequestDetails = () => {
         navigate(`/ta/edit-request/${id}`);
     };
 
-    if (loading) return <div className="p-10 text-center">Loading...</div>;
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-50 pb-12">
+                <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20 shadow-sm">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex items-center justify-between h-16">
+                            <div className="flex items-center gap-4">
+                                <Skeleton className="h-10 w-10 rounded-full" />
+                                <div>
+                                    <Skeleton className="h-5 w-48 mb-1" />
+                                    <Skeleton className="h-3 w-32" />
+                                </div>
+                            </div>
+                            <div className="hidden md:flex gap-2">
+                                <Skeleton className="h-8 w-24 rounded-lg" />
+                                <Skeleton className="h-8 w-24 rounded-lg" />
+                            </div>
+                            <div className="w-24" />
+                        </div>
+                    </div>
+                </div>
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                        <div className="xl:col-span-2 space-y-8">
+                            <Skeleton className="h-64 w-full rounded-2xl" />
+                            <Skeleton className="h-64 w-full rounded-2xl" />
+                        </div>
+                        <div className="space-y-4">
+                            <Skeleton className="h-48 w-full rounded-2xl" />
+                            <Skeleton className="h-32 w-full rounded-2xl" />
+                            <Skeleton className="h-32 w-full rounded-2xl" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
     if (!request) return <div className="p-10 text-center">Request not found</div>;
 
     const getStatusColor = (status) => {
@@ -437,9 +474,10 @@ const HiringRequestDetails = () => {
                                     {request.status !== 'Closed' && (
                                         <button
                                             onClick={handleClose}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 rounded-xl font-medium text-sm transition-all"
+                                            disabled={actionLoading}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 rounded-xl font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            <XCircle size={16} /> Close Request
+                                            {actionLoading ? <Loader className="animate-spin" size={16} /> : <XCircle size={16} />} Close Request
                                         </button>
                                     )}
                                 </div>
@@ -466,16 +504,16 @@ const HiringRequestDetails = () => {
                                         <button
                                             onClick={() => handleApproval('APPROVE')}
                                             disabled={actionLoading}
-                                            className="flex items-center justify-center gap-2 py-2.5 bg-white text-blue-600 hover:bg-blue-50 rounded-xl font-bold text-sm transition-colors shadow-sm"
+                                            className="flex items-center justify-center gap-2 py-2.5 bg-white text-blue-600 hover:bg-blue-50 rounded-xl font-bold text-sm transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            <ThumbsUp size={16} /> Approve
+                                            {actionLoading ? <Loader className="animate-spin" size={16} /> : <ThumbsUp size={16} />} Approve
                                         </button>
                                         <button
                                             onClick={() => handleApproval('REJECT')}
                                             disabled={actionLoading}
-                                            className="flex items-center justify-center gap-2 py-2.5 bg-white/10 border border-white/20 text-white hover:bg-white/20 rounded-xl font-bold text-sm transition-colors backdrop-blur-sm"
+                                            className="flex items-center justify-center gap-2 py-2.5 bg-white/10 border border-white/20 text-white hover:bg-white/20 rounded-xl font-bold text-sm transition-colors backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            <ThumbsDown size={16} /> Reject
+                                            {actionLoading ? <Loader className="animate-spin" size={16} /> : <ThumbsDown size={16} />} Reject
                                         </button>
                                     </div>
                                 </div>

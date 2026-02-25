@@ -150,7 +150,7 @@ const HiringRequestList = () => {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <button
-                                                onClick={() => navigate(`/ta/view/${req._id}`)}
+                                                onClick={() => navigate(`/ta/view/${req._id}${req.status === 'Approved' ? '?tab=applications' : ''}`)}
                                                 className="text-blue-600 hover:text-blue-800 font-medium text-xs px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
                                             >
                                                 View Details
