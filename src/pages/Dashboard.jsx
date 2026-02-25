@@ -10,6 +10,10 @@ import { format } from 'date-fns';
 const LocationLink = ({ location }) => {
     const [cityName, setCityName] = useState('Map...');
 
+
+
+
+    
     useEffect(() => {
         if (!location || !location.lat || !location.lng) return;
 
