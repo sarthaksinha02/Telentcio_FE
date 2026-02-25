@@ -32,10 +32,13 @@ const CandidateDetails = () => {
     // Users List for Assessment assignment
     const [users, setUsers] = useState([]);
     const [selectedInterviewer, setSelectedInterviewer] = useState('');
+    const [roles, setRoles] = useState([]);
+    const [selectedRoleForRound, setSelectedRoleForRound] = useState('');
 
     useEffect(() => {
         fetchCandidate();
         fetchUsers();
+        fetchRoles();
         fetchInterviewWorkflows();
     }, [candidateId]);
 
@@ -54,10 +57,19 @@ const CandidateDetails = () => {
 
     const fetchUsers = async () => {
         try {
-            const res = await api.get('/users/all'); // Standard GET all users route
+            const res = await api.get('/admin/users'); // Use admin users route
             setUsers(res.data.data || res.data || []);
         } catch (error) {
             console.error('Failed to fetch users', error);
+        }
+    };
+
+    const fetchRoles = async () => {
+        try {
+            const res = await api.get('/admin/roles');
+            setRoles(res.data);
+        } catch (error) {
+            console.error('Failed to fetch roles', error);
         }
     };
 
@@ -89,7 +101,9 @@ const CandidateDetails = () => {
             setIsAddingRound(false);
             setNewRound({ levelName: '', scheduledDate: '' });
             setSelectedInterviewer('');
+            setSelectedRoleForRound('');
             fetchCandidate();
+            window.dispatchEvent(new Event('refreshNotifications'));
         } catch (error) {
             console.error('Error adding round:', error);
             toast.error(error.response?.data?.message || 'Failed to add round');
@@ -121,6 +135,7 @@ const CandidateDetails = () => {
             setSelectedWorkflow('');
             setWorkflowMapping({});
             fetchCandidate();
+            window.dispatchEvent(new Event('refreshNotifications'));
         } catch (error) {
             console.error(error);
             toast.error('Failed to apply workflow completely. Some rounds may have failed.');
@@ -411,7 +426,7 @@ const CandidateDetails = () => {
                         {isAddingRound && (
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-8 animate-in fade-in slide-in-from-top-2">
                                 <h4 className="text-sm font-bold text-slate-700 mb-3">Schedule New Round</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Round Level/Title *</label>
                                         <input
@@ -423,6 +438,22 @@ const CandidateDetails = () => {
                                         />
                                     </div>
                                     <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Target Role (Optional)</label>
+                                        <select
+                                            value={selectedRoleForRound}
+                                            onChange={(e) => {
+                                                setSelectedRoleForRound(e.target.value);
+                                                setSelectedInterviewer('');
+                                            }}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                        >
+                                            <option value="">Any Role</option>
+                                            {roles.map(r => (
+                                                <option key={r._id} value={r._id}>{r.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Assign Interviewer</label>
                                         <select
                                             value={selectedInterviewer}
@@ -430,8 +461,8 @@ const CandidateDetails = () => {
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                         >
                                             <option value="">-- Select Evaluator --</option>
-                                            {users.map(u => (
-                                                <option key={u._id} value={u._id}>{u.firstName} {u.lastName} ({u.email})</option>
+                                            {(selectedRoleForRound ? users.filter(u => u.roles?.some(r => r._id === selectedRoleForRound || r === selectedRoleForRound)) : users).map(u => (
+                                                <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -446,7 +477,7 @@ const CandidateDetails = () => {
                                     </div>
                                 </div>
                                 <div className="flex justify-end gap-2">
-                                    <button onClick={() => setIsAddingRound(false)} className="px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+                                    <button onClick={() => { setIsAddingRound(false); setSelectedInterviewer(''); setSelectedRoleForRound(''); }} className="px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
                                     <button onClick={handleAddRound} disabled={actionLoading} className="px-4 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2">
                                         {actionLoading && <Loader size={14} className="animate-spin" />} Save Round
                                     </button>
@@ -522,7 +553,9 @@ const CandidateDetails = () => {
                                                             <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Assigned Evaluator</p>
                                                             {round.assignedTo?.length > 0 ? (
                                                                 <p className="text-sm font-medium text-slate-800">
-                                                                    {round.assignedTo.map(u => `${u.firstName} ${u.lastName}`).join(', ')}
+                                                                    {round.assignedTo.map(u => 
+                                                                        u.firstName ? `${u.firstName} ${u.lastName}` : (u.email || 'Assigned User')
+                                                                    ).join(', ')}
                                                                 </p>
                                                             ) : (
                                                                 <p className="text-sm text-slate-400 italic">Unassigned</p>

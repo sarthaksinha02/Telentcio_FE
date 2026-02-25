@@ -17,6 +17,7 @@ const CandidateList = ({ hiringRequestId }) => {
     const [filterStatus, setFilterStatus] = useState('All');
     const [filterDecision, setFilterDecision] = useState('All');
     const [filterExperience, setFilterExperience] = useState('');
+    const [filterInterviewStatus, setFilterInterviewStatus] = useState('All');
 
     // Menu State
     const [activeMenu, setActiveMenu] = useState(null);
@@ -40,8 +41,22 @@ const CandidateList = ({ hiringRequestId }) => {
         const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
         const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
         const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
+        
+        // Interview filtering logic
+        let matchInterviewStatus = true;
+        if (filterInterviewStatus !== 'All') {
+            const rounds = candidate.interviewRounds || [];
+            const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
+            const hasFailed = rounds.some(r => r.status === 'Failed');
+            const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
 
-        return matchPreference && matchStatus && matchDecision && matchExperience;
+            if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
+            if (filterInterviewStatus === 'Pending') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
+            if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
+            if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
+        }
+
+        return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus;
     });
 
     const fetchCandidates = async () => {
@@ -121,6 +136,25 @@ const CandidateList = ({ hiringRequestId }) => {
         }
     };
 
+    const getInterviewStatusSummary = (rounds = []) => {
+        if (!rounds || rounds.length === 0) return { label: 'None', color: 'text-slate-400 bg-slate-50 border-slate-200' };
+        
+        const pending = rounds.filter(r => r.status === 'Pending' || r.status === 'Scheduled').length;
+        const passed = rounds.filter(r => r.status === 'Passed').length;
+        const failedRounds = rounds.filter(r => r.status === 'Failed');
+        const failedCount = failedRounds.length;
+        const total = rounds.length;
+
+        if (failedCount > 0) {
+            const failedNames = failedRounds.map(r => r.levelName).join(', ');
+            return { label: `Failed: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
+        }
+        if (pending > 0) return { label: `${passed}/${total} Completed`, color: 'text-amber-700 bg-amber-50 border-amber-200' };
+        if (passed === total) return { label: 'All Passed', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+        
+        return { label: 'In Progress', color: 'text-blue-700 bg-blue-50 border-blue-200' };
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center py-12">
@@ -194,6 +228,20 @@ const CandidateList = ({ hiringRequestId }) => {
                     </select>
                 </div>
                 <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Interview Status</label>
+                    <select
+                        value={filterInterviewStatus}
+                        onChange={(e) => setFilterInterviewStatus(e.target.value)}
+                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                    >
+                        <option value="All">All Interviews</option>
+                        <option value="None">None Scheduled</option>
+                        <option value="Pending">In Progress</option>
+                        <option value="Passed">All Passed</option>
+                        <option value="Failed">Failed</option>
+                    </select>
+                </div>
+                <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-1">Min Experience (Yrs)</label>
                     <input
                         type="number"
@@ -204,13 +252,14 @@ const CandidateList = ({ hiringRequestId }) => {
                         className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
                     />
                 </div>
-                {(filterPreference !== 'All' || filterStatus !== 'All' || filterDecision !== 'All' || filterExperience !== '') && (
+                {(filterPreference !== 'All' || filterStatus !== 'All' || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All') && (
                     <button
                         onClick={() => {
                             setFilterPreference('All');
                             setFilterStatus('All');
                             setFilterDecision('All');
                             setFilterExperience('');
+                            setFilterInterviewStatus('All');
                         }}
                         className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
                     >
@@ -245,6 +294,7 @@ const CandidateList = ({ hiringRequestId }) => {
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Source</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Experience</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Preference</th>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Interviews</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Decision</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Uploaded</th>
@@ -289,6 +339,21 @@ const CandidateList = ({ hiringRequestId }) => {
                                                         <p className="text-slate-400 italic">-</p>
                                                     )}
                                                 </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {(() => {
+                                                    const summary = getInterviewStatusSummary(candidate.interviewRounds);
+                                                    return (
+                                                        <div className="flex flex-col gap-1 items-start">
+                                                            <span className={`px-2 py-0.5 border rounded text-[11px] font-bold ${summary.color}`}>
+                                                                {summary.label}
+                                                            </span>
+                                                            <span className="text-xs text-slate-500 font-medium ml-0.5">
+                                                                {candidate.interviewRounds?.length || 0} rounds total
+                                                            </span>
+                                                        </div>
+                                                    )
+                                                })()}
                                             </td>
                                             <td className="px-4 py-3">
                                                 <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(candidate.status)}`}>
