@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, Loader, ArrowLeft, Plus, Trash } from 'lucide-react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -18,6 +18,7 @@ const CandidateForm = () => {
 
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState(null);
     const [resumeFile, setResumeFile] = useState(null);
     const [resumeUrl, setResumeUrl] = useState('');
     const [resumePublicId, setResumePublicId] = useState('');
@@ -145,8 +146,20 @@ const CandidateForm = () => {
         }
 
         setResumeFile(file);
+        // Create a local object URL for previewing before upload
+        const objectUrl = URL.createObjectURL(file);
+        setPreviewUrl(objectUrl);
         // Deferred upload: File is stored in state, upload happens on submit
     };
+
+    // Cleanup preview URL to avoid memory leaks
+    useEffect(() => {
+        return () => {
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+            }
+        };
+    }, [previewUrl]);
 
     const uploadResume = async (file) => {
         try {
@@ -340,7 +353,16 @@ const CandidateForm = () => {
                                                 disabled={uploading}
                                             />
                                         </label>
-                                        {resumeFile && <span className="text-sm text-slate-600 font-medium p-2 bg-white rounded border border-slate-200">Selected: {resumeFile.name}</span>}
+                                        {resumeFile && (
+                                            <div className="flex items-center gap-3 p-2 bg-white rounded border border-slate-200">
+                                                <span className="text-sm text-slate-600 font-medium truncate max-w-[200px]">Selected: {resumeFile.name}</span>
+                                                {previewUrl && (
+                                                    <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline px-2 py-1 bg-blue-50 rounded">
+                                                        Preview
+                                                    </a>
+                                                )}
+                                            </div>
+                                        )}
                                         {uploading && <Loader className="animate-spin text-blue-600" size={20} />}
                                     </div>
 
