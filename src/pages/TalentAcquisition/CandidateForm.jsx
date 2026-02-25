@@ -321,42 +321,46 @@ const CandidateForm = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                     {/* Form */}
                     <form onSubmit={handleSubmit} className="p-8 space-y-6">
-                        {/* Resume Upload - Only show upload if NOT readOnly */}
-                        {!isViewMode && !isEditMode && (
+                        {/* Resume Upload - Show upload if NOT readOnly */}
+                        {!isViewMode && (
                             <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">
-                                    Upload Resume (PDF) *
+                                    {isEditMode ? 'Replace Resume (PDF)' : 'Upload Resume (PDF) *'}
                                 </label>
-                                <div className="flex items-center gap-4">
-                                    <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer transition-colors">
-                                        <Upload size={18} />
-                                        {uploading ? 'Uploading...' : 'Choose File'}
-                                        <input
-                                            type="file"
-                                            accept="application/pdf"
-                                            onChange={handleFileChange}
-                                            className="hidden"
-                                            disabled={uploading}
-                                        />
-                                    </label>
-                                    {resumeFile && <span className="text-sm text-slate-600">{resumeFile.name}</span>}
-                                    {uploading && <Loader className="animate-spin text-blue-600" size={20} />}
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer transition-colors shadow-sm">
+                                            <Upload size={18} />
+                                            {uploading ? 'Uploading...' : (isEditMode ? 'Choose New File' : 'Choose File')}
+                                            <input
+                                                type="file"
+                                                accept="application/pdf"
+                                                onChange={handleFileChange}
+                                                className="hidden"
+                                                disabled={uploading}
+                                            />
+                                        </label>
+                                        {resumeFile && <span className="text-sm text-slate-600 font-medium p-2 bg-white rounded border border-slate-200">Selected: {resumeFile.name}</span>}
+                                        {uploading && <Loader className="animate-spin text-blue-600" size={20} />}
+                                    </div>
+
+                                    {/* Show existing resume link right in the upload box when editing */}
+                                    {isEditMode && resumeUrl && !resumeFile && (
+                                        <a href={resumeUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-700 hover:text-blue-800 hover:bg-blue-100 font-medium px-4 py-2 bg-white rounded-lg border border-blue-200 transition-colors shadow-sm">
+                                            <Upload size={16} /> View Current Resume
+                                        </a>
+                                    )}
                                 </div>
                             </div>
                         )}
 
-                        {/* Always show View Resume link if URL exists */}
-                        {(resumeUrl || resumeFile) && (
-                            <div className={`${!isViewMode && !isEditMode ? 'mt-2' : 'mb-4'}`}>
+                        {/* Always show View Resume link if URL exists and we are in VIEW mode */}
+                        {isViewMode && (resumeUrl || resumeFile) && (
+                            <div className="mb-4">
                                 {resumeUrl && (
-                                    <a href={resumeUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline font-medium p-2 bg-slate-50 rounded-lg w-fit">
+                                    <a href={resumeUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline font-medium p-2 bg-slate-50 rounded-lg w-fit border border-slate-200">
                                         <Upload size={16} /> View Uploaded Resume
                                     </a>
-                                )}
-                                {resumeFile && !resumeUrl && (
-                                    <div className="flex items-center gap-2 text-sm text-slate-600 font-medium p-2 bg-slate-50 rounded-lg w-fit">
-                                        <Upload size={16} /> Selected: {resumeFile.name} (Will be uploaded on submit)
-                                    </div>
                                 )}
                             </div>
                         )}
