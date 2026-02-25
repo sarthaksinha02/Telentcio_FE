@@ -40,6 +40,7 @@ const CandidateForm = () => {
         preferredLocation: '',
         tatToJoin: '',
         noticePeriod: '',
+        lastWorkingDay: '',
         status: 'Interested',
         remark: ''
     });
@@ -108,6 +109,7 @@ const CandidateForm = () => {
                     preferredLocation: candidate.preferredLocation || '',
                     tatToJoin: candidate.tatToJoin || '',
                     noticePeriod: candidate.noticePeriod || '',
+                    lastWorkingDay: candidate.lastWorkingDay ? new Date(candidate.lastWorkingDay).toISOString().split('T')[0] : '',
                     status: candidate.status || 'Interested',
                     remark: candidate.remark || ''
                 });
@@ -246,7 +248,8 @@ const CandidateForm = () => {
                 pastExperience: formData.pastExperience.filter(exp => exp.companyName && exp.experienceYears),
                 totalExperience: Number(formData.totalExperience),
                 tatToJoin: formData.tatToJoin ? Number(formData.tatToJoin) : undefined,
-                noticePeriod: formData.noticePeriod ? Number(formData.noticePeriod) : undefined
+                noticePeriod: formData.noticePeriod ? Number(formData.noticePeriod) : undefined,
+                lastWorkingDay: formData.lastWorkingDay || undefined
             };
 
             if (isEditMode) {
@@ -661,6 +664,21 @@ const CandidateForm = () => {
                                     value={formData.noticePeriod}
                                     onChange={handleChange}
                                     min="0"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    disabled={isViewMode}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Last Working Day */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 mb-6">
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1">Last Working Day</label>
+                                <input
+                                    type="date"
+                                    name="lastWorkingDay"
+                                    value={formData.lastWorkingDay}
+                                    onChange={handleChange}
                                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
                                     disabled={isViewMode}
                                 />

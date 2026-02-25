@@ -49,6 +49,7 @@ const Input = ({ label, name, value, onChange, type = "text", required, options,
                 value={value}
                 onChange={onChange}
                 placeholder={placeholder}
+                step={type === 'number' ? 'any' : undefined}
                 className={`w-full p-2.5 border rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all ${error ? 'border-red-500' : 'border-slate-300'}`}
             />
         )}
