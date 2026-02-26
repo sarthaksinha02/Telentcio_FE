@@ -39,7 +39,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
         <div className="flex-1 py-6 px-3 space-y-1 overflow-y-auto scrollbar-hide">
           <div className="px-3 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Main</div>
-          {user?.roles?.includes('Admin') && (
+          {(user?.roles?.includes('Admin') || user?.hasAllPermissions) && (
             <Link to="/" className={isActive('/')} onClick={onClose}>
               <Users size={18} />
               <span>Dashboard</span>
