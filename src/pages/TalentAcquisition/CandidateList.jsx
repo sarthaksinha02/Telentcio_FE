@@ -312,21 +312,21 @@ const CandidateList = ({ hiringRequestId }) => {
                     )}
                 </div>
             ) : (
-                <div className="bg-white rounded-xl border border-slate-200 overflow-visible mb-24">
-                    <div className="overflow-visible">
+                <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto mb-24">
+                    <div className="min-w-[1100px]">
                         <table className="w-full">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr key="header-row">
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Candidate</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Contact</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Source</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Experience</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Preference</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Interviews</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Decision</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Uploaded</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Source</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Preference</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Uploaded</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
@@ -338,77 +338,92 @@ const CandidateList = ({ hiringRequestId }) => {
                                     </tr>
                                 ) : (
                                     filteredCandidates.map((candidate) => (
-                                        <tr key={candidate._id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-4 py-3">
-                                                <div>
-                                                    <p className="font-semibold text-slate-800">{candidate.candidateName}</p>
-                                                    {candidate.currentCompany && (
-                                                        <p className="text-xs text-slate-500">{candidate.currentCompany}</p>
-                                                    )}
+                                        <tr key={candidate._id} className="hover:bg-slate-50 bg-white transition-colors border-b border-slate-100 last:border-0">
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-[13px] font-bold text-slate-700 leading-tight">
+                                                        {candidate.candidateName.split(' ')[0]}<br />
+                                                        {candidate.candidateName.split(' ').slice(1).join(' ')}
+                                                    </span>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3">
-                                                <div className="text-sm">
-                                                    <p className="text-slate-700">{candidate.email}</p>
-                                                    <p className="text-slate-500">{candidate.mobile}</p>
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="flex flex-col gap-1 text-[12px]">
+                                                    <span className="text-slate-500 font-medium">{candidate.email}</span>
+                                                    <span className="text-slate-500 font-medium">{candidate.mobile}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3">
-                                                <span className="text-sm text-slate-700">{candidate.source}</span>
+                                            <td className="px-4 py-4 align-top">
+                                                <span className="text-[12px] font-medium text-slate-600">{candidate.source}</span>
                                             </td>
-                                            <td className="px-4 py-3">
-                                                <span className="text-sm font-medium text-slate-700">{candidate.totalExperience} yrs</span>
+                                            <td className="px-4 py-4 align-top">
+                                                <span className="text-[13px] font-semibold text-slate-700">{candidate.totalExperience} yrs</span>
                                             </td>
-                                            <td className="px-4 py-3">
-                                                <div className="text-sm">
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="flex flex-col gap-0.5 text-[13px]">
                                                     {candidate.preference ? (
-                                                        <p className="text-slate-700 font-medium">{candidate.preference}</p>
+                                                        <>
+                                                            <span className="text-slate-700 font-medium">
+                                                                {candidate.preference.split(' ')[0]}
+                                                            </span>
+                                                            <span className="text-slate-700 font-medium">
+                                                                {candidate.preference.split(' ').slice(1).join(' ')}
+                                                            </span>
+                                                        </>
                                                     ) : (
-                                                        <p className="text-slate-400 italic">-</p>
+                                                        <span className="text-slate-400 italic">-</span>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-4 py-4 align-top">
                                                 {(() => {
                                                     const summary = getInterviewStatusSummary(candidate.interviewRounds);
                                                     return (
-                                                        <div className="flex flex-col gap-1 items-start">
-                                                            <span className={`px-2 py-0.5 border rounded text-[11px] font-bold ${summary.color}`}>
+                                                        <div className="flex flex-col gap-1.5 items-start">
+                                                            <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold tracking-wide ${summary.color}`}>
                                                                 {summary.label}
                                                             </span>
-                                                            <span className="text-xs text-slate-500 font-medium ml-0.5">
-                                                                {candidate.interviewRounds?.length || 0} rounds total
+                                                            <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">
+                                                                {candidate.interviewRounds?.length || 0} rounds<br />total
                                                             </span>
                                                         </div>
                                                     )
                                                 })()}
                                             </td>
-                                            <td className="px-4 py-3">
-                                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(candidate.status)}`}>
+                                            <td className="px-4 py-4 align-top">
+                                                <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${getStatusColor(candidate.status)}`}>
                                                     {candidate.status}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3">
-                                                <select
-                                                    value={candidate.decision || 'None'}
-                                                    onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
-                                                    className={`px-2 py-1 text-xs font-semibold rounded-lg border border-slate-300 bg-white outline-none cursor-pointer transition-colors hover:border-blue-500 hover:ring-1 hover:ring-blue-200 ${getDecisionColor(candidate.decision || 'None')}`}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
-                                                >
-                                                    <option value="None" className="text-slate-600">None</option>
-                                                    <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
-                                                    <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
-                                                    <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
-                                                </select>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="text-sm text-slate-600">
-                                                    <p>{format(new Date(candidate.uploadedAt), 'MMM dd, yyyy')}</p>
-                                                    <p className="text-xs text-slate-500">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</p>
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="relative inline-block w-full max-w-[110px]">
+                                                    <select
+                                                        value={candidate.decision || 'None'}
+                                                        onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
+                                                        className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                    >
+                                                        <option value="None" className="text-slate-600">None</option>
+                                                        <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
+                                                        <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                        <option value="On hold" className="text-amber-600 font-bold">On Hold</option>
+                                                    </select>
+                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                                                        <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                                            <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                                                        </svg>
+                                                    </div>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 relative isolate">
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="flex flex-col gap-0.5 text-[12px] text-slate-500 font-medium whitespace-nowrap">
+                                                    <span>{format(new Date(candidate.uploadedAt), 'MMM dd,')}</span>
+                                                    <span>{format(new Date(candidate.uploadedAt), 'yyyy')}</span>
+                                                    <span className="text-[11px] mt-0.5">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4 align-top text-right relative isolate">
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
