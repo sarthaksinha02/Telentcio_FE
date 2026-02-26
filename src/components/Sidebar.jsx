@@ -104,7 +104,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <span>Roles & Permissions</span>
                 </Link>
               )}
-              {user?.roles?.includes('Admin') && (
+              {(user?.roles?.includes('Admin') || user?.hasAllPermissions) && (
                 <Link to="/leave-config" className={isActive('/leave-config')} onClick={onClose}>
                   <Settings size={18} />
                   <span>Leave Policies</span>

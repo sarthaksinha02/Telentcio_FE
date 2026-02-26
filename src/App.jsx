@@ -105,8 +105,8 @@ function App() {
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:id" element={<ProjectDetails />} />
 
-              {/* Admin Only Routes */}
-              <Route element={<RoleRoute requiredPermissions={['role.read']} requiredRoles={['Admin']} />}>
+              {/* Admin or All Permissions Routes */}
+              <Route element={<RoleRoute requiredPermissions={['role.read']} requiredRoles={['Admin']} allowAllPermissions={true} />}>
                 <Route path="/roles" element={<Roles />} />
                 <Route path="/leave-config" element={<LeaveConfig />} />
               </Route>
