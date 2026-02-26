@@ -570,8 +570,8 @@ const Users = () => {
     };
 
     if (loading) return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-            <div className="max-w-6xl mx-auto space-y-6">
+        <div className="min-h-screen bg-slate-100 font-sans p-4 sm:p-6 md:p-10">
+            <div className="w-full mx-auto space-y-6">
                 <div className="flex justify-between items-center">
                     <div>
                         <Skeleton className="h-8 w-48 mb-2" />
@@ -607,8 +607,8 @@ const Users = () => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-            <div className="max-w-6xl mx-auto space-y-6">
+        <div className="min-h-screen bg-slate-100 font-sans p-4 sm:p-6 md:p-10">
+            <div className="w-full mx-auto space-y-6">
 
                 {/* Header */}
                 <div className="flex justify-between items-center">
@@ -732,7 +732,7 @@ const Users = () => {
                         </div>
                     </div>
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
+                        <table className="w-full text-sm text-left min-w-[900px]">
                             <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
                                 <tr>
                                     <th className="px-6 py-3">Employee</th>
