@@ -328,7 +328,7 @@ const CreateHiringRequest = () => {
                 </div>
             </div>
 
-            <div className="max-w-4xl mx-auto p-6 md:p-8">
+            <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
 
                 <Section title="1. Role Information" icon={Briefcase}>
                     <div className="md:col-span-1">

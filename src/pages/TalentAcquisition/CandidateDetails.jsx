@@ -236,7 +236,7 @@ const CandidateDetails = () => {
         return (
             <div className="min-h-screen bg-slate-50 pb-12">
                 <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                    <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+                    <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div className="flex items-center gap-4">
                             <Skeleton className="h-10 w-10 rounded-full" />
                             <div>
@@ -250,7 +250,7 @@ const CandidateDetails = () => {
                         </div>
                     </div>
                 </div>
-                <div className="max-w-7xl mx-auto px-6 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-1 space-y-6">
                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                             <Skeleton className="h-6 w-40 mb-6" />
@@ -293,7 +293,7 @@ const CandidateDetails = () => {
     return (
         <div className="min-h-screen bg-slate-50 pb-12">
             <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                <div className="max-w-7xl mx-auto px-6 py-4">
+                <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div className="flex justify-between items-center">
                         <div className="flex items-center gap-4">
                             <button onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications`)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
@@ -326,7 +326,7 @@ const CandidateDetails = () => {
                 </div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-6 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Column: Basic Details Summary */}
                 <div className="lg:col-span-1 space-y-6">
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">

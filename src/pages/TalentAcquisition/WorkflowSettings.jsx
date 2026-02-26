@@ -229,7 +229,7 @@ const WorkflowSettings = () => {
     };
 
     return (
-        <div className="p-6 max-w-5xl mx-auto">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
             {/* Header Area */}
             <div className="flex justify-between items-center mb-6">
                 <div>

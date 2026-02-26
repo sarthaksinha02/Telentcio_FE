@@ -54,9 +54,9 @@ const HiringRequestList = () => {
         <div className="min-h-screen bg-slate-50">
             {/* Sticky Top Navbar */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+                <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <h1 className="text-xl font-bold text-slate-800">Talent Acquisition</h1>
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3 w-full sm:w-auto">
                         <Link
                             to="/ta/workflows"
                             className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium text-sm"
@@ -76,15 +76,15 @@ const HiringRequestList = () => {
             </div>
 
             {/* Main Content */}
-            <div className="max-w-7xl mx-auto p-6">
+            <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 {/* Filter Section */}
                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm mb-6">
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 text-slate-600">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <div className="flex items-center gap-2 text-slate-600 whitespace-nowrap">
                             <Filter size={16} />
                             <span className="text-sm font-medium">Filter by Status:</span>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             {['All', 'Pending', 'Draft', 'Approved', 'Closed'].map((status) => (
                                 <button
                                     key={status}
@@ -104,8 +104,8 @@ const HiringRequestList = () => {
                 </div>
 
                 {/* Table */}
-                <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                    <table className="w-full text-sm text-left">
+                <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-x-auto">
+                    <table className="w-full text-sm text-left min-w-[900px]">
                         <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
                             <tr>
                                 <th className="px-6 py-4">Request ID</th>

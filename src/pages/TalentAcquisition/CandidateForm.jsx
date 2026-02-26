@@ -291,14 +291,14 @@ const CandidateForm = () => {
         return (
             <div className="min-h-screen bg-slate-50 pb-12">
                 <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                    <div className="max-w-4xl mx-auto px-6 py-4">
+                    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                         <div className="flex items-center gap-4">
                             <Skeleton className="h-10 w-10 rounded-full" />
                             <Skeleton className="h-6 w-48" />
                         </div>
                     </div>
                 </div>
-                <div className="max-w-4xl mx-auto p-6">
+                <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 space-y-6">
                         <Skeleton className="h-20 w-full" />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -318,7 +318,7 @@ const CandidateForm = () => {
     return (
         <div className="min-h-screen bg-slate-50 pb-12">
             <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                <div className="max-w-4xl mx-auto px-6 py-4">
+                <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <div className="flex items-center gap-4">
                         <button onClick={handleCancel} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
                             <ArrowLeft size={20} />
@@ -330,7 +330,7 @@ const CandidateForm = () => {
                 </div>
             </div>
 
-            <div className="max-w-4xl mx-auto p-6">
+            <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                     {/* Form */}
                     <form onSubmit={handleSubmit} className="p-8 space-y-6">

@@ -127,7 +127,7 @@ const HiringRequestDetails = () => {
         return (
             <div className="min-h-screen bg-slate-50 pb-12">
                 <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20 shadow-sm">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
                         <div className="flex items-center justify-between h-16">
                             <div className="flex items-center gap-4">
                                 <Skeleton className="h-10 w-10 rounded-full" />
@@ -144,7 +144,7 @@ const HiringRequestDetails = () => {
                         </div>
                     </div>
                 </div>
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
                     <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                         <div className="xl:col-span-2 space-y-8">
                             <Skeleton className="h-64 w-full rounded-2xl" />
@@ -180,7 +180,7 @@ const HiringRequestDetails = () => {
         <div className="min-h-screen bg-slate-50 pb-12">
             {/* Sticky Navbar - Glassmorphism effect */}
             <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20 shadow-sm transition-all duration-300">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         {/* Left: Back button + Title */}
                         <div className="flex items-center gap-4">
@@ -224,7 +224,7 @@ const HiringRequestDetails = () => {
             </div>
 
             {/* Tab Content Container */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {activeTab === 'overview' && (
                     <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                         {/* Main Content Column */}
