@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -368,7 +368,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
         }
     };
 
-    const fetchHistory = async () => {
+    const fetchHistory = useCallback(async () => {
         try {
             const res = await api.get(`/dossier/${userId}/history`);
             setHistoryLogs(res.data);
@@ -376,16 +376,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
             console.error('Failed to fetch history', error);
             toast.error('Could not load history');
         }
-    };
+    }, [userId]);
 
     useEffect(() => {
         if (activeTab === 'history') {
             fetchHistory();
         }
-    }, [activeTab, userId]);
+    }, [activeTab, userId, fetchHistory]);
 
     // Fetch Dossier Data
-    const fetchDossier = async () => {
+    const fetchDossier = useCallback(async () => {
         try {
             setLoading(true);
             const res = await api.get(`/dossier/${userId}`);
@@ -403,11 +403,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [userId, navigate]);
 
     useEffect(() => {
         if (userId) fetchDossier();
-    }, [userId]);
+    }, [userId, fetchDossier]);
 
     const fetchHRISRequests = async () => {
         try {
@@ -822,9 +822,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                                         onChange={(e) => {
                                                             if (e.target.checked) {
                                                                 const current = getAddress('Current');
-                                                                // Batch update all fields
-                                                                ['street', 'addressLine2', 'city', 'state', 'zipCode', 'country'].forEach(field => {
-                                                                    handleAddressChange('Permanent', field, current[field]);
+                                                                // Batch update all fields in a single state update
+                                                                setFormData(prev => {
+                                                                    const currentAddresses = prev.contact?.addresses || [];
+                                                                    const permIndex = currentAddresses.findIndex(a => a.type === 'Permanent');
+                                                                    const permAddr = { type: 'Permanent', street: current.street, addressLine2: current.addressLine2, city: current.city, state: current.state, zipCode: current.zipCode, country: current.country };
+                                                                    let newAddresses = [...currentAddresses];
+                                                                    if (permIndex >= 0) { newAddresses[permIndex] = permAddr; } else { newAddresses.push(permAddr); }
+                                                                    return { ...prev, contact: { ...prev.contact, addresses: newAddresses }, hris: { ...prev.hris, isDeclared: false } };
                                                                 });
                                                             }
                                                         }}
@@ -874,6 +879,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                     setEditMode={setEditMode}
                     onSave={handleSave}
                     isLoading={savingSection === 'identity'}
+                    canEdit={canEdit}
                 >
                     {(isEditing) => (
                         <div className="space-y-4">
@@ -1512,9 +1518,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <Field section="user" isEditing={false} label="Employee Code" field="employeeCode" value={profile.user?.employeeCode} />
-                            <Field section="contact" isEditing={isEditing && !profile.contact?.personalEmail} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
-                            <Field section="identity" isEditing={isEditing && !profile.identity?.panNumber} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
-                            <Field section="identity" isEditing={isEditing && !profile.identity?.passportNumber} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
+                            <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
+                            <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
                         </div>
                     </div>
 
@@ -1525,10 +1531,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                             <h3 className="font-bold text-slate-700">2. Name Details</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="personal" isEditing={isEditing && !profile.personal?.fullName} label="Full Name" field="fullName" value={profile.personal?.fullName} formData={formData} onChange={handleInputChange} required />
-                            <Field section="personal" isEditing={isEditing && !profile.personal?.firstName} label="First Name" field="firstName" value={profile.personal?.firstName} formData={formData} onChange={handleInputChange} required />
-                            <Field section="personal" isEditing={isEditing && !profile.personal?.middleName} label="Middle Name" field="middleName" value={profile.personal?.middleName} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing && !profile.personal?.lastName} label="Last Name" field="lastName" value={profile.personal?.lastName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="personal" isEditing={isEditing} label="Full Name" field="fullName" value={profile.personal?.fullName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="personal" isEditing={isEditing} label="First Name" field="firstName" value={profile.personal?.firstName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="personal" isEditing={isEditing} label="Middle Name" field="middleName" value={profile.personal?.middleName} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="Last Name" field="lastName" value={profile.personal?.lastName} formData={formData} onChange={handleInputChange} required />
                         </div>
                     </div>
 
@@ -1539,8 +1545,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                             <h3 className="font-bold text-slate-700">3. Personal Information</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="personal" isEditing={isEditing && !profile.personal?.gender} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing && !profile.personal?.dob} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} />
                             <Field section="employment" isEditing={false} label="Date of Joining" field="joiningDate" type="date" value={profile.employment?.joiningDate} />
                         </div>
                     </div>
@@ -1601,22 +1607,22 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                 <div key={type} className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                                     <h4 className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-widest">{type} Address</h4>
                                     <div className="space-y-6">
-                                        <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.street} label="Street" field={`${type}_street`}
+                                        <Field section="contact" isEditing={isEditing} label="Street" field={`${type}_street`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.street}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.street}
                                             onChangeOverride={(e) => handleAddressChange(type, 'street', e.target.value)}
                                         />
-                                        <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.city} label="City" field={`${type}_city`}
+                                        <Field section="contact" isEditing={isEditing} label="City" field={`${type}_city`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.city}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.city}
                                             onChangeOverride={(e) => handleAddressChange(type, 'city', e.target.value)}
                                         />
-                                        <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.state} label="State" field={`${type}_state`}
+                                        <Field section="contact" isEditing={isEditing} label="State" field={`${type}_state`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.state}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.state}
                                             onChangeOverride={(e) => handleAddressChange(type, 'state', e.target.value)}
                                         />
-                                        <Field section="contact" isEditing={isEditing && !profile.contact?.addresses?.find(a => a.type === type)?.zipCode} label="Zip Code" field={`${type}_zip`}
+                                        <Field section="contact" isEditing={isEditing} label="Zip Code" field={`${type}_zip`}
                                             value={profile.contact?.addresses?.find(a => a.type === type)?.zipCode}
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.zipCode}
                                             onChangeOverride={(e) => handleAddressChange(type, 'zipCode', e.target.value)}
@@ -1634,10 +1640,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                             <h3 className="font-bold text-slate-700">6. Contact Details</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="contact" isEditing={isEditing && !profile.contact?.mobileNumber} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
-                            <Field section="contact" isEditing={isEditing && !profile.contact?.alternateNumber} label="Alternate Mobile Number" field="alternateNumber" value={profile.contact?.alternateNumber} formData={formData} onChange={handleInputChange} />
-                            <Field section="contact" isEditing={isEditing && !profile.contact?.emergencyContact?.phone} label="Emergency Mobile (from Personal)" field="emergencyNumber" value={profile.contact?.emergencyContact?.phone} formData={formData} onChange={handleInputChange} />
-                            <Field section="contact" isEditing={isEditing && !profile.contact?.landlineNumber} label="Landline Number" field="landlineNumber" value={profile.contact?.landlineNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing} label="Alternate Mobile Number" field="alternateNumber" value={profile.contact?.alternateNumber} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing} label="Emergency Mobile (from Personal)" field="emergencyNumber" value={profile.contact?.emergencyContact?.phone} formData={formData} onChange={handleInputChange} />
+                            <Field section="contact" isEditing={isEditing} label="Landline Number" field="landlineNumber" value={profile.contact?.landlineNumber} formData={formData} onChange={handleInputChange} />
                         </div>
                     </div>
 
@@ -1648,15 +1654,15 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                             <h3 className="font-bold text-slate-700">7. Medical Insurance / Family Information</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="family" isEditing={isEditing && !profile.family?.fatherName} label="Father's Name" field="fatherName" value={profile.family?.fatherName} formData={formData} onChange={handleInputChange} required />
-                            <Field section="family" isEditing={isEditing && !profile.family?.fatherOccupation} label="Father's Occupation" field="fatherOccupation" value={profile.family?.fatherOccupation} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing && !profile.family?.motherName} label="Mother's Name" field="motherName" value={profile.family?.motherName} formData={formData} onChange={handleInputChange} required />
-                            <Field section="family" isEditing={isEditing && !profile.family?.motherOccupation} label="Mother's Occupation" field="motherOccupation" value={profile.family?.motherOccupation} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Father's Name" field="fatherName" value={profile.family?.fatherName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="family" isEditing={isEditing} label="Father's Occupation" field="fatherOccupation" value={profile.family?.fatherOccupation} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Mother's Name" field="motherName" value={profile.family?.motherName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="family" isEditing={isEditing} label="Mother's Occupation" field="motherOccupation" value={profile.family?.motherOccupation} formData={formData} onChange={handleInputChange} />
                             <Field section="family" isEditing={isEditing} label="Marital Status" field="parentsMaritalStatus" value={profile.family?.parentsMaritalStatus} options={['Married', 'Divorced', 'Widowed', 'Separated']} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing && !profile.family?.totalSiblings} label="Total Siblings" field="totalSiblings" type="number" value={profile.family?.totalSiblings} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing && !profile.personal?.dateOfMarriage} label="Date of Marriage" field="dateOfMarriage" type="date" value={profile.personal?.dateOfMarriage} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing && !profile.family?.spouseName} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing && !profile.family?.spouseDob} label="Spouse DOB" field="spouseDob" type="date" value={profile.family?.spouseDob} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Total Siblings" field="totalSiblings" type="number" value={profile.family?.totalSiblings} formData={formData} onChange={handleInputChange} />
+                            <Field section="personal" isEditing={isEditing} label="Date of Marriage" field="dateOfMarriage" type="date" value={profile.personal?.dateOfMarriage} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Spouse DOB" field="spouseDob" type="date" value={profile.family?.spouseDob} formData={formData} onChange={handleInputChange} />
 
                         </div>
 
@@ -1741,9 +1747,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                             value={edu.university} valueOverride={formData.education?.[idx]?.university}
                                             onChangeOverride={(e) => handleArrayChange('education', idx, 'university', e.target.value)}
                                         />
-                                        <Field section="education" isEditing={isEditing} label="Degree/Course" field={`deg_${idx}`}
+                                        <Field section="education" isEditing={isEditing} label="Degree" field={`deg_${idx}`}
                                             value={edu.degree} valueOverride={formData.education?.[idx]?.degree}
                                             onChangeOverride={(e) => handleArrayChange('education', idx, 'degree', e.target.value)}
+                                        />
+                                        <Field section="education" isEditing={isEditing} label="Course Name" field={`course_${idx}`}
+                                            value={edu.courseName} valueOverride={formData.education?.[idx]?.courseName}
+                                            onChangeOverride={(e) => handleArrayChange('education', idx, 'courseName', e.target.value)}
                                         />
                                         <Field section="education" isEditing={isEditing} label="Grade/CGPA" field={`grade_${idx}`}
                                             value={edu.grade} valueOverride={formData.education?.[idx]?.grade}
@@ -2020,7 +2030,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                             <h3 className="text-lg font-bold text-slate-800">HRIS Requests Management</h3>
                             <p className="text-sm text-slate-500">View and manage HRIS submissions history</p>
                         </div>
-                        {/* Top Actions Removed */}
+                        <div className="relative">
+                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                value={hrisSearchTerm}
+                                onChange={(e) => setHrisSearchTerm(e.target.value)}
+                                placeholder="Search by name or code..."
+                                className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-100 outline-none w-64"
+                            />
+                        </div>
                     </div>
 
                     <div className="overflow-x-auto border border-slate-100 rounded-lg">
