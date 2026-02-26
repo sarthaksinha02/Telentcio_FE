@@ -732,7 +732,7 @@ const Users = () => {
                         </div>
                     </div>
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left min-w-[900px]">
+                        <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
                                 <tr>
                                     <th className="px-6 py-3">Employee</th>
