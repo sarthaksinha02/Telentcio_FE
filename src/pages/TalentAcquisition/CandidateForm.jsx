@@ -48,13 +48,53 @@ const CandidateForm = () => {
     });
 
     const [sourceOptions, setSourceOptions] = useState([]);
+    const [users, setUsers] = useState([]);
 
     useEffect(() => {
         fetchSourceOptions();
+        fetchUsers();
         if (candidateId) {
             fetchCandidateDetails();
         }
     }, [candidateId]);
+
+    const fetchUsers = async () => {
+        try {
+            const res = await api.get('/admin/users');
+            let fetchedUsers = [];
+            if (res.data?.success) {
+                fetchedUsers = res.data.data || [];
+            } else if (Array.isArray(res.data)) {
+                fetchedUsers = res.data;
+            }
+
+            // Filter users who have 'ta.create' permission or are 'Admin'
+            const filteredUsers = fetchedUsers.filter(u => {
+                // Check if the user is an Admin
+                const roleNames = u.roles?.map(r => r.name) || [];
+                if (roleNames.includes('Admin')) return true;
+
+                // Check permissions inside roles
+                let hasTaCreate = false;
+                if (u.roles && Array.isArray(u.roles)) {
+                    u.roles.forEach(role => {
+                        if (role.permissions && Array.isArray(role.permissions)) {
+                            // Backend populates permissions with { _id, key } so we check 'key'
+                            const keys = role.permissions.map(p => typeof p === 'string' ? p : p.key);
+                            if (keys.includes('ta.create') || keys.includes('*')) {
+                                hasTaCreate = true;
+                            }
+                        }
+                    });
+                }
+                return hasTaCreate;
+            });
+
+            setUsers(filteredUsers);
+        } catch (error) {
+            console.error('Failed to fetch users', error);
+        }
+    };
 
     const fetchSourceOptions = async () => {
         try {
@@ -518,14 +558,20 @@ const CandidateForm = () => {
                             </div>
                             <div>
                                 <label className="block text-sm font-semibold text-slate-700 mb-1">Profile Pulled By</label>
-                                <input
-                                    type="text"
+                                <select
                                     name="profilePulledBy"
                                     value={formData.profilePulledBy}
                                     onChange={handleChange}
                                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
                                     disabled={isViewMode}
-                                />
+                                >
+                                    <option value="">Select User</option>
+                                    {users.map(u => (
+                                        <option key={u._id} value={`${u.firstName || ''} ${u.lastName || ''}`.trim()}>
+                                            {u.firstName} {u.lastName}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-sm font-semibold text-slate-700 mb-1">Total Experience (years) *</label>

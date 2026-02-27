@@ -299,34 +299,32 @@ const CandidateDetails = () => {
         <div className="min-h-screen bg-slate-50 pb-12">
             <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-4">
-                            <button onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications`)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
-                                <ArrowLeft size={20} />
-                            </button>
-                            <div>
-                                <h1 className="text-xl font-bold text-slate-800">{candidate.candidateName}</h1>
-                                <p className="text-sm text-slate-500">{candidate.email} • {candidate.mobile}</p>
-                            </div>
+                    <div className="flex items-center gap-4">
+                        <button onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications`)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-800">{candidate.candidateName}</h1>
+                            <p className="text-sm text-slate-500">{candidate.email} • {candidate.mobile}</p>
                         </div>
-                        <div className="flex gap-3">
-                            <a
-                                href={candidate.resumeUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors border border-slate-200"
+                    </div>
+                    <div className="flex gap-3 flex-wrap">
+                        <a
+                            href={candidate.resumeUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors border border-slate-200"
+                        >
+                            <Download size={18} /> View Resume
+                        </a>
+                        {canManageRounds && (
+                            <button
+                                onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
+                                className="flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                             >
-                                <Download size={18} /> View Resume
-                            </a>
-                            {canManageRounds && (
-                                <button
-                                    onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
-                                    className="flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                                >
-                                    <Edit2 size={18} /> Edit Profile
-                                </button>
-                            )}
-                        </div>
+                                <Edit2 size={18} /> Edit Profile
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

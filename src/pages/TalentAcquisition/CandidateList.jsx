@@ -15,10 +15,13 @@ const CandidateList = ({ hiringRequestId }) => {
 
     // Filter States
     const [filterPreference, setFilterPreference] = useState('All');
-    const [filterStatus, setFilterStatus] = useState('All');
+    const [filterStatus, setFilterStatus] = useState('Interested');
     const [filterDecision, setFilterDecision] = useState('All');
     const [filterExperience, setFilterExperience] = useState('');
     const [filterInterviewStatus, setFilterInterviewStatus] = useState('All');
+    const [filterRating, setFilterRating] = useState('All');
+    const [filterPulledBy, setFilterPulledBy] = useState('All');
+    const [users, setUsers] = useState([]);
 
     // Menu State
     const [activeMenu, setActiveMenu] = useState(null);
@@ -34,7 +37,42 @@ const CandidateList = ({ hiringRequestId }) => {
         if (hiringRequestId) {
             fetchCandidates();
         }
+        fetchUsers();
     }, [hiringRequestId]);
+
+    const fetchUsers = async () => {
+        try {
+            const res = await api.get('/admin/users');
+            let fetchedUsers = [];
+            if (res.data?.success) {
+                fetchedUsers = res.data.data || [];
+            } else if (Array.isArray(res.data)) {
+                fetchedUsers = res.data;
+            }
+
+            const filteredUsers = fetchedUsers.filter(u => {
+                const roleNames = u.roles?.map(r => r.name) || [];
+                if (roleNames.includes('Admin')) return true;
+
+                let hasTaCreate = false;
+                if (u.roles && Array.isArray(u.roles)) {
+                    u.roles.forEach(role => {
+                        if (role.permissions && Array.isArray(role.permissions)) {
+                            const keys = role.permissions.map(p => typeof p === 'string' ? p : p.key);
+                            if (keys.includes('ta.create') || keys.includes('*')) {
+                                hasTaCreate = true;
+                            }
+                        }
+                    });
+                }
+                return hasTaCreate;
+            });
+
+            setUsers(filteredUsers);
+        } catch (error) {
+            console.error('Failed to fetch users', error);
+        }
+    };
 
     // Computed filtered candidates
     const filteredCandidates = candidates.filter(candidate => {
@@ -57,7 +95,22 @@ const CandidateList = ({ hiringRequestId }) => {
             if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
         }
 
-        return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus;
+        let matchRating = true;
+        if (filterRating !== 'All') {
+            const rounds = candidate.interviewRounds || [];
+            const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+            if (ratedRounds.length === 0) {
+                 matchRating = false;                 
+            } else {
+                 const minRequired = Number(filterRating);
+                 const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                 matchRating = avgRating >= minRequired;
+            }
+        }
+
+        const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
+
+        return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy;
     });
 
     // Compute Metrics for Summary Boxes
@@ -73,7 +126,7 @@ const CandidateList = ({ hiringRequestId }) => {
         }).length,
         hired: candidates.filter(c => c.decision === 'Hired').length,
         rejected: candidates.filter(c => c.decision === 'Rejected').length,
-        onHold: candidates.filter(c => c.decision === 'On hold').length,
+        onHold: candidates.filter(c => c.decision === 'On Hold').length,
     };
 
     const fetchCandidates = async () => {
@@ -86,6 +139,30 @@ const CandidateList = ({ hiringRequestId }) => {
             toast.error('Failed to load candidates');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const hEdit = (candidate) => {
+        navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/edit`);
+    };
+
+    const hView = (candidate) => {
+        navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view`);
+    };
+
+    const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
+
+    const toggleMenu = (e, candidateId) => {
+        e.stopPropagation();
+        if (activeMenu === candidateId) {
+            setActiveMenu(null);
+        } else {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setMenuPosition({
+                top: rect.bottom + window.scrollY + 5,
+                right: window.innerWidth - rect.right
+            });
+            setActiveMenu(candidateId);
         }
     };
 
@@ -330,6 +407,35 @@ const CandidateList = ({ hiringRequestId }) => {
                     </select>
                 </div>
                 <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Min Avg Rating</label>
+                    <select
+                        value={filterRating}
+                        onChange={(e) => setFilterRating(e.target.value)}
+                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
+                    >
+                        <option value="All">All Ratings</option>
+                        <option value="9">9+ (Excellent)</option>
+                        <option value="7">7+ (Good)</option>
+                        <option value="5">5+ (Average)</option>
+                        <option value="3">3+ (Below Avg)</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Pulled By</label>
+                    <select
+                        value={filterPulledBy}
+                        onChange={(e) => setFilterPulledBy(e.target.value)}
+                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                    >
+                        <option value="All">All Users</option>
+                        {users.map(u => (
+                            <option key={u._id} value={`${u.firstName || ''} ${u.lastName || ''}`.trim()}>
+                                {u.firstName} {u.lastName}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-1">Min Experience (Yrs)</label>
                     <input
                         type="number"
@@ -340,14 +446,16 @@ const CandidateList = ({ hiringRequestId }) => {
                         className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
                     />
                 </div>
-                {(filterPreference !== 'All' || filterStatus !== 'All' || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All') && (
+                {(filterPreference !== 'All' || filterStatus !== 'Interested' || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All') && (
                     <button
                         onClick={() => {
                             setFilterPreference('All');
-                            setFilterStatus('All');
+                            setFilterStatus('Interested');
                             setFilterDecision('All');
                             setFilterExperience('');
                             setFilterInterviewStatus('All');
+                            setFilterRating('All');
+                            setFilterPulledBy('All');
                         }}
                         className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
                     >
@@ -372,9 +480,10 @@ const CandidateList = ({ hiringRequestId }) => {
                     )}
                 </div>
             ) : (
-                <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto mb-24">
-                    <div className="min-w-[1100px]">
-                        <table className="w-full">
+                <div className="bg-white rounded-xl border border-slate-200 mb-24">
+                    <div className="w-full overflow-x-auto">
+                        <div className="min-w-[1100px]">
+                            <table className="w-full">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr key="header-row">
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
@@ -382,9 +491,8 @@ const CandidateList = ({ hiringRequestId }) => {
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Preference</th>
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Uploaded</th>
+                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled By</th>
                                     <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                                 </tr>
                             </thead>
@@ -434,22 +542,37 @@ const CandidateList = ({ hiringRequestId }) => {
                                             <td className="px-4 py-4 align-top">
                                                 {(() => {
                                                     const summary = getInterviewStatusSummary(candidate.interviewRounds);
+                                                    
+                                                    const rounds = candidate.interviewRounds || [];
+                                                    const hasFailed = rounds.some(r => r.status === 'Failed');
+                                                    const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                                                    let avgRating = null;
+                                                    
+                                                    if (!hasFailed && ratedRounds.length > 0) {
+                                                        const total = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0);
+                                                        // Format to 1 decimal place, or no decimals if whole number
+                                                        let calculatedAvg = total / ratedRounds.length;
+                                                        avgRating = Number.isInteger(calculatedAvg) ? calculatedAvg.toString() : calculatedAvg.toFixed(1);
+                                                    }
+
                                                     return (
                                                         <div className="flex flex-col gap-1.5 items-start">
                                                             <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold tracking-wide ${summary.color}`}>
                                                                 {summary.label}
                                                             </span>
-                                                            <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">
-                                                                {candidate.interviewRounds?.length || 0} rounds<br />total
-                                                            </span>
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
+                                                                    {candidate.interviewRounds?.length || 0} rounds total
+                                                                </span>
+                                                                {avgRating && (
+                                                                    <span className="text-[11px] font-bold text-amber-600 flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 self-start">
+                                                                        ⭐ {avgRating}/10
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )
                                                 })()}
-                                            </td>
-                                            <td className="px-4 py-4 align-top">
-                                                <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${getStatusColor(candidate.status)}`}>
-                                                    {candidate.status}
-                                                </span>
                                             </td>
                                             <td className="px-4 py-4 align-top">
                                                 <div className="relative inline-block w-full max-w-[110px]">
@@ -463,7 +586,7 @@ const CandidateList = ({ hiringRequestId }) => {
                                                         <option value="None" className="text-slate-600">None</option>
                                                         <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
                                                         <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
-                                                        <option value="On hold" className="text-amber-600 font-bold">On Hold</option>
+                                                        <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
                                                     </select>
                                                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
                                                         <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
@@ -474,17 +597,20 @@ const CandidateList = ({ hiringRequestId }) => {
                                             </td>
                                             <td className="px-4 py-4 align-top">
                                                 <div className="flex flex-col gap-0.5 text-[12px] text-slate-500 font-medium whitespace-nowrap">
-                                                    <span>{format(new Date(candidate.uploadedAt), 'MMM dd,')}</span>
-                                                    <span>{format(new Date(candidate.uploadedAt), 'yyyy')}</span>
-                                                    <span className="text-[11px] mt-0.5">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</span>
+                                                    <span 
+                                                        className="font-bold text-blue-600 mb-0.5 max-w-[120px] truncate cursor-pointer hover:underline" 
+                                                        title={candidate.profilePulledBy || '-'}
+                                                        onClick={() => candidate.profilePulledBy && navigate(`/ta/user-dashboard/${encodeURIComponent(candidate.profilePulledBy)}`)}
+                                                    >
+                                                        {candidate.profilePulledBy || '-'}
+                                                    </span>
+                                                    <span>{format(new Date(candidate.uploadedAt), 'MMM dd, yyyy')}</span>
+                                                    <span className="text-[10px] mt-0.5">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-4 align-top text-center relative isolate">
+                                            <td className="px-4 py-4 align-top text-center">
                                                 <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setActiveMenu(activeMenu === candidate._id ? null : candidate._id);
-                                                    }}
+                                                    onClick={(e) => toggleMenu(e, candidate._id)}
                                                     className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors relative"
                                                 >
                                                     <MoreVertical size={18} />
@@ -493,7 +619,8 @@ const CandidateList = ({ hiringRequestId }) => {
                                                 {/* Dropdown Menu */}
                                                 {activeMenu === candidate._id && (
                                                     <div
-                                                        className="absolute right-0 top-12 z-[100] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
+                                                        className="fixed z-[9999] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
+                                                        style={{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }}
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
                                                         <button
@@ -554,6 +681,7 @@ const CandidateList = ({ hiringRequestId }) => {
                             </tbody>
                         </table>
                     </div>
+                </div>
                 </div>
             )}
         </div>

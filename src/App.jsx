@@ -27,6 +27,7 @@ import HiringRequestDetails from './pages/TalentAcquisition/HiringRequestDetails
 import WorkflowSettings from './pages/TalentAcquisition/WorkflowSettings';
 import CandidateForm from './pages/TalentAcquisition/CandidateForm';
 import CandidateDetails from './pages/TalentAcquisition/CandidateDetails';
+import UserTADashboard from './pages/TalentAcquisition/UserTADashboard';
 import Meetings from './pages/Meetings';
 import MeetingForm from './pages/MeetingForm';
 import MeetingDetails from './pages/MeetingDetails';
@@ -72,6 +73,7 @@ function App() {
               <Route path="/ta/hiring-request/:hiringRequestId/add-candidate" element={<CandidateForm />} />
               <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/edit" element={<CandidateForm />} />
               <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/view" element={<CandidateDetails />} />
+              <Route path="/ta/user-dashboard/:userName" element={<UserTADashboard />} />
 
               <Route path="/profile" element={<Profile />} />
               <Route path="/holidays" element={<Holidays />} />
