@@ -22,7 +22,7 @@ const CandidateDetails = () => {
 
     // Evaluation State
     const [evaluatingRoundId, setEvaluatingRoundId] = useState(null);
-    const [evaluationForm, setEvaluationForm] = useState({ status: 'Passed', feedback: '' });
+    const [evaluationForm, setEvaluationForm] = useState({ status: 'Passed', feedback: '', rating: '' });
 
     // Edit Round State
     const [editingRoundId, setEditingRoundId] = useState(null);
@@ -200,10 +200,15 @@ const CandidateDetails = () => {
 
         try {
             setActionLoading(true);
-            await api.patch(`/ta/candidates/${candidateId}/rounds/${roundId}/evaluate`, evaluationForm);
+            const payload = {
+                status: evaluationForm.status,
+                feedback: evaluationForm.feedback,
+                ...(evaluationForm.status === 'Passed' && evaluationForm.rating ? { rating: evaluationForm.rating } : {})
+            };
+            await api.patch(`/ta/candidates/${candidateId}/rounds/${roundId}/evaluate`, payload);
             toast.success('Evaluation submitted');
             setEvaluatingRoundId(null);
-            setEvaluationForm({ status: 'Passed', feedback: '' });
+            setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
             fetchCandidate();
         } catch (error) {
             console.error('Error submitting evaluation:', error);
@@ -616,8 +621,9 @@ const CandidateDetails = () => {
                                 </div>
                             ) : (
                                 candidate.interviewRounds.map((round, index) => {
-                                    const isAssigned = round.assignedTo?.some(u => u._id === user?._id);
+                                    const isAssigned = round.assignedTo?.some(u => u._id === user?._id || u._id?.toString() === user?._id?.toString());
                                     const canEvaluate = (isAssigned || hasSuperApprove) && ['Pending', 'Scheduled'].includes(round.status);
+                                    const canEditFeedback = (isAssigned || hasSuperApprove) && ['Passed', 'Failed'].includes(round.status);
                                     const isEvaluating = evaluatingRoundId === round._id;
                                     const isEditingRound = editingRoundId === round._id;
 
@@ -708,12 +714,19 @@ const CandidateDetails = () => {
                                                     </div>
 
                                                     {/* Evaluation Results Overlay */}
-                                                    {['Passed', 'Failed'].includes(round.status) && (
-                                                        <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                                                    {['Passed', 'Failed'].includes(round.status) && !isEvaluating && (
+                                                        <div className={`rounded-lg p-4 border ${round.status === 'Passed' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-red-50/60 border-red-100'}`}>
                                                             <div className="flex items-start gap-2">
                                                                 <MessageSquare size={16} className="text-slate-400 mt-0.5" />
                                                                 <div className="flex-1">
-                                                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Evaluator Feedback</p>
+                                                                    <div className="flex items-center justify-between mb-1">
+                                                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Evaluator Feedback</p>
+                                                                        {round.status === 'Passed' && round.rating && (
+                                                                            <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold border border-emerald-200">
+                                                                                ⭐ {round.rating}/10
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                     <p className="text-sm text-slate-700 whitespace-pre-wrap">{round.feedback}</p>
 
                                                                     {round.evaluatedBy && (
@@ -727,15 +740,35 @@ const CandidateDetails = () => {
                                                         </div>
                                                     )}
 
-                                                    {/* CTA to Evaluate */}
-                                                    {canEvaluate && !isEvaluating && !isEditingRound && (
+                                                    {/* CTA to Evaluate / Edit Feedback */}
+                                                    {(canEvaluate || canEditFeedback) && !isEvaluating && !isEditingRound && (
                                                         <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
-                                                            <button
-                                                                onClick={() => setEvaluatingRoundId(round._id)}
-                                                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-                                                            >
-                                                                Submit Evaluation
-                                                            </button>
+                                                            {canEvaluate && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEvaluatingRoundId(round._id);
+                                                                        setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
+                                                                    }}
+                                                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                                                >
+                                                                    Submit Evaluation
+                                                                </button>
+                                                            )}
+                                                            {canEditFeedback && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEvaluatingRoundId(round._id);
+                                                                        setEvaluationForm({
+                                                                            status: round.status,
+                                                                            feedback: round.feedback || '',
+                                                                            rating: round.rating || ''
+                                                                        });
+                                                                    }}
+                                                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors"
+                                                                >
+                                                                    <Edit2 size={14} /> Edit Feedback
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     )}
 
@@ -826,13 +859,34 @@ const CandidateDetails = () => {
                                                                                     name={`status-${round._id}`}
                                                                                     value="Failed"
                                                                                     checked={evaluationForm.status === 'Failed'}
-                                                                                    onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value })}
+                                                                                    onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value, rating: '' })}
                                                                                     className="w-4 h-4 text-red-600 border-slate-300 focus:ring-red-500"
                                                                                 />
                                                                                 <span className="text-sm font-medium text-slate-800">Fail</span>
                                                                             </label>
                                                                         </div>
                                                                     </div>
+
+                                                                    {/* Rating dropdown — shown only when Pass is selected */}
+                                                                    {evaluationForm.status === 'Passed' && (
+                                                                        <div>
+                                                                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                                                                Performance Rating
+                                                                                <span className="ml-1 text-xs text-slate-400 font-normal">(Optional, 1–10)</span>
+                                                                            </label>
+                                                                            <select
+                                                                                value={evaluationForm.rating}
+                                                                                onChange={(e) => setEvaluationForm({ ...evaluationForm, rating: e.target.value })}
+                                                                                className="w-40 px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-white"
+                                                                            >
+                                                                                <option value="">-- Select Rating --</option>
+                                                                                {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(n => (
+                                                                                    <option key={n} value={n}>{n} / 10{n === 10 ? ' — Outstanding' : n >= 8 ? ' — Excellent' : n >= 6 ? ' — Good' : n >= 4 ? ' — Average' : ' — Poor'}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                        </div>
+                                                                    )}
+
                                                                     <div>
                                                                         <label className="block text-sm font-medium text-slate-700 mb-1">Qualitative Feedback / Remarks *</label>
                                                                         <textarea
@@ -847,7 +901,7 @@ const CandidateDetails = () => {
                                                                         <button
                                                                             onClick={() => {
                                                                                 setEvaluatingRoundId(null);
-                                                                                setEvaluationForm({ status: 'Passed', feedback: '' });
+                                                                                setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
                                                                             }}
                                                                             className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
                                                                         >
@@ -858,7 +912,8 @@ const CandidateDetails = () => {
                                                                             disabled={actionLoading}
                                                                             className="px-5 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
                                                                         >
-                                                                            {actionLoading && <Loader size={14} className="animate-spin" />} Submit Decision
+                                                                            {actionLoading && <Loader size={14} className="animate-spin" />}
+                                                                            {['Passed', 'Failed'].includes(round.status) ? 'Update Feedback' : 'Submit Decision'}
                                                                         </button>
                                                                     </div>
                                                                 </div>
