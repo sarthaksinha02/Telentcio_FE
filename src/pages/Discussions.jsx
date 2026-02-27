@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, Eye, EyeOff, Edit, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +18,9 @@ const Discussions = () => {
     // New states for inline editing
     const [editingId, setEditingId] = useState(null);
     const [editData, setEditData] = useState(null);
+
+    // State for toggling full descriptions inline
+    const [expandedIds, setExpandedIds] = useState([]);
 
     const [newDiscussion, setNewDiscussion] = useState({
         discussion: '',
@@ -137,6 +140,12 @@ const Discussions = () => {
         }
     };
 
+    const toggleDescription = (id) => {
+        setExpandedIds(prev =>
+            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        );
+    };
+
     const getStatusBadgeColor = (status) => {
         const styles = {
             'inprogress': 'bg-amber-100 text-amber-700 border-amber-200',
@@ -199,14 +208,14 @@ const Discussions = () => {
                 {/* List View */}
                 <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                        <table className="w-full text-sm table-fixed">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-16">S.No</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-2/5">Description</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600">Description</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Due Date</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-40">Status</th>
-                                    <th className="px-6 py-4 text-right font-semibold text-slate-600 w-40">Actions</th>
+                                    <th className="px-6 py-4 text-right font-semibold text-slate-600 w-64">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -338,8 +347,11 @@ const Discussions = () => {
                                                     {(currentPage - 1) * limit + index + 1}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <div className="text-sm text-slate-600 max-w-xs truncate" title={discussion.discussion}>
-                                                        {discussion.discussion}
+                                                    <div className="text-sm text-slate-600 break-all whitespace-normal leading-relaxed">
+                                                        {discussion.discussion && discussion.discussion.length > 55 && !expandedIds.includes(discussion._id) ?
+                                                            `${discussion.discussion.substring(0, 55)}...` :
+                                                            discussion.discussion
+                                                        }
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
@@ -365,17 +377,28 @@ const Discussions = () => {
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
+                                                        {discussion.discussion && discussion.discussion.length > 55 && (
+                                                            <button
+                                                                onClick={() => toggleDescription(discussion._id)}
+                                                                title={expandedIds.includes(discussion._id) ? "Show Less" : "View"}
+                                                                className="inline-flex items-center justify-center p-2 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors bg-slate-50 border-transparent shadow-sm"
+                                                            >
+                                                                {expandedIds.includes(discussion._id) ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                            </button>
+                                                        )}
                                                         <button
                                                             onClick={() => handleEditInline(discussion)}
-                                                            className="inline-flex items-center justify-center px-3 py-1.5 border border-slate-200 text-xs font-medium rounded text-indigo-600 bg-white hover:bg-indigo-50 transition-colors shadow-sm"
+                                                            title="Edit"
+                                                            className="inline-flex items-center justify-center p-2 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition-colors bg-slate-50 border-transparent shadow-sm"
                                                         >
-                                                            Edit
+                                                            <Edit size={16} />
                                                         </button>
                                                         <button
                                                             onClick={() => handleDelete(discussion._id)}
-                                                            className="inline-flex items-center justify-center px-3 py-1.5 border border-red-200 text-xs font-medium rounded text-red-600 bg-white hover:bg-red-50 transition-colors shadow-sm"
+                                                            title="Delete"
+                                                            className="inline-flex items-center justify-center p-2 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors bg-slate-50 border-transparent shadow-sm"
                                                         >
-                                                            Delete
+                                                            <Trash2 size={16} />
                                                         </button>
                                                     </div>
                                                 </td>
