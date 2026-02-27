@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
@@ -28,9 +29,13 @@ const CandidateList = ({ hiringRequestId }) => {
 
     // Close menu when clicking outside
     useEffect(() => {
-        const handleClickOutside = () => setActiveMenu(null);
-        document.addEventListener('click', handleClickOutside);
-        return () => document.removeEventListener('click', handleClickOutside);
+        const handleClose = () => setActiveMenu(null);
+        document.addEventListener('click', handleClose);
+        window.addEventListener('scroll', handleClose, true);
+        return () => {
+            document.removeEventListener('click', handleClose);
+            window.removeEventListener('scroll', handleClose, true);
+        };
     }, []);
 
     useEffect(() => {
@@ -158,10 +163,21 @@ const CandidateList = ({ hiringRequestId }) => {
             setActiveMenu(null);
         } else {
             const rect = e.currentTarget.getBoundingClientRect();
-            setMenuPosition({
-                top: rect.bottom + window.scrollY + 5,
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const menuHeight = 220; // safe estimation of dropdown height
+
+            let positionStyles = {
                 right: window.innerWidth - rect.right
-            });
+            };
+
+            // If not enough space below, open upwards
+            if (spaceBelow < menuHeight && rect.top > menuHeight) {
+                positionStyles.bottom = window.innerHeight - rect.top + 5;
+            } else {
+                positionStyles.top = rect.bottom + 5;
+            }
+
+            setMenuPosition(positionStyles);
             setActiveMenu(candidateId);
         }
     };
@@ -617,10 +633,10 @@ const CandidateList = ({ hiringRequestId }) => {
                                                 </button>
 
                                                 {/* Dropdown Menu */}
-                                                {activeMenu === candidate._id && (
+                                                {activeMenu === candidate._id && typeof document !== 'undefined' && createPortal(
                                                     <div
                                                         className="fixed z-[9999] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
-                                                        style={{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }}
+                                                        style={menuPosition}
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
                                                         <button
@@ -672,7 +688,8 @@ const CandidateList = ({ hiringRequestId }) => {
                                                                 Delete Candidate
                                                             </button>
                                                         )}
-                                                    </div>
+                                                    </div>,
+                                                    document.body
                                                 )}
                                             </td>
                                         </tr>
