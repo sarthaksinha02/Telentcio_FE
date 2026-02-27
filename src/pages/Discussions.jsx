@@ -11,6 +11,20 @@ const Discussions = () => {
     const [discussions, setDiscussions] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // New states for inline creation
+    const [isCreating, setIsCreating] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
+    // New states for inline editing
+    const [editingId, setEditingId] = useState(null);
+    const [editData, setEditData] = useState(null);
+
+    const [newDiscussion, setNewDiscussion] = useState({
+        discussion: '',
+        status: 'inprogress',
+        dueDate: ''
+    });
+
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
@@ -43,6 +57,83 @@ const Discussions = () => {
         } catch (error) {
             console.error('Error updating status:', error);
             toast.error('Failed to update status');
+        }
+    };
+
+    const handleCreateInline = async () => {
+        if (!newDiscussion.discussion) {
+            toast.error('Description is required');
+            return;
+        }
+        try {
+            setIsSaving(true);
+            const payload = { ...newDiscussion, title: 'Discussion' }; // Setting default title since field is removed
+            if (!payload.dueDate) delete payload.dueDate;
+
+            await api.post('/discussions', payload);
+            toast.success('Discussion created');
+
+            fetchDiscussions(1); // Fetch the first page to show the new discussion
+
+            setIsCreating(false);
+            setNewDiscussion({
+                discussion: '',
+                status: 'inprogress',
+                dueDate: ''
+            });
+        } catch (error) {
+            console.error('Error creating discussion:', error);
+            toast.error('Failed to create discussion');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleEditInline = (discussion) => {
+        setEditingId(discussion._id);
+        setEditData({
+            discussion: discussion.discussion,
+            status: discussion.status,
+            dueDate: discussion.dueDate ? discussion.dueDate.split('T')[0] : ''
+        });
+    };
+
+    const handleUpdateInline = async (id) => {
+        if (!editData.discussion) {
+            toast.error('Description is required');
+            return;
+        }
+        try {
+            setIsSaving(true);
+            const payload = { ...editData };
+            if (!payload.dueDate) delete payload.dueDate;
+
+            await api.put(`/discussions/${id}`, payload);
+            toast.success('Discussion updated');
+
+            // Update local state
+            setDiscussions(prev => prev.map(d => d._id === id ? { ...d, ...payload } : d));
+
+            setEditingId(null);
+            setEditData(null);
+        } catch (error) {
+            console.error('Error updating discussion:', error);
+            toast.error('Failed to update discussion');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (window.confirm('Are you sure you want to delete this discussion?')) {
+            try {
+                await api.delete(`/discussions/${id}`);
+                toast.success('Discussion deleted');
+                fetchDiscussions(currentPage);
+            } catch (error) {
+                console.error('Error deleting discussion:', error);
+                toast.error('Failed to delete discussion');
+            }
         }
     };
 
@@ -97,7 +188,7 @@ const Discussions = () => {
                         <p className="text-sm text-slate-500 mt-1">Create and manage team discussions, tasks, and topics.</p>
                     </div>
                     <button
-                        onClick={() => navigate('/discussions/new')}
+                        onClick={() => setIsCreating(true)}
                         className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
                     >
                         <Plus size={18} />
@@ -111,21 +202,71 @@ const Discussions = () => {
                         <table className="w-full text-sm">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600">Title</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600">Author</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600">Due Date</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600">Status</th>
-                                    <th className="px-6 py-4 text-right font-semibold text-slate-600">Actions</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-16">S.No</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-2/5">Description</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Due Date</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-40">Status</th>
+                                    <th className="px-6 py-4 text-right font-semibold text-slate-600 w-40">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
+                                {isCreating && (
+                                    <tr className="bg-indigo-50/50">
+                                        <td className="px-6 py-4 text-slate-500 text-sm font-medium">New</td>
+                                        <td className="px-6 py-4">
+                                            <input
+                                                type="text"
+                                                value={newDiscussion.discussion}
+                                                onChange={(e) => setNewDiscussion({ ...newDiscussion, discussion: e.target.value })}
+                                                placeholder="Enter description"
+                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                            />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <input
+                                                type="date"
+                                                value={newDiscussion.dueDate}
+                                                onChange={(e) => setNewDiscussion({ ...newDiscussion, dueDate: e.target.value })}
+                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600"
+                                            />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <select
+                                                value={newDiscussion.status}
+                                                onChange={(e) => setNewDiscussion({ ...newDiscussion, status: e.target.value })}
+                                                className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-full ${getStatusBadgeColor(newDiscussion.status)}`}
+                                            >
+                                                <option value="inprogress">In Progress</option>
+                                                <option value="on-hold">On-hold</option>
+                                                <option value="mark as complete">Mark as complete</option>
+                                            </select>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    onClick={handleCreateInline}
+                                                    disabled={isSaving}
+                                                    className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                                                >
+                                                    {isSaving ? '...' : 'Save'}
+                                                </button>
+                                                <button
+                                                    onClick={() => setIsCreating(false)}
+                                                    className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-medium rounded hover:bg-slate-300 transition-colors"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
                                 {loading ? (
                                     <tr>
-                                        <td colSpan="5" className="px-6 py-8">
+                                        <td colSpan="6" className="px-6 py-8">
                                             <div className="flex justify-center"><Skeleton className="h-8 w-8 rounded-full" /></div>
                                         </td>
                                     </tr>
-                                ) : discussions.length === 0 ? (
+                                ) : discussions.length === 0 && !isCreating ? (
                                     <tr>
                                         <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
                                             <div className="flex flex-col items-center justify-center">
@@ -136,52 +277,110 @@ const Discussions = () => {
                                         </td>
                                     </tr>
                                 ) : (
-                                    discussions.map(discussion => (
-                                        <tr key={discussion._id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <div className="font-semibold text-slate-800">{discussion.title}</div>
-                                                <div className="text-xs text-slate-500 mt-1 truncate max-w-md">{discussion.discussion}</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="h-7 w-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">
-                                                        {discussion.createdBy?.firstName?.[0]}{discussion.createdBy?.lastName?.[0]}
+                                    discussions.map((discussion, index) => (
+                                        editingId === discussion._id ? (
+                                            <tr key={`edit-${discussion._id}`} className="bg-indigo-50/20">
+                                                <td className="px-6 py-4 text-sm font-medium text-slate-500">
+                                                    {(currentPage - 1) * limit + index + 1}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <input
+                                                        type="text"
+                                                        value={editData.discussion}
+                                                        onChange={(e) => setEditData({ ...editData, discussion: e.target.value })}
+                                                        placeholder="Enter description"
+                                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                    />
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <input
+                                                        type="date"
+                                                        value={editData.dueDate}
+                                                        onChange={(e) => setEditData({ ...editData, dueDate: e.target.value })}
+                                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600"
+                                                    />
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <select
+                                                        value={editData.status}
+                                                        onChange={(e) => setEditData({ ...editData, status: e.target.value })}
+                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-fit ${getStatusBadgeColor(editData.status)}`}
+                                                    >
+                                                        <option value="inprogress">In Progress</option>
+                                                        <option value="on-hold">On-hold</option>
+                                                        <option value="mark as complete">Mark as complete</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button
+                                                            onClick={() => handleUpdateInline(discussion._id)}
+                                                            disabled={isSaving}
+                                                            className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                                                        >
+                                                            {isSaving ? '...' : 'Save'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setEditingId(null);
+                                                                setEditData(null);
+                                                            }}
+                                                            className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-medium rounded hover:bg-slate-300 transition-colors"
+                                                        >
+                                                            Cancel
+                                                        </button>
                                                     </div>
-                                                    <span className="text-slate-700 font-medium whitespace-nowrap">
-                                                        {discussion.createdBy?.firstName} {discussion.createdBy?.lastName}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                {discussion.dueDate ? (
-                                                    <div className="flex items-center text-slate-700 whitespace-nowrap">
-                                                        <Calendar size={14} className="mr-1.5 text-slate-400" />
-                                                        {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            <tr key={discussion._id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-6 py-4 text-sm font-medium text-slate-500">
+                                                    {(currentPage - 1) * limit + index + 1}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="text-sm text-slate-600 max-w-xs truncate" title={discussion.discussion}>
+                                                        {discussion.discussion}
                                                     </div>
-                                                ) : (
-                                                    <span className="text-slate-400 text-xs italic">No due date</span>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <select
-                                                    value={discussion.status}
-                                                    onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
-                                                    className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${getStatusBadgeColor(discussion.status)}`}
-                                                >
-                                                    <option value="inprogress">In Progress</option>
-                                                    <option value="on-hold">On-hold</option>
-                                                    <option value="mark as complete">Mark as complete</option>
-                                                </select>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <button
-                                                    onClick={() => navigate(`/discussions/${discussion._id}/edit`)}
-                                                    className="inline-flex items-center justify-center px-3 py-1.5 border border-slate-200 text-xs font-medium rounded-lg text-indigo-600 bg-white hover:bg-slate-50 transition-colors shadow-sm"
-                                                >
-                                                    View / Edit
-                                                </button>
-                                            </td>
-                                        </tr>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {discussion.dueDate ? (
+                                                        <div className="flex items-center text-slate-700 whitespace-nowrap text-sm">
+                                                            <Calendar size={14} className="mr-1.5 text-slate-400" />
+                                                            {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-400 text-xs italic">No due date</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <select
+                                                        value={discussion.status}
+                                                        onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
+                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-fit ${getStatusBadgeColor(discussion.status)}`}
+                                                    >
+                                                        <option value="inprogress">In Progress</option>
+                                                        <option value="on-hold">On-hold</option>
+                                                        <option value="mark as complete">Mark as complete</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button
+                                                            onClick={() => handleEditInline(discussion)}
+                                                            className="inline-flex items-center justify-center px-3 py-1.5 border border-slate-200 text-xs font-medium rounded text-indigo-600 bg-white hover:bg-indigo-50 transition-colors shadow-sm"
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(discussion._id)}
+                                                            className="inline-flex items-center justify-center px-3 py-1.5 border border-red-200 text-xs font-medium rounded text-red-600 bg-white hover:bg-red-50 transition-colors shadow-sm"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )
                                     ))
                                 )}
                             </tbody>
