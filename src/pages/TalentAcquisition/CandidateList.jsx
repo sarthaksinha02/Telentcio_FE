@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -59,6 +59,22 @@ const CandidateList = ({ hiringRequestId }) => {
 
         return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus;
     });
+
+    // Compute Metrics for Summary Boxes
+    const metrics = {
+        total: candidates.length,
+        interested: candidates.filter(c => c.status === 'Interested').length,
+        inInterviews: candidates.filter(c => {
+            const rounds = c.interviewRounds || [];
+            if (rounds.length === 0) return false;
+            const hasFailed = rounds.some(r => r.status === 'Failed');
+            if (hasFailed) return false;
+            return rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
+        }).length,
+        hired: candidates.filter(c => c.decision === 'Hired').length,
+        rejected: candidates.filter(c => c.decision === 'Rejected').length,
+        onHold: candidates.filter(c => c.decision === 'On hold').length,
+    };
 
     const fetchCandidates = async () => {
         try {
@@ -166,6 +182,12 @@ const CandidateList = ({ hiringRequestId }) => {
                     </div>
                     <Skeleton className="h-10 w-36" />
                 </div>
+                {/* Skeleton for Summary Boxes */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                    {[...Array(6)].map((_, i) => (
+                        <Skeleton key={i} className="h-24 w-full rounded-none" />
+                    ))}
+                </div>
                 <div className="bg-white p-4 rounded-xl border border-slate-200 flex gap-4">
                     <Skeleton className="h-10 w-32" />
                     <Skeleton className="h-10 w-32" />
@@ -194,10 +216,9 @@ const CandidateList = ({ hiringRequestId }) => {
     return (
         <div className="space-y-4">
             {/* Header */}
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-2">
                 <div>
-                    <h3 className="text-lg font-bold text-slate-800">Candidates</h3>
-                    <p className="text-sm text-slate-500">{candidates.length} candidate(s) uploaded</p>
+                    <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-widest leading-loose">Pipeline</h3>
                 </div>
                 {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
                     <button
@@ -208,6 +229,45 @@ const CandidateList = ({ hiringRequestId }) => {
                         Add Candidate
                     </button>
                 )}
+            </div>
+
+            {/* Pipeline Summary Boxes - Redesigned */}
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.total}</span>
+                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Sourced</span>
+                    <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                </div>
+
+                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.interested}</span>
+                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Pre-Screened</span>
+                    <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                </div>
+
+                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.inInterviews}</span>
+                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">In Interviews</span>
+                    <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                </div>
+
+                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.hired}</span>
+                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Hired</span>
+                    <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                </div>
+
+                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.rejected}</span>
+                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
+                    <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                </div>
+
+                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.onHold}</span>
+                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">On Hold</span>
+                    <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                </div>
             </div>
 
             {/* Filters */}
@@ -319,20 +379,19 @@ const CandidateList = ({ hiringRequestId }) => {
                                 <tr key="header-row">
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Source</th>
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Preference</th>
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>
                                     <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Uploaded</th>
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
+                                    <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
                                 {filteredCandidates.length === 0 ? (
                                     <tr>
-                                        <td colspan="9" className="px-4 py-8 text-center text-slate-500">
+                                        <td colSpan="8" className="px-4 py-8 text-center text-slate-500">
                                             No candidates match the selected filters.
                                         </td>
                                     </tr>
@@ -352,9 +411,6 @@ const CandidateList = ({ hiringRequestId }) => {
                                                     <span className="text-slate-500 font-medium">{candidate.email}</span>
                                                     <span className="text-slate-500 font-medium">{candidate.mobile}</span>
                                                 </div>
-                                            </td>
-                                            <td className="px-4 py-4 align-top">
-                                                <span className="text-[12px] font-medium text-slate-600">{candidate.source}</span>
                                             </td>
                                             <td className="px-4 py-4 align-top">
                                                 <span className="text-[13px] font-semibold text-slate-700">{candidate.totalExperience} yrs</span>
@@ -423,7 +479,7 @@ const CandidateList = ({ hiringRequestId }) => {
                                                     <span className="text-[11px] mt-0.5">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-4 align-top text-right relative isolate">
+                                            <td className="px-4 py-4 align-top text-center relative isolate">
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
