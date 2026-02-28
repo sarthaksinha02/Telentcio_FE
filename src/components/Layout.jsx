@@ -1,38 +1,63 @@
-import React, { Suspense } from 'react';
-import { Outlet, useNavigation } from 'react-router-dom';
+import React, { Suspense, useState, useEffect, useRef } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { Loader } from 'lucide-react';
 
 const Layout = () => {
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
-    const navigation = useNavigation();
-    const isNavigating = navigation.state === 'loading';
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [isNavigating, setIsNavigating] = useState(false);
+    const location = useLocation();
+    const timerRef = useRef(null);
+
+    useEffect(() => {
+        // Show progress bar on route change
+        setProgress(0);
+        setIsNavigating(true);
+
+        // Quickly animate to 80% then wait for render
+        const t1 = setTimeout(() => setProgress(60), 50);
+        const t2 = setTimeout(() => setProgress(80), 150);
+
+        // After a short delay, complete and hide
+        const t3 = setTimeout(() => {
+            setProgress(100);
+            const t4 = setTimeout(() => {
+                setIsNavigating(false);
+                setProgress(0);
+            }, 300);
+            timerRef.current = t4;
+        }, 400);
+
+        timerRef.current = t3;
+
+        return () => {
+            clearTimeout(t1);
+            clearTimeout(t2);
+            clearTimeout(t3);
+            if (timerRef.current) clearTimeout(timerRef.current);
+        };
+    }, [location.pathname]);
 
     return (
         <div className="min-h-screen bg-slate-100 flex font-sans overflow-x-hidden w-screen">
-            {/* Top navigation progress bar — visible during route transitions */}
+            {/* Top navigation progress bar */}
             {isNavigating && (
                 <div
                     style={{
                         position: 'fixed',
                         top: 0,
                         left: 0,
-                        right: 0,
+                        width: `${progress}%`,
                         height: 3,
                         background: 'linear-gradient(90deg, #2563eb, #60a5fa)',
                         zIndex: 9999,
-                        animation: 'progressBar 1.5s ease-in-out infinite',
+                        transition: 'width 0.25s ease',
+                        borderRadius: '0 2px 2px 0',
                     }}
                 />
             )}
-            <style>{`
-                @keyframes progressBar {
-                    0%   { transform: translateX(-100%); }
-                    50%  { transform: translateX(0%); }
-                    100% { transform: translateX(100%); }
-                }
-            `}</style>
 
             <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
