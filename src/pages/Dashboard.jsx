@@ -54,62 +54,74 @@ const Dashboard = () => {
     const [recentActivity, setRecentActivity] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // ─── sessionStorage cache helpers ───────────────────────────────────────
-    // Key is date-scoped so cached data auto-expires at midnight.
-    const CACHE_KEY = `dashboard_${new Date().toISOString().slice(0, 10)}`;
-    const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+    useEffect(() => {
+        // Cache key: date-scoped so it auto-invalidates at midnight
+        const CACHE_KEY = `dashboard_${new Date().toISOString().slice(0, 10)}`;
 
-    const readCache = () => {
-        try {
-            const raw = sessionStorage.getItem(CACHE_KEY);
-            if (!raw) return null;
-            const { data, expiresAt } = JSON.parse(raw);
-            if (!data || Date.now() > expiresAt) {
-                sessionStorage.removeItem(CACHE_KEY);
+        const readCache = () => {
+            try {
+                const raw = sessionStorage.getItem(CACHE_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed?.data?.stats) {
+                    sessionStorage.removeItem(CACHE_KEY);
+                    return null;
+                }
+                return parsed; // returns { data, fingerprint }
+            } catch {
                 return null;
             }
-            return data;
-        } catch {
-            // Handles: JSON.parse error, sessionStorage unavailable (private mode)
-            return null;
-        }
-    };
+        };
 
-    const writeCache = (data) => {
-        try {
-            sessionStorage.setItem(CACHE_KEY, JSON.stringify({
-                data,
-                expiresAt: Date.now() + CACHE_TTL_MS
-            }));
-        } catch {
-            // sessionStorage full or unavailable — silently ignore
-        }
-    };
-    // ────────────────────────────────────────────────────────────────────────
+        const writeCache = (data, fingerprint) => {
+            try {
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, fingerprint }));
+            } catch {
+                // sessionStorage unavailable or full — silently skip
+            }
+        };
 
-    useEffect(() => {
+        // Lightweight fingerprint: tracks every attendance record's
+        // id + status + clockIn so any change (new clock-in, status update) is detected
+        const buildFingerprint = (payload) => {
+            if (!payload?.recentActivity) return '';
+            return payload.recentActivity
+                .map(r => `${r.id}:${r.status}:${r.time ?? ''}`)
+                .join('|');
+        };
+
+        const applyData = (payload) => {
+            if (!payload?.stats) return;
+            setStats(payload.stats);
+            setRecentActivity(payload.recentActivity || []);
+            setProjects(payload.projects || []);
+        };
+
         const fetchDashboardData = async () => {
-            // 1. Try to serve from sessionStorage first
             const cached = readCache();
-            if (cached) {
-                setStats(cached.stats);
-                setRecentActivity(cached.recentActivity || []);
-                setProjects(cached.projects || []);
+
+            // 1. Show cached data instantly (no loading delay)
+            if (cached?.data) {
+                applyData(cached.data);
                 setLoading(false);
-                return;
             }
 
-            // 2. Cache miss — fetch from API
+            // 2. Always fetch fresh data in background
             try {
                 const res = await api.get('/dashboard');
                 const payload = res.data;
+                if (!payload?.stats) return;
 
-                // Guard: validate the shape before using it
-                if (payload && payload.stats) {
-                    setStats(payload.stats);
-                    setRecentActivity(payload.recentActivity || []);
-                    setProjects(payload.projects || []);
-                    writeCache(payload);
+                const freshFingerprint = buildFingerprint(payload);
+                const cachedFingerprint = cached?.fingerprint ?? '';
+
+                if (freshFingerprint !== cachedFingerprint) {
+                    // Data changed — update UI and overwrite cache
+                    applyData(payload);
+                    writeCache(payload, freshFingerprint);
+                } else {
+                    // Data unchanged — only refresh the cache entry (keep UI stable)
+                    writeCache(payload, freshFingerprint);
                 }
             } catch (error) {
                 console.error('Failed to fetch dashboard data', error);
@@ -279,9 +291,9 @@ const Dashboard = () => {
                                                         <td className="px-6 py-3 font-medium text-slate-800">{project.name}</td>
                                                         <td className="px-6 py-3">
                                                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${project.status === 'Active' ? 'bg-blue-100 text-blue-800' :
-                                                                    project.status === 'On Hold' ? 'bg-orange-100 text-orange-800' :
-                                                                        project.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
-                                                                            'bg-slate-100 text-slate-800'
+                                                                project.status === 'On Hold' ? 'bg-orange-100 text-orange-800' :
+                                                                    project.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
+                                                                        'bg-slate-100 text-slate-800'
                                                                 }`}>
                                                                 {project.status}
                                                             </span>
