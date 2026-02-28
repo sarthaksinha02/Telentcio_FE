@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers, Loader2, LogOut } from 'lucide-react';
@@ -17,7 +17,7 @@ const Attendance = () => {
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [holidays, setHolidays] = useState([]);
-    const [usersList, setUsersList] = useState([]);
+    const [usersList, setUsersList] = useState(user?.directReports || []);
     const [selectedUserId, setSelectedUserId] = useState(user?._id);
 
     // Task Integration
@@ -74,10 +74,15 @@ const Attendance = () => {
     const fetchMonthHistory = async (year, month) => {
         try {
             const userId = selectedUserId || user._id;
-            const res = await api.get(`/attendance/history?year=${year}&month=${month}&userId=${userId}`);
-            setHistory(res.data);
+            // Fetch attendance history and holidays for the same month in parallel
+            const [historyRes, holidaysRes] = await Promise.all([
+                api.get(`/attendance/history?year=${year}&month=${month}&userId=${userId}`),
+                api.get(`/holidays?year=${year}&month=${month}`)
+            ]);
+            setHistory(historyRes.data);
+            setHolidays(holidaysRes.data);
         } catch (error) {
-            console.error('Error fetching history', error);
+            console.error('Error fetching month data', error);
             toast.error('Could not load calendar data');
         }
     };
@@ -103,41 +108,75 @@ const Attendance = () => {
 
 
 
-    useEffect(() => {
-        if (user) {
-            setSelectedUserId(user._id);
-            fetchTodayStatus();
-            fetchRecentLogs();
-            fetchHolidays();
-            fetchAssignedTasks(); // Fetch tasks immediately
-        }
-        setLoading(false);
-    }, [user]);
+    // useRef guard: prevents React StrictMode from firing the effect twice.
+    // StrictMode intentionally mounts → unmounts → remounts in dev. The cleanup
+    // function sets the ref to false, which cancels the AbortController and
+    // prevents the second invocation from writing stale state.
+    const didFetchRef = useRef(false);
 
-    // Fetch Users (Admin/Manager)
     useEffect(() => {
-        const fetchUsers = async () => {
-            if (user && (user.roles?.includes('Admin') || user.roles?.includes('Manager'))) {
-                try {
-                    // Use correct admin endpoint
-                    const res = await api.get('/admin/users/team');
-                    setUsersList(res.data);
-                } catch (error) {
-                    // Fallback or ignore if not found (though /admin/users/team should exist)
-                    console.error("Error fetching users list", error);
-                }
-            }
-        };
-        fetchUsers();
-    }, [user]);
+        if (!user?._id) return;
 
-    // Refetch history when selected user changes
-    useEffect(() => {
+        // StrictMode guard: skip if already fetched in this mount cycle
+        if (didFetchRef.current) return;
+        didFetchRef.current = true;
+
+        const controller = new AbortController();
+        const signal = controller.signal;
         const now = new Date();
-        if (selectedUserId) {
-            fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
-        }
+
+        setSelectedUserId(user._id);
+
+        const safe = (promise) => promise.catch(e => {
+            if (e?.code === 'ERR_CANCELED' || e?.name === 'AbortError' || e?.name === 'CanceledError') return; // cancelled — ignore
+            console.error(e);
+        });
+
+        // All independent fetches run in parallel, all cancellable
+        Promise.all([
+            safe(api.get('/attendance/today', { signal }).then(r => setStatus(r.data))),
+            safe(api.get('/projects/worklogs?limit=4', { signal }).then(r => setRecentLogs(r.data))),
+            safe(api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${user._id}`, { signal }).then(r => setHistory(r.data))),
+            safe(api.get(`/holidays?year=${now.getFullYear()}&month=${now.getMonth() + 1}`, { signal }).then(r => setHolidays(r.data)))
+        ]).finally(() => setLoading(false));
+
+        return () => {
+            // Cleanup: cancel in-flight requests if component unmounts or effect re-runs
+            controller.abort();
+            didFetchRef.current = false; // reset so a real re-mount (logout→login) works
+        };
+    }, [user?._id]);
+
+    // Refetch history only when Admin/Manager switches to a different user
+    useEffect(() => {
+        if (!selectedUserId || !user?._id) return;
+        if (selectedUserId === user._id) return; // own data already fetched above
+
+        const controller = new AbortController();
+        const now = new Date();
+        api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${selectedUserId}`, { signal: controller.signal })
+            .then(res => setHistory(res.data))
+            .catch(e => { if (e?.code !== 'ERR_CANCELED' && e?.name !== 'CanceledError') console.error(e); });
+
+        return () => controller.abort();
     }, [selectedUserId]);
+
+    // Fetch Tasks only when the 'tasks' tab is clicked
+    const tasksFetchedRef = useRef(false);
+    useEffect(() => {
+        if (activeTab === 'tasks' && user?._id && !tasksFetchedRef.current) {
+            tasksFetchedRef.current = true;
+            api.get(`/projects/tasks?assignees=${user._id}`)
+                .then(r => {
+                    const active = r.data.filter(t => t.module?.status !== 'COMPLETED' && t.status !== 'COMPLETED');
+                    setAssignedTasks(active);
+                })
+                .catch(e => {
+                    console.error('tasks fetch error', e);
+                    tasksFetchedRef.current = false; // allow retry on fail
+                });
+        }
+    }, [activeTab, user?._id]);
 
     // Check if a task has a log for today
     const getTodayLogForTask = (taskId) => {
@@ -777,7 +816,7 @@ const Attendance = () => {
                             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Recent Activity</h4>
                             {recentLogs.length > 0 ? (
                                 <div className="space-y-4">
-                                    {recentLogs.slice(0, 5).map(log => (
+                                    {recentLogs.map(log => (
                                         <div key={log._id} className="flex gap-3 text-sm border-b border-slate-50 pb-3 last:border-0 last:pb-0">
                                             <div className="mt-1">
                                                 <CheckSquare size={14} className="text-blue-500" />
@@ -856,7 +895,7 @@ const Attendance = () => {
                                 onClick={() => setActiveTab('tasks')}
                                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'tasks' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                             >
-                                <Briefcase size={16} /> Assigned to Me <span className="bg-slate-100 text-slate-600 text-xs py-0.5 px-2 rounded-full ml-1">{assignedTasks.length}</span>
+                                <Briefcase size={16} /> Assigned to Me {assignedTasks.length > 0 && <span className="bg-slate-100 text-slate-600 text-xs py-0.5 px-2 rounded-full ml-1">{assignedTasks.length}</span>}
                             </button>
                         </div>
 

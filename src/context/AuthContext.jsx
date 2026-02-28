@@ -10,35 +10,59 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const loadUser = async () => {
-      if (token) {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      // 1. Try localStorage first — written on login/register so it's always fresh
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
         try {
-          // Always fetch fresh user data from server so permissions are up-to-date
-          const response = await api.get('/auth/profile');
-          const freshUser = response.data;
-          // Normalise roles to flat string array (roleNames) for uniform AuthContext usage
-          // (Profile.jsx fetches separately and gets full role objects)
+          const parsed = JSON.parse(storedUser);
+          // Normalise roles to flat string array
           const normalisedUser = {
-            ...freshUser,
-            roles: freshUser.roleNames || (Array.isArray(freshUser.roles) ? freshUser.roles.map(r => r.name || r) : [])
+            ...parsed,
+            roles: parsed.roleNames || (Array.isArray(parsed.roles)
+              ? parsed.roles.map(r => r.name || r)
+              : [])
           };
           setUser(normalisedUser);
-          localStorage.setItem('user', JSON.stringify(normalisedUser));
-        } catch (err) {
-          // Token invalid or expired — fall back to localStorage, then clear if 401
-          if (err.response?.status === 401) {
-            setToken(null);
-            setUser(null);
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-          } else {
-            // Network error — use cached data
-            const storedUser = localStorage.getItem('user');
-            if (storedUser) setUser(JSON.parse(storedUser));
-          }
+          setLoading(false);
+          return; // ← no API call needed
+        } catch {
+          // JSON parse failed — fall through to API
+          localStorage.removeItem('user');
         }
       }
+
+      // 2. Fallback: no cached user but we have a token → fetch once
+      // (edge case: user cleared localStorage but kept token)
+      try {
+        const response = await api.get('/auth/profile');
+        const freshUser = response.data;
+        const normalisedUser = {
+          ...freshUser,
+          roles: freshUser.roleNames || (Array.isArray(freshUser.roles)
+            ? freshUser.roles.map(r => r.name || r)
+            : [])
+        };
+        setUser(normalisedUser);
+        localStorage.setItem('user', JSON.stringify(normalisedUser));
+      } catch (err) {
+        if (err.response?.status === 401) {
+          // Token invalid/expired — force re-login
+          setToken(null);
+          setUser(null);
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        }
+        // Network error — user stays null, loading clears
+      }
+
       setLoading(false);
     };
+
     loadUser();
   }, [token]);
 
@@ -46,10 +70,18 @@ export const AuthProvider = ({ children }) => {
     const response = await api.post('/auth/login', { email, password });
     const { token: newToken, ...userData } = response.data;
 
+    // Normalise roles before storing
+    const normalisedUser = {
+      ...userData,
+      roles: userData.roleNames || (Array.isArray(userData.roles)
+        ? userData.roles.map(r => r.name || r)
+        : [])
+    };
+
     setToken(newToken);
-    setUser(userData);
+    setUser(normalisedUser);
     localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('user', JSON.stringify(normalisedUser));
   };
 
   const register = async (data) => {
