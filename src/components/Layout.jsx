@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import { Loader } from 'lucide-react';
 
 const Layout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
@@ -14,7 +15,13 @@ const Layout = () => {
                 <Topbar toggleSidebar={() => setIsSidebarOpen(true)} />
 
                 <div className="flex-1 overflow-x-hidden">
-                    <Outlet />
+                    <Suspense fallback={
+                        <div className="flex h-full w-full items-center justify-center py-32">
+                            <Loader className="animate-spin text-blue-600" size={32} />
+                        </div>
+                    }>
+                        <Outlet />
+                    </Suspense>
                 </div>
             </main>
         </div>
