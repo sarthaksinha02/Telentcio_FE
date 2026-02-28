@@ -69,9 +69,26 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('user');
   };
 
+  if (loading) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        background: '#f1f5f9', zIndex: 9999
+      }}>
+        <div style={{
+          width: 36, height: 36, border: '3px solid #e2e8f0',
+          borderTop: '3px solid #2563eb', borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite'
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
   return (
     <AuthContext.Provider value={{ user, token, login, register, logout, loading }}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };
