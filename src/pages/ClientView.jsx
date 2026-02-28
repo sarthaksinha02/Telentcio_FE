@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Building2, Users, User, Globe, Mail, MapPin, Phone, Briefcase, ChevronRight } from 'lucide-react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import ClientTADashboard from './TalentAcquisition/ClientTADashboard';
 
 const Field = ({ label, value, icon: Icon }) => (
     <div>
@@ -24,6 +25,15 @@ const ClientView = () => {
     const [client, setClient] = useState(null);
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [searchParams] = useSearchParams();
+    const [activeTab, setActiveTab] = useState('details');
+
+    useEffect(() => {
+        const tab = searchParams.get('tab');
+        if (tab && (tab === 'details' || tab === 'ta')) {
+            setActiveTab(tab);
+        }
+    }, [searchParams]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -99,9 +109,29 @@ const ClientView = () => {
                     )}
                 </div>
 
-                {/* Company Details */}
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <div className="flex items-center space-x-3 px-6 py-4 border-b border-slate-100 bg-slate-50">
+                {/* Tabs */}
+                <div className="flex items-center space-x-6 border-b border-slate-200">
+                    <button
+                        onClick={() => setActiveTab('details')}
+                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'details' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                    >
+                        Project Details
+                    </button>
+                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view')) && (
+                        <button
+                            onClick={() => setActiveTab('ta')}
+                            className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'ta' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                        >
+                            Talent Acquisition
+                        </button>
+                    )}
+                </div>
+
+                {activeTab === 'details' && (
+                    <>
+                        {/* Company Details */}
+                        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <div className="flex items-center space-x-3 px-6 py-4 border-b border-slate-100 bg-slate-50">
                         <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
                             <Building2 size={16} />
                         </div>
@@ -224,6 +254,12 @@ const ClientView = () => {
                         )}
                     </div>
                 </div>
+                    </>
+                )}
+
+                {activeTab === 'ta' && (
+                    <ClientTADashboard clientName={client.name} />
+                )}
 
             </div>
         </div>

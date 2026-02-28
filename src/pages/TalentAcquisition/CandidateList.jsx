@@ -13,6 +13,7 @@ const CandidateList = ({ hiringRequestId }) => {
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(1);
 
     // Filter States
     const [filterPreference, setFilterPreference] = useState('All');
@@ -43,7 +44,12 @@ const CandidateList = ({ hiringRequestId }) => {
             fetchCandidates();
         }
         fetchUsers();
-    }, [hiringRequestId]);
+    }, [hiringRequestId]); // Removed page dependency
+
+    // Reset page to 1 when any filter changes
+    useEffect(() => {
+        setPage(1);
+    }, [filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
 
     const fetchUsers = async () => {
         try {
@@ -118,16 +124,26 @@ const CandidateList = ({ hiringRequestId }) => {
         return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy;
     });
 
+    const itemsPerPage = 15;
+    const totalPages = Math.ceil(filteredCandidates.length / itemsPerPage) || 1;
+    const paginatedCandidates = filteredCandidates.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
     // Compute Metrics for Summary Boxes
     const metrics = {
         total: candidates.length,
-        interested: candidates.filter(c => c.status === 'Interested').length,
+        interested: candidates.filter(c => {
+            if (c.status !== 'Interested') return false;
+            if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+            if (c.interviewRounds && c.interviewRounds.length > 0) return false;
+            return true;
+        }).length,
         inInterviews: candidates.filter(c => {
             const rounds = c.interviewRounds || [];
             if (rounds.length === 0) return false;
+            if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
             const hasFailed = rounds.some(r => r.status === 'Failed');
             if (hasFailed) return false;
-            return rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
+            return true;
         }).length,
         hired: candidates.filter(c => c.decision === 'Hired').length,
         rejected: candidates.filter(c => c.decision === 'Rejected').length,
@@ -513,14 +529,14 @@ const CandidateList = ({ hiringRequestId }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
-                                {filteredCandidates.length === 0 ? (
+                                {paginatedCandidates.length === 0 ? (
                                     <tr>
                                         <td colSpan="8" className="px-4 py-8 text-center text-slate-500">
                                             No candidates match the selected filters.
                                         </td>
                                     </tr>
                                 ) : (
-                                    filteredCandidates.map((candidate) => (
+                                    paginatedCandidates.map((candidate) => (
                                         <tr key={candidate._id} className="hover:bg-slate-50 bg-white transition-colors border-b border-slate-100 last:border-0">
                                             <td className="px-4 py-4 align-top">
                                                 <div className="flex flex-col gap-1">
@@ -699,6 +715,29 @@ const CandidateList = ({ hiringRequestId }) => {
                         </table>
                     </div>
                 </div>
+
+                {/* Pagination Controls */}
+                {!loading && filteredCandidates.length > 0 && (
+                    <div className="flex justify-end items-center mt-6 gap-4 pr-4 pb-4">
+                        <button
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                        >
+                            Previous
+                        </button>
+                        <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
+                            Page {page} of {totalPages}
+                        </span>
+                        <button
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages}
+                            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                        >
+                            Next
+                        </button>
+                    </div>
+                )}
                 </div>
             )}
         </div>

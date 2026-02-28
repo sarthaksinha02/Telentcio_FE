@@ -95,16 +95,19 @@ const CreateHiringRequest = () => {
 
     const [workflows, setWorkflows] = useState([]); // Store available workflows
     const [interviewWorkflows, setInterviewWorkflows] = useState([]); // Store interview templates
+    const [clients, setClients] = useState([]); // Store available clients
     const [showWorkflowModal, setShowWorkflowModal] = useState(false);
 
     const fetchWorkflowsData = async () => {
         try {
-            const [wfRes, intWfRes] = await Promise.all([
+            const [wfRes, intWfRes, clientRes] = await Promise.all([
                 api.get('/workflows'),
-                api.get('/ta/interview-workflows')
+                api.get('/ta/interview-workflows'),
+                api.get('/projects/clients')
             ]);
             setWorkflows(wfRes.data.filter(w => w.isActive));
             setInterviewWorkflows(intWfRes.data.filter(w => w.isActive));
+            setClients(clientRes.data);
         } catch (error) {
             console.error("Failed to fetch workflow data", error);
         }
@@ -381,7 +384,7 @@ const CreateHiringRequest = () => {
                             ))}
                         </select>
                     </div>
-                    <Input label="Client Name" name="client" value={formData.client} onChange={handleChange} required placeholder="e.g. Acme Corp" />
+                    <Input label="Client Name" name="client" value={formData.client} onChange={handleChange} required options={clients.map(c => c.name)} />
                     <Input label="Job Title" name="title" value={formData.title} onChange={handleChange} required placeholder="e.g. Senior Frontend Developer" />
                     <Input label="Department" name="department" value={formData.department} onChange={handleChange} required placeholder="e.g. Engineering" />
                     <Input label="Employment Type" name="employmentType" value={formData.employmentType} onChange={handleChange} required options={['Full-time', 'Intern', 'Contract', 'Freelance']} />

@@ -9,17 +9,34 @@ import Skeleton from '../../components/Skeleton';
 const HiringRequestList = () => {
     const { user } = useAuth();
     const [requests, setRequests] = useState([]);
+    const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState('Approved'); // Default to Approved
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
     const navigate = useNavigate();
 
     const fetchRequests = async () => {
         try {
             setLoading(true);
-            const res = await api.get('/ta/hiring-request', {
-                params: { status: filterStatus === 'All' ? '' : filterStatus }
-            });
-            setRequests(res.data);
+            const [reqRes, clientRes] = await Promise.all([
+                api.get('/ta/hiring-request', {
+                    params: { 
+                        status: filterStatus === 'All' ? '' : filterStatus,
+                        page,
+                        limit: 10
+                    }
+                }),
+                api.get('/projects/clients')
+            ]);
+            // Backend now returns an object with requests and totalPages
+            setRequests(reqRes.data.requests ? reqRes.data.requests : reqRes.data);
+            if (reqRes.data.totalPages) {
+                setTotalPages(reqRes.data.totalPages);
+            } else {
+                setTotalPages(1); // Fallback if backend hasn't updated immediately
+            }
+            setClients(clientRes.data);
         } catch (error) {
             console.error(error);
         } finally {
@@ -27,9 +44,19 @@ const HiringRequestList = () => {
         }
     };
 
+    const handleFilterChange = (status) => {
+        setFilterStatus(status === 'All' ? 'All' : status === 'Pending' ? 'Pending_Approval' : status);
+        setPage(1);
+    };
+
     useEffect(() => {
         fetchRequests();
-    }, [filterStatus]);
+    }, [filterStatus, page]);
+
+    const getClientIdByName = (name) => {
+        const client = clients.find(c => c.name === name);
+        return client ? client._id : null;
+    };
 
     const getStatusBadge = (status) => {
         const styles = {
@@ -88,7 +115,7 @@ const HiringRequestList = () => {
                             {['All', 'Pending', 'Draft', 'Approved', 'Closed'].map((status) => (
                                 <button
                                     key={status}
-                                    onClick={() => setFilterStatus(status === 'All' ? 'All' : status === 'Pending' ? 'Pending_Approval' : status)}
+                                    onClick={() => handleFilterChange(status)}
                                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${(filterStatus === status ||
                                         (status === 'Pending' && filterStatus === 'Pending_Approval') ||
                                         (status === 'All' && filterStatus === 'All'))
@@ -136,7 +163,22 @@ const HiringRequestList = () => {
                                             {req.requestId}
                                         </td>
                                         <td className="px-6 py-4 font-medium text-blue-600">
-                                            {req.client || '-'}
+                                            {req.client ? (
+                                                (() => {
+                                                    const clientId = getClientIdByName(req.client);
+                                                    return clientId ? (
+                                                        <Link 
+                                                            to={`/clients/${clientId}/view?tab=ta`} 
+                                                            className="hover:text-blue-800 hover:underline transition-colors"
+                                                            title="View Client TA Dashboard"
+                                                        >
+                                                            {req.client}
+                                                        </Link>
+                                                    ) : (
+                                                        <span>{req.client}</span>
+                                                    );
+                                                })()
+                                            ) : '-'}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="font-semibold text-slate-800">{req.roleDetails.title}</div>
@@ -162,6 +204,29 @@ const HiringRequestList = () => {
                         </tbody>
                     </table>
                 </div>
+
+                {/* Pagination Controls */}
+                {!loading && (
+                    <div className="flex justify-end items-center mt-6 gap-4 pr-4">
+                        <button
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                        >
+                            Previous
+                        </button>
+                        <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
+                            Page {page} of {totalPages}
+                        </span>
+                        <button
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages}
+                            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                        >
+                            Next
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

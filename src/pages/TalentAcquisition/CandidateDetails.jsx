@@ -41,51 +41,43 @@ const CandidateDetails = () => {
     const [selectedRoleForRound, setSelectedRoleForRound] = useState('');
 
     useEffect(() => {
-        fetchCandidate();
-        fetchUsers();
-        fetchRoles();
-        fetchInterviewWorkflows();
+        const initializeData = async () => {
+            try {
+                setLoading(true);
+                const [candRes, usersRes, rolesRes, workflowsRes] = await Promise.all([
+                    api.get(`/ta/candidates/candidate/${candidateId}`),
+                    api.get('/admin/users'),
+                    api.get('/admin/roles'),
+                    api.get('/ta/interview-workflows')
+                ]);
+
+                setCandidate(candRes.data);
+                setUsers(usersRes.data.data || usersRes.data || []);
+                setRoles(rolesRes.data || []);
+                setInterviewWorkflows(workflowsRes.data || []);
+            } catch (error) {
+                console.error('Error initializing candidate details:', error);
+                toast.error('Failed to load candidate details correctly.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (candidateId) {
+            initializeData();
+        }
     }, [candidateId]);
 
     const fetchCandidate = async () => {
         try {
-            setLoading(true);
             const res = await api.get(`/ta/candidates/candidate/${candidateId}`);
             setCandidate(res.data);
         } catch (error) {
             console.error('Error fetching candidate:', error);
-            toast.error('Failed to load candidate details');
-        } finally {
-            setLoading(false);
         }
     };
 
-    const fetchUsers = async () => {
-        try {
-            const res = await api.get('/admin/users'); // Use admin users route
-            setUsers(res.data.data || res.data || []);
-        } catch (error) {
-            console.error('Failed to fetch users', error);
-        }
-    };
 
-    const fetchRoles = async () => {
-        try {
-            const res = await api.get('/admin/roles');
-            setRoles(res.data);
-        } catch (error) {
-            console.error('Failed to fetch roles', error);
-        }
-    };
-
-    const fetchInterviewWorkflows = async () => {
-        try {
-            const res = await api.get('/ta/interview-workflows');
-            setInterviewWorkflows(res.data);
-        } catch (error) {
-            console.error('Failed to fetch interview workflows', error);
-        }
-    };
 
     const handleAddRound = async () => {
         if (!newRound.levelName) {
@@ -97,7 +89,7 @@ const CandidateDetails = () => {
             setActionLoading(true);
             const payload = {
                 levelName: newRound.levelName,
-                assignedTo: selectedInterviewer ? [selectedInterviewer] : [],
+                assignedTo: selectedInterviewer && selectedInterviewer.trim() !== '' ? [selectedInterviewer] : [],
                 scheduledDate: newRound.scheduledDate || undefined
             };
 
@@ -127,7 +119,7 @@ const CandidateDetails = () => {
             setActionLoading(true);
             const payload = {
                 levelName: editingRoundForm.levelName,
-                assignedTo: editingRoundForm.assignedTo ? [editingRoundForm.assignedTo] : [],
+                assignedTo: editingRoundForm.assignedTo && editingRoundForm.assignedTo.trim() !== '' ? [editingRoundForm.assignedTo] : [],
                 scheduledDate: editingRoundForm.scheduledDate || undefined
             };
 
@@ -158,7 +150,7 @@ const CandidateDetails = () => {
 
                 const payload = {
                     levelName: r.levelName,
-                    assignedTo: mapping.assignedTo ? [mapping.assignedTo] : [],
+                    assignedTo: mapping.assignedTo && mapping.assignedTo.trim() !== '' ? [mapping.assignedTo] : [],
                     scheduledDate: mapping.scheduledDate || undefined
                 };
                 await api.post(`/ta/candidates/${candidateId}/rounds`, payload);

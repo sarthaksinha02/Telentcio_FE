@@ -37,13 +37,19 @@ const UserTADashboard = () => {
     // Calculate metrics exactly as it's done on CandidateList
     const metrics = {
         total: candidates.length,
-        interested: candidates.filter(c => c.status === 'Interested').length,
+        interested: candidates.filter(c => {
+            if (c.status !== 'Interested') return false;
+            if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+            if (c.interviewRounds && c.interviewRounds.length > 0) return false;
+            return true;
+        }).length,
         inInterviews: candidates.filter(c => {
             const rounds = c.interviewRounds || [];
             if (rounds.length === 0) return false;
+            if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
             const hasFailed = rounds.some(r => r.status === 'Failed');
             if (hasFailed) return false;
-            return rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
+            return true;
         }).length,
         hired: candidates.filter(c => c.decision === 'Hired').length,
         rejected: candidates.filter(c => c.decision === 'Rejected').length,
