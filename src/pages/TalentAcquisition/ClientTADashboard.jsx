@@ -12,6 +12,9 @@ const StatCard = ({ title, value, subtitle, icon: Icon, colorClass }) => (
             <Icon size={24} />
         </div>
         <div>
+
+
+        
             <p className="text-sm font-medium text-slate-500">{title}</p>
             <h3 className="text-2xl font-bold text-slate-800 mt-1">{value}</h3>
             {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
