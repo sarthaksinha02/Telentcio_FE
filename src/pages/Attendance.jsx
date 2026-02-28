@@ -132,13 +132,67 @@ const Attendance = () => {
             console.error(e);
         });
 
-        // All independent fetches run in parallel, all cancellable
+        const CACHE_KEY = `attendance_v1_${user._id}_${now.toISOString().slice(0, 10)}`;
+
+        const readCache = () => {
+            try {
+                const raw = sessionStorage.getItem(CACHE_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch { return null; }
+        };
+
+        const writeCache = (payload) => {
+            try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload)); } catch { }
+        };
+
+        const buildFingerprint = (payload) => {
+            // Simple string fingerprint based on current status and recent logs
+            const statusStr = payload.status ? `${payload.status.status}|${payload.status.clockInIST}|${payload.status.clockOutIST}` : 'none';
+            const logsStr = (payload.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',');
+            const historyStr = (payload.history || []).length;
+            return `${statusStr}::${logsStr}::H${historyStr}`;
+        };
+
+        const applyData = (payload) => {
+            if (payload.status !== undefined) setStatus(payload.status);
+            if (payload.recentLogs) setRecentLogs(payload.recentLogs);
+            if (payload.history) setHistory(payload.history);
+            if (payload.holidays) setHolidays(payload.holidays);
+        };
+
+        // 1. Try Cache First (Instant UI)
+        const cached = readCache();
+        if (cached?.data) {
+            applyData(cached.data);
+            setLoading(false);
+        }
+
+        // 2. Fetch Fresh Data (Background)
         Promise.all([
-            safe(api.get('/attendance/today', { signal }).then(r => setStatus(r.data))),
-            safe(api.get('/projects/worklogs?limit=4', { signal }).then(r => setRecentLogs(r.data))),
-            safe(api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${user._id}`, { signal }).then(r => setHistory(r.data))),
-            safe(api.get(`/holidays?year=${now.getFullYear()}&month=${now.getMonth() + 1}`, { signal }).then(r => setHolidays(r.data)))
-        ]).finally(() => setLoading(false));
+            safe(api.get('/attendance/today', { signal }).then(r => r.data)),
+            safe(api.get('/projects/worklogs?limit=4', { signal }).then(r => r.data)),
+            safe(api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${user._id}`, { signal }).then(r => r.data)),
+            safe(api.get(`/holidays?year=${now.getFullYear()}&month=${now.getMonth() + 1}`, { signal }).then(r => r.data))
+        ]).then(([statusData, logsData, historyData, holidaysData]) => {
+            if (signal.aborted) return;
+
+            const freshData = {
+                status: statusData,
+                recentLogs: logsData || [],
+                history: historyData || [],
+                holidays: holidaysData || []
+            };
+
+            const freshFingerprint = buildFingerprint(freshData);
+
+            // 3. Update React only if data changed
+            if (!cached || cached.fingerprint !== freshFingerprint) {
+                applyData(freshData);
+                writeCache({ data: freshData, fingerprint: freshFingerprint });
+            }
+        }).finally(() => {
+            if (!signal.aborted) setLoading(false);
+        });
 
         return () => {
             // Cleanup: cancel in-flight requests if component unmounts or effect re-runs
