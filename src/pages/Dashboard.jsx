@@ -13,7 +13,7 @@ const LocationLink = ({ location }) => {
 
 
 
-    
+
     useEffect(() => {
         if (!location || !location.lat || !location.lng) return;
 
@@ -54,15 +54,65 @@ const Dashboard = () => {
     const [recentActivity, setRecentActivity] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // ─── sessionStorage cache helpers ───────────────────────────────────────
+    // Key is date-scoped so cached data auto-expires at midnight.
+    const CACHE_KEY = `dashboard_${new Date().toISOString().slice(0, 10)}`;
+    const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+    const readCache = () => {
+        try {
+            const raw = sessionStorage.getItem(CACHE_KEY);
+            if (!raw) return null;
+            const { data, expiresAt } = JSON.parse(raw);
+            if (!data || Date.now() > expiresAt) {
+                sessionStorage.removeItem(CACHE_KEY);
+                return null;
+            }
+            return data;
+        } catch {
+            // Handles: JSON.parse error, sessionStorage unavailable (private mode)
+            return null;
+        }
+    };
+
+    const writeCache = (data) => {
+        try {
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify({
+                data,
+                expiresAt: Date.now() + CACHE_TTL_MS
+            }));
+        } catch {
+            // sessionStorage full or unavailable — silently ignore
+        }
+    };
+    // ────────────────────────────────────────────────────────────────────────
+
     useEffect(() => {
         const fetchDashboardData = async () => {
+            // 1. Try to serve from sessionStorage first
+            const cached = readCache();
+            if (cached) {
+                setStats(cached.stats);
+                setRecentActivity(cached.recentActivity || []);
+                setProjects(cached.projects || []);
+                setLoading(false);
+                return;
+            }
+
+            // 2. Cache miss — fetch from API
             try {
                 const res = await api.get('/dashboard');
-                setStats(res.data.stats);
-                setRecentActivity(res.data.recentActivity);
-                setProjects(res.data.projects || []);
+                const payload = res.data;
+
+                // Guard: validate the shape before using it
+                if (payload && payload.stats) {
+                    setStats(payload.stats);
+                    setRecentActivity(payload.recentActivity || []);
+                    setProjects(payload.projects || []);
+                    writeCache(payload);
+                }
             } catch (error) {
-                console.error("Failed to fetch dashboard data", error);
+                console.error('Failed to fetch dashboard data', error);
             } finally {
                 setLoading(false);
             }
@@ -228,11 +278,10 @@ const Dashboard = () => {
                                                     >
                                                         <td className="px-6 py-3 font-medium text-slate-800">{project.name}</td>
                                                         <td className="px-6 py-3">
-                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                                                project.status === 'Active' ? 'bg-blue-100 text-blue-800' :
-                                                                project.status === 'On Hold' ? 'bg-orange-100 text-orange-800' :
-                                                                project.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
-                                                                'bg-slate-100 text-slate-800'
+                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${project.status === 'Active' ? 'bg-blue-100 text-blue-800' :
+                                                                    project.status === 'On Hold' ? 'bg-orange-100 text-orange-800' :
+                                                                        project.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
+                                                                            'bg-slate-100 text-slate-800'
                                                                 }`}>
                                                                 {project.status}
                                                             </span>
