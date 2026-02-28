@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
@@ -229,6 +229,14 @@ const CandidateDetails = () => {
         }
     }, []);
 
+    const { isAdmin, userPermissions, hasSuperApprove, canManageRounds } = useMemo(() => {
+        const admin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
+        const perms = user?.permissions || [];
+        const superApprove = perms.includes('ta.super_approve') || perms.includes('*') || admin;
+        const manageRounds = admin || perms.includes('ta.edit');
+        return { isAdmin: admin, userPermissions: perms, hasSuperApprove: superApprove, canManageRounds: manageRounds };
+    }, [user]);
+
     if (loading) {
         return (
             <div className="min-h-screen bg-slate-50 pb-12">
@@ -281,14 +289,6 @@ const CandidateDetails = () => {
     }
 
     if (!candidate) return <div className="text-center p-8">Candidate not found</div>;
-
-    const { isAdmin, userPermissions, hasSuperApprove, canManageRounds } = useMemo(() => {
-        const admin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
-        const perms = user?.permissions || [];
-        const superApprove = perms.includes('ta.super_approve') || perms.includes('*') || admin;
-        const manageRounds = admin || perms.includes('ta.edit');
-        return { isAdmin: admin, userPermissions: perms, hasSuperApprove: superApprove, canManageRounds: manageRounds };
-    }, [user]);
 
     return (
         <div className="min-h-screen bg-slate-50 pb-12">
