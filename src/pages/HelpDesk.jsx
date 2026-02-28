@@ -135,40 +135,53 @@ const HelpDesk = () => {
     const [assignedQueries, setAssignedQueries] = useState([]);
     const [allQueries, setAllQueries] = useState([]);
     const [escalatedQueries, setEscalatedQueries] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [tabLoading, setTabLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('my-queries');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showAllQueries, setShowAllQueries] = useState(false);
 
     const isAdmin = user?.roles?.some(r => r.name === 'Admin' || r === 'Admin' || r?.isSystem === true);
 
-    const fetchQueries = async () => {
+    // Track which tabs have already been fetched to avoid redundant API calls
+    const loadedTabs = React.useRef(new Set());
+
+    const fetchTabData = async (tab, force = false) => {
+        if (!force && loadedTabs.current.has(tab)) return; // already loaded, skip
         try {
-            setLoading(true);
-            const myQueriesRes = await api.get('/helpdesk/my-queries');
-            setQueries(myQueriesRes.data.data || myQueriesRes.data);
-
-            const assignedRes = await api.get('/helpdesk/assigned');
-            setAssignedQueries(assignedRes.data.data || assignedRes.data);
-
-            if (isAdmin) {
-                const escalatedRes = await api.get('/helpdesk/escalated');
-                setEscalatedQueries(escalatedRes.data.data || escalatedRes.data);
-
-                const allRes = await api.get('/helpdesk/all');
-                setAllQueries(allRes.data.data || allRes.data);
+            setTabLoading(true);
+            if (tab === 'my-queries') {
+                const res = await api.get('/helpdesk/my-queries');
+                setQueries(res.data.data || res.data);
+            } else if (tab === 'assigned') {
+                const [assignedRes, allRes] = await Promise.all([
+                    api.get('/helpdesk/assigned'),
+                    isAdmin ? api.get('/helpdesk/all') : Promise.resolve(null),
+                ]);
+                setAssignedQueries(assignedRes.data.data || assignedRes.data);
+                if (allRes) setAllQueries(allRes.data.data || allRes.data);
+            } else if (tab === 'escalated' && isAdmin) {
+                const res = await api.get('/helpdesk/escalated');
+                setEscalatedQueries(res.data.data || res.data);
             }
+            loadedTabs.current.add(tab);
         } catch (error) {
             console.error(error);
             toast.error('Failed to load helpdesk queries');
         } finally {
-            setLoading(false);
+            setTabLoading(false);
         }
     };
 
+    // Refresh only the currently active tab (called after raising a new query)
+    const refreshTab = () => {
+        loadedTabs.current.delete(activeTab);
+        fetchTabData(activeTab, true);
+    };
+
+    // Fetch data whenever the active tab changes
     useEffect(() => {
-        fetchQueries();
-    }, []);
+        fetchTabData(activeTab);
+    }, [activeTab]);
 
     const getStatusBadge = (status) => {
         const lowerS = status?.toLowerCase() || '';
@@ -191,96 +204,142 @@ const HelpDesk = () => {
         }
     };
 
-    const renderTable = (data, isAssignedView = false) => (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-4">
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs tracking-wider">
-                        <tr>
-                            <th className="px-6 py-4">Query ID</th>
-                            <th className="px-6 py-4">Subject</th>
-                            <th className="px-6 py-4">Type</th>
-                            {isAssignedView && <th className="px-6 py-4">Raised By</th>}
-                            <th className="px-6 py-4">Priority</th>
-                            <th className="px-6 py-4 text-center">Status</th>
-                            <th className="px-6 py-4 text-center">Dates</th>
-                            <th className="px-6 py-4 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {data.length === 0 ? (
-                            <tr>
-                                <td colSpan={isAssignedView ? "8" : "7"} className="px-6 py-12 text-center text-slate-400">
-                                    <div className="flex flex-col items-center justify-center">
-                                        <LifeBuoy size={48} className="text-slate-200 mb-4" />
-                                        <p className="text-base font-medium text-slate-600">No queries found</p>
-                                        <p className="text-sm mt-1">You're all caught up!</p>
-                                    </div>
-                                </td>
-                            </tr>
-                        ) : (
-                            data.map(query => (
-                                <tr key={query._id} className="hover:bg-slate-50 transition border-b border-slate-50">
-                                    <td className="px-6 py-4 font-medium text-indigo-600">
-                                        {query.queryId}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="font-semibold text-slate-800">{query.subject}</div>
-                                        <div className="text-xs text-slate-500 mt-1 flex items-center">
-                                            <MessageSquare size={12} className="mr-1" /> {query.comments?.length || 0} comments
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-xs font-medium">
-                                            {query.queryType?.name || 'Unknown'}
-                                        </span>
-                                    </td>
-                                    {isAssignedView && (
-                                        <td className="px-6 py-4 text-slate-600 font-medium text-xs">
-                                            {query.raisedBy?.firstName} {query.raisedBy?.lastName}
-                                        </td>
-                                    )}
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center space-x-1.5 font-medium text-slate-700">
-                                            {getPriorityIcon(query.priority)}
-                                            <span>{query.priority}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
-                                        {getStatusBadge(query.status)}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-600 text-xs text-center border-l bg-slate-50/30">
-                                        <div className="flex flex-col gap-1 items-center justify-center">
-                                            <div className="font-semibold text-slate-700 whitespace-nowrap">
-                                                <span className="text-[10px] uppercase text-slate-400 font-bold block mb-0.5">Opened</span>
-                                                {format(new Date(query.createdAt), 'MMM dd, yy')}
-                                            </div>
-                                            {query.closedAt && (
-                                                <div className="font-semibold text-emerald-600 whitespace-nowrap mt-1 pt-1 border-t border-slate-200">
-                                                    <span className="text-[10px] uppercase text-emerald-600/70 font-bold block mb-0.5">Closed</span>
-                                                    {format(new Date(query.closedAt), 'MMM dd, yy')}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button
-                                            onClick={() => navigate(`/helpdesk/${query._id}`)}
-                                            className="inline-flex items-center justify-center px-4 py-2 border border-slate-300 text-xs font-semibold rounded-lg text-slate-700 bg-white hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-sm"
-                                        >
-                                            View Details
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+    const renderTable = (data, isAssignedView = false) => {
+        const loadingSpinner = (
+            <div className="flex flex-col items-center justify-center gap-3 py-16">
+                <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                <p className="text-sm text-slate-400 font-medium">Loading queries...</p>
             </div>
-        </div>
-    );
+        );
+        const emptyState = (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                <LifeBuoy size={48} className="text-slate-200 mb-4" />
+                <p className="text-base font-medium text-slate-600">No queries found</p>
+                <p className="text-sm mt-1">You're all caught up!</p>
+            </div>
+        );
+        return (
+            <div className="mt-4">
+                {/* ── Mobile card list (hidden on md+) ── */}
+                <div className="md:hidden space-y-3">
+                    {tabLoading ? loadingSpinner : data.length === 0 ? emptyState : data.map(query => (
+                        <div key={query._id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-semibold text-slate-800 text-sm truncate">{query.subject}</div>
+                                    <div className="text-xs text-indigo-500 font-medium mt-0.5">{query.queryId}</div>
+                                </div>
+                                {getStatusBadge(query.status)}
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-xs">
+                                <span className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600 font-medium">{query.queryType?.name || 'Unknown'}</span>
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 text-slate-600 font-medium">{getPriorityIcon(query.priority)}{query.priority}</span>
+                                {isAssignedView && query.raisedBy && (
+                                    <span className="inline-flex items-center px-2 py-1 rounded bg-indigo-50 text-indigo-600 font-medium">{query.raisedBy.firstName} {query.raisedBy.lastName}</span>
+                                )}
+                            </div>
+                            <div className="flex items-center justify-between pt-1">
+                                <div className="text-xs text-slate-400">
+                                    <span className="font-semibold text-slate-500">Opened: </span>{format(new Date(query.createdAt), 'MMM dd, yy')}
+                                    {query.closedAt && <span className="ml-2 text-emerald-600"><span className="font-semibold">Closed: </span>{format(new Date(query.closedAt), 'MMM dd, yy')}</span>}
+                                </div>
+                                <button
+                                    onClick={() => navigate(`/helpdesk/${query._id}`)}
+                                    className="inline-flex items-center px-3 py-1.5 border border-slate-300 text-xs font-semibold rounded-lg text-slate-700 bg-white hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-300 transition-all"
+                                >
+                                    View
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
 
-    if (loading) return (
+                {/* ── Desktop table (hidden below md) ── */}
+                <div className="hidden md:block bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs tracking-wider">
+                                <tr>
+                                    <th className="px-6 py-4">Query ID</th>
+                                    <th className="px-6 py-4">Subject</th>
+                                    <th className="px-6 py-4">Type</th>
+                                    {isAssignedView && <th className="px-6 py-4">Raised By</th>}
+                                    <th className="px-6 py-4">Priority</th>
+                                    <th className="px-6 py-4 text-center">Status</th>
+                                    <th className="px-6 py-4 text-center">Dates</th>
+                                    <th className="px-6 py-4 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {tabLoading ? (
+                                    <tr><td colSpan={isAssignedView ? '8' : '7'} className="py-16">
+                                        <div className="flex flex-col items-center justify-center gap-3">
+                                            <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                                            <p className="text-sm text-slate-400 font-medium">Loading queries...</p>
+                                        </div>
+                                    </td></tr>
+                                ) : data.length === 0 ? (
+                                    <tr><td colSpan={isAssignedView ? '8' : '7'} className="px-6 py-12 text-center text-slate-400">
+                                        <div className="flex flex-col items-center justify-center">
+                                            <LifeBuoy size={48} className="text-slate-200 mb-4" />
+                                            <p className="text-base font-medium text-slate-600">No queries found</p>
+                                            <p className="text-sm mt-1">You're all caught up!</p>
+                                        </div>
+                                    </td></tr>
+                                ) : data.map(query => (
+                                    <tr key={query._id} className="hover:bg-slate-50 transition border-b border-slate-50">
+                                        <td className="px-6 py-4 font-medium text-indigo-600">{query.queryId}</td>
+                                        <td className="px-6 py-4">
+                                            <div className="font-semibold text-slate-800">{query.subject}</div>
+                                            <div className="text-xs text-slate-500 mt-1 flex items-center">
+                                                <MessageSquare size={12} className="mr-1" /> {query.comments?.length || 0} comments
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-xs font-medium">{query.queryType?.name || 'Unknown'}</span>
+                                        </td>
+                                        {isAssignedView && (
+                                            <td className="px-6 py-4 text-slate-600 font-medium text-xs">{query.raisedBy?.firstName} {query.raisedBy?.lastName}</td>
+                                        )}
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center space-x-1.5 font-medium text-slate-700">
+                                                {getPriorityIcon(query.priority)}<span>{query.priority}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">{getStatusBadge(query.status)}</td>
+                                        <td className="px-6 py-4 text-slate-600 text-xs text-center border-l bg-slate-50/30">
+                                            <div className="flex flex-col gap-1 items-center justify-center">
+                                                <div className="font-semibold text-slate-700 whitespace-nowrap">
+                                                    <span className="text-[10px] uppercase text-slate-400 font-bold block mb-0.5">Opened</span>
+                                                    {format(new Date(query.createdAt), 'MMM dd, yy')}
+                                                </div>
+                                                {query.closedAt && (
+                                                    <div className="font-semibold text-emerald-600 whitespace-nowrap mt-1 pt-1 border-t border-slate-200">
+                                                        <span className="text-[10px] uppercase text-emerald-600/70 font-bold block mb-0.5">Closed</span>
+                                                        {format(new Date(query.closedAt), 'MMM dd, yy')}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button
+                                                onClick={() => navigate(`/helpdesk/${query._id}`)}
+                                                className="inline-flex items-center justify-center px-4 py-2 border border-slate-300 text-xs font-semibold rounded-lg text-slate-700 bg-white hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-sm"
+                                            >
+                                                View Details
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    if (false) return (
         <div className="min-h-screen bg-slate-50 p-6 md:p-10">
             <div className="max-w-6xl mx-auto space-y-6">
                 <Skeleton className="h-8 w-48 mb-2" />
@@ -290,20 +349,20 @@ const HelpDesk = () => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-50 font-sans p-6 md:p-10">
-            <div className="max-w-6xl mx-auto space-y-6">
+        <div className="min-h-screen bg-slate-50 font-sans p-4 sm:p-6 md:p-10">
+            <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
 
                 {/* Header */}
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
                     <div>
-                        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center">
-                            <LifeBuoy className="mr-3 text-indigo-600" size={32} /> Help Desk
+                        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center">
+                            <LifeBuoy className="mr-2 sm:mr-3 text-indigo-600" size={28} /> Help Desk
                         </h1>
-                        <p className="text-sm text-slate-500 mt-1">Raise support tickets, track resolutions, and get help quickly.</p>
+                        <p className="text-xs sm:text-sm text-slate-500 mt-1">Raise support tickets, track resolutions, and get help quickly.</p>
                     </div>
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-md shadow-indigo-600/20 transition-all hover:-translate-y-0.5"
+                        className="flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 sm:px-5 rounded-xl font-semibold shadow-md shadow-indigo-600/20 transition-all hover:-translate-y-0.5 w-full sm:w-auto"
                     >
                         <Plus size={18} />
                         <span>Raise Query</span>
@@ -311,51 +370,53 @@ const HelpDesk = () => {
                 </div>
 
                 {/* Tabs */}
-                <div className="flex space-x-1 bg-slate-200/50 p-1 rounded-xl w-max mb-6">
-                    <button
-                        onClick={() => setActiveTab('my-queries')}
-                        className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'my-queries' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                    >
-                        My Queries
-                    </button>
-                    {(assignedQueries.length > 0 || isAdmin) && (
+                <div className="overflow-x-auto pb-1 mb-4 sm:mb-6">
+                    <div className="flex space-x-1 bg-slate-200/50 p-1 rounded-xl w-max">
                         <button
-                            onClick={() => setActiveTab('assigned')}
-                            className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'assigned' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                            onClick={() => setActiveTab('my-queries')}
+                            className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'my-queries' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                         >
-                            <span className="flex items-center">
-                                {isAdmin ? 'Queries' : 'Assigned to Me'}
-                                {assignedQueries.filter(q => q.status === 'New' || q.status === 'In Progress').length > 0 && (
-                                    <span className="ml-2 bg-indigo-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                                        {assignedQueries.filter(q => q.status === 'New' || q.status === 'In Progress').length}
-                                    </span>
-                                )}
-                            </span>
+                            My Queries
                         </button>
-                    )}
-                    {isAdmin && (
-                        <>
+                        {(assignedQueries.length > 0 || isAdmin) && (
                             <button
-                                onClick={() => setActiveTab('escalated')}
-                                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'escalated' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                                onClick={() => setActiveTab('assigned')}
+                                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'assigned' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                             >
                                 <span className="flex items-center">
-                                    Escalated
-                                    {escalatedQueries.length > 0 && (
-                                        <span className="ml-2 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full animate-pulse">
-                                            {escalatedQueries.length}
+                                    {isAdmin ? 'Queries' : 'Assigned to Me'}
+                                    {assignedQueries.filter(q => q.status === 'New' || q.status === 'In Progress').length > 0 && (
+                                        <span className="ml-2 bg-indigo-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                                            {assignedQueries.filter(q => q.status === 'New' || q.status === 'In Progress').length}
                                         </span>
                                     )}
                                 </span>
                             </button>
-                            <button
-                                onClick={() => setActiveTab('workflows')}
-                                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'workflows' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                            >
-                                Manage Workflows
-                            </button>
-                        </>
-                    )}
+                        )}
+                        {isAdmin && (
+                            <>
+                                <button
+                                    onClick={() => setActiveTab('escalated')}
+                                    className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'escalated' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                                >
+                                    <span className="flex items-center">
+                                        Escalated
+                                        {escalatedQueries.length > 0 && (
+                                            <span className="ml-2 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full animate-pulse">
+                                                {escalatedQueries.length}
+                                            </span>
+                                        )}
+                                    </span>
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('workflows')}
+                                    className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'workflows' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                                >
+                                    Manage Workflows
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {/* Content */}
@@ -363,17 +424,17 @@ const HelpDesk = () => {
                 {activeTab === 'assigned' && (
                     <div>
                         {isAdmin && (
-                            <div className="flex justify-end mb-4">
+                            <div className="flex justify-end mb-3">
                                 <div className="bg-slate-200/50 p-1 rounded-lg inline-flex items-center">
                                     <button
                                         onClick={() => setShowAllQueries(false)}
-                                        className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${!showAllQueries ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${!showAllQueries ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                                     >
                                         Assigned to Me
                                     </button>
                                     <button
                                         onClick={() => setShowAllQueries(true)}
-                                        className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${showAllQueries ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${showAllQueries ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                                     >
                                         All Queries
                                     </button>
@@ -388,7 +449,7 @@ const HelpDesk = () => {
 
             </div>
 
-            <QueryFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={fetchQueries} />
+            <QueryFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={refreshTab} />
         </div>
     );
 };

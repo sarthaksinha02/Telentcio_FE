@@ -167,8 +167,8 @@ const Discussions = () => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-50 font-sans p-6 md:p-10">
-            <div className="max-w-7xl mx-auto space-y-6">
+        <div className="min-h-screen bg-slate-50 font-sans p-4 sm:p-6 md:p-10">
+            <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
 
                 {/* View Toggle */}
                 <div className="flex justify-center mb-8">
@@ -189,16 +189,16 @@ const Discussions = () => {
                 </div>
 
                 {/* Header */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">
                             <MessageSquare className="text-indigo-600" /> Discussions
                         </h1>
                         <p className="text-sm text-slate-500 mt-1">Create and manage team discussions, tasks, and topics.</p>
                     </div>
                     <button
                         onClick={() => setIsCreating(true)}
-                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
+                        className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm w-full sm:w-auto"
                     >
                         <Plus size={18} />
                         <span>Create Discussion</span>
@@ -207,7 +207,72 @@ const Discussions = () => {
 
                 {/* List View */}
                 <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
-                    <div className="overflow-x-auto">
+
+                    {/* ── Mobile card list (hidden on md+) ── */}
+                    <div className="md:hidden divide-y divide-slate-100">
+                        {loading ? (
+                            <div className="flex justify-center py-10"><Skeleton className="h-8 w-8 rounded-full" /></div>
+                        ) : discussions.length === 0 && !isCreating ? (
+                            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                                <MessageSquare size={48} className="text-slate-200 mb-4" />
+                                <p className="text-base font-medium text-slate-600">No discussions found</p>
+                                <p className="text-sm">Start a new discussion.</p>
+                            </div>
+                        ) : (
+                            discussions.map((discussion, index) => (
+                                <div key={discussion._id} className="p-4 space-y-2 hover:bg-slate-50 transition-colors">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <span className="text-xs font-semibold text-slate-400 mr-1">#{(currentPage - 1) * limit + index + 1}</span>
+                                            <span className="text-sm text-slate-700 break-words leading-relaxed">
+                                                {discussion.discussion && discussion.discussion.length > 80 && !expandedIds.includes(discussion._id)
+                                                    ? `${discussion.discussion.substring(0, 80)}...`
+                                                    : discussion.discussion}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <select
+                                            value={discussion.status}
+                                            onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
+                                            className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${getStatusBadgeColor(discussion.status)}`}
+                                        >
+                                            <option value="inprogress">In Progress</option>
+                                            <option value="on-hold">On-hold</option>
+                                            <option value="mark as complete">Mark as complete</option>
+                                        </select>
+                                        {discussion.dueDate ? (
+                                            <div className="flex items-center text-slate-500 text-xs">
+                                                <Calendar size={12} className="mr-1 text-slate-400" />
+                                                {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
+                                            </div>
+                                        ) : (
+                                            <span className="text-slate-400 text-xs italic">No due date</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2 pt-1">
+                                        {discussion.discussion && discussion.discussion.length > 80 && (
+                                            <button onClick={() => toggleDescription(discussion._id)}
+                                                className="inline-flex items-center justify-center p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors bg-slate-50 shadow-sm">
+                                                {expandedIds.includes(discussion._id) ? <EyeOff size={15} /> : <Eye size={15} />}
+                                            </button>
+                                        )}
+                                        <button onClick={() => handleEditInline(discussion)}
+                                            className="inline-flex items-center justify-center p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition-colors bg-slate-50 shadow-sm">
+                                            <Edit size={15} />
+                                        </button>
+                                        <button onClick={() => handleDelete(discussion._id)}
+                                            className="inline-flex items-center justify-center p-1.5 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors bg-slate-50 shadow-sm">
+                                            <Trash2 size={15} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    {/* ── Desktop table (hidden below md) ── */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-sm table-fixed">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
@@ -223,28 +288,20 @@ const Discussions = () => {
                                     <tr className="bg-indigo-50/50">
                                         <td className="px-6 py-4 text-slate-500 text-sm font-medium">New</td>
                                         <td className="px-6 py-4">
-                                            <input
-                                                type="text"
-                                                value={newDiscussion.discussion}
+                                            <input type="text" value={newDiscussion.discussion}
                                                 onChange={(e) => setNewDiscussion({ ...newDiscussion, discussion: e.target.value })}
                                                 placeholder="Enter description"
-                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                            />
+                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                                         </td>
                                         <td className="px-6 py-4">
-                                            <input
-                                                type="date"
-                                                value={newDiscussion.dueDate}
+                                            <input type="date" value={newDiscussion.dueDate}
                                                 onChange={(e) => setNewDiscussion({ ...newDiscussion, dueDate: e.target.value })}
-                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600"
-                                            />
+                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600" />
                                         </td>
                                         <td className="px-6 py-4">
-                                            <select
-                                                value={newDiscussion.status}
+                                            <select value={newDiscussion.status}
                                                 onChange={(e) => setNewDiscussion({ ...newDiscussion, status: e.target.value })}
-                                                className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-full ${getStatusBadgeColor(newDiscussion.status)}`}
-                                            >
+                                                className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-full ${getStatusBadgeColor(newDiscussion.status)}`}>
                                                 <option value="inprogress">In Progress</option>
                                                 <option value="on-hold">On-hold</option>
                                                 <option value="mark as complete">Mark as complete</option>
@@ -252,17 +309,12 @@ const Discussions = () => {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
-                                                <button
-                                                    onClick={handleCreateInline}
-                                                    disabled={isSaving}
-                                                    className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                                                >
+                                                <button onClick={handleCreateInline} disabled={isSaving}
+                                                    className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors">
                                                     {isSaving ? '...' : 'Save'}
                                                 </button>
-                                                <button
-                                                    onClick={() => setIsCreating(false)}
-                                                    className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-medium rounded hover:bg-slate-300 transition-colors"
-                                                >
+                                                <button onClick={() => setIsCreating(false)}
+                                                    className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-medium rounded hover:bg-slate-300 transition-colors">
                                                     Cancel
                                                 </button>
                                             </div>
@@ -270,51 +322,37 @@ const Discussions = () => {
                                     </tr>
                                 )}
                                 {loading ? (
-                                    <tr>
-                                        <td colSpan="6" className="px-6 py-8">
-                                            <div className="flex justify-center"><Skeleton className="h-8 w-8 rounded-full" /></div>
-                                        </td>
-                                    </tr>
+                                    <tr><td colSpan="6" className="px-6 py-8">
+                                        <div className="flex justify-center"><Skeleton className="h-8 w-8 rounded-full" /></div>
+                                    </td></tr>
                                 ) : discussions.length === 0 && !isCreating ? (
-                                    <tr>
-                                        <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
-                                            <div className="flex flex-col items-center justify-center">
-                                                <MessageSquare size={48} className="text-slate-200 mb-4" />
-                                                <p className="text-lg font-medium text-slate-600">No discussions found</p>
-                                                <p className="text-sm">Start a new discussion algorithmically or manually.</p>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                    <tr><td colSpan="5" className="px-6 py-12 text-center text-slate-500">
+                                        <div className="flex flex-col items-center justify-center">
+                                            <MessageSquare size={48} className="text-slate-200 mb-4" />
+                                            <p className="text-lg font-medium text-slate-600">No discussions found</p>
+                                            <p className="text-sm">Start a new discussion algorithmically or manually.</p>
+                                        </div>
+                                    </td></tr>
                                 ) : (
                                     discussions.map((discussion, index) => (
                                         editingId === discussion._id ? (
                                             <tr key={`edit-${discussion._id}`} className="bg-indigo-50/20">
-                                                <td className="px-6 py-4 text-sm font-medium text-slate-500">
-                                                    {(currentPage - 1) * limit + index + 1}
-                                                </td>
+                                                <td className="px-6 py-4 text-sm font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
                                                 <td className="px-6 py-4">
-                                                    <input
-                                                        type="text"
-                                                        value={editData.discussion}
+                                                    <input type="text" value={editData.discussion}
                                                         onChange={(e) => setEditData({ ...editData, discussion: e.target.value })}
                                                         placeholder="Enter description"
-                                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                                    />
+                                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <input
-                                                        type="date"
-                                                        value={editData.dueDate}
+                                                    <input type="date" value={editData.dueDate}
                                                         onChange={(e) => setEditData({ ...editData, dueDate: e.target.value })}
-                                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600"
-                                                    />
+                                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600" />
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <select
-                                                        value={editData.status}
+                                                    <select value={editData.status}
                                                         onChange={(e) => setEditData({ ...editData, status: e.target.value })}
-                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-fit ${getStatusBadgeColor(editData.status)}`}
-                                                    >
+                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-fit ${getStatusBadgeColor(editData.status)}`}>
                                                         <option value="inprogress">In Progress</option>
                                                         <option value="on-hold">On-hold</option>
                                                         <option value="mark as complete">Mark as complete</option>
@@ -322,20 +360,12 @@ const Discussions = () => {
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
-                                                        <button
-                                                            onClick={() => handleUpdateInline(discussion._id)}
-                                                            disabled={isSaving}
-                                                            className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                                                        >
+                                                        <button onClick={() => handleUpdateInline(discussion._id)} disabled={isSaving}
+                                                            className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors">
                                                             {isSaving ? '...' : 'Save'}
                                                         </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                setEditingId(null);
-                                                                setEditData(null);
-                                                            }}
-                                                            className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-medium rounded hover:bg-slate-300 transition-colors"
-                                                        >
+                                                        <button onClick={() => { setEditingId(null); setEditData(null); }}
+                                                            className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-medium rounded hover:bg-slate-300 transition-colors">
                                                             Cancel
                                                         </button>
                                                     </div>
@@ -343,15 +373,12 @@ const Discussions = () => {
                                             </tr>
                                         ) : (
                                             <tr key={discussion._id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-6 py-4 text-sm font-medium text-slate-500">
-                                                    {(currentPage - 1) * limit + index + 1}
-                                                </td>
+                                                <td className="px-6 py-4 text-sm font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
                                                 <td className="px-6 py-4">
-                                                    <div className="text-sm text-slate-600 break-all whitespace-normal leading-relaxed">
-                                                        {discussion.discussion && discussion.discussion.length > 55 && !expandedIds.includes(discussion._id) ?
-                                                            `${discussion.discussion.substring(0, 55)}...` :
-                                                            discussion.discussion
-                                                        }
+                                                    <div className="text-sm text-slate-600 break-words whitespace-normal leading-relaxed">
+                                                        {discussion.discussion && discussion.discussion.length > 55 && !expandedIds.includes(discussion._id)
+                                                            ? `${discussion.discussion.substring(0, 55)}...`
+                                                            : discussion.discussion}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
@@ -365,11 +392,9 @@ const Discussions = () => {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <select
-                                                        value={discussion.status}
+                                                    <select value={discussion.status}
                                                         onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
-                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-fit ${getStatusBadgeColor(discussion.status)}`}
-                                                    >
+                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-fit ${getStatusBadgeColor(discussion.status)}`}>
                                                         <option value="inprogress">In Progress</option>
                                                         <option value="on-hold">On-hold</option>
                                                         <option value="mark as complete">Mark as complete</option>
@@ -378,26 +403,18 @@ const Discussions = () => {
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
                                                         {discussion.discussion && discussion.discussion.length > 55 && (
-                                                            <button
-                                                                onClick={() => toggleDescription(discussion._id)}
-                                                                title={expandedIds.includes(discussion._id) ? "Show Less" : "View"}
-                                                                className="inline-flex items-center justify-center p-2 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors bg-slate-50 border-transparent shadow-sm"
-                                                            >
+                                                            <button onClick={() => toggleDescription(discussion._id)}
+                                                                title={expandedIds.includes(discussion._id) ? 'Show Less' : 'View'}
+                                                                className="inline-flex items-center justify-center p-2 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors bg-slate-50 border-transparent shadow-sm">
                                                                 {expandedIds.includes(discussion._id) ? <EyeOff size={16} /> : <Eye size={16} />}
                                                             </button>
                                                         )}
-                                                        <button
-                                                            onClick={() => handleEditInline(discussion)}
-                                                            title="Edit"
-                                                            className="inline-flex items-center justify-center p-2 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition-colors bg-slate-50 border-transparent shadow-sm"
-                                                        >
+                                                        <button onClick={() => handleEditInline(discussion)} title="Edit"
+                                                            className="inline-flex items-center justify-center p-2 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition-colors bg-slate-50 border-transparent shadow-sm">
                                                             <Edit size={16} />
                                                         </button>
-                                                        <button
-                                                            onClick={() => handleDelete(discussion._id)}
-                                                            title="Delete"
-                                                            className="inline-flex items-center justify-center p-2 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors bg-slate-50 border-transparent shadow-sm"
-                                                        >
+                                                        <button onClick={() => handleDelete(discussion._id)} title="Delete"
+                                                            className="inline-flex items-center justify-center p-2 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors bg-slate-50 border-transparent shadow-sm">
                                                             <Trash2 size={16} />
                                                         </button>
                                                     </div>
@@ -412,9 +429,9 @@ const Discussions = () => {
 
                     {/* Pagination Controls */}
                     {totalPages > 1 && (
-                        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+                        <div className="px-4 sm:px-6 py-4 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
                             <p className="text-sm text-slate-500">
-                                Showing page <span className="font-medium text-slate-700">{currentPage}</span> of <span className="font-medium text-slate-700">{totalPages}</span>
+                                Page <span className="font-medium text-slate-700">{currentPage}</span> of <span className="font-medium text-slate-700">{totalPages}</span>
                             </p>
                             <div className="flex items-center gap-2">
                                 <button
@@ -426,12 +443,8 @@ const Discussions = () => {
                                 </button>
                                 <div className="flex items-center gap-1">
                                     {[...Array(totalPages)].map((_, i) => (
-                                        <button
-                                            key={i}
-                                            onClick={() => setCurrentPage(i + 1)}
-                                            disabled={loading}
-                                            className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${currentPage === i + 1 ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                                        >
+                                        <button key={i} onClick={() => setCurrentPage(i + 1)} disabled={loading}
+                                            className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${currentPage === i + 1 ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                                             {i + 1}
                                         </button>
                                     ))}
