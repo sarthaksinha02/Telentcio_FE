@@ -68,18 +68,18 @@ const CandidateDetails = () => {
         }
     }, [candidateId]);
 
-    const fetchCandidate = async () => {
+    const fetchCandidate = useCallback(async () => {
         try {
             const res = await api.get(`/ta/candidates/candidate/${candidateId}`);
             setCandidate(res.data);
         } catch (error) {
             console.error('Error fetching candidate:', error);
         }
-    };
+    }, [candidateId]);
 
 
 
-    const handleAddRound = async () => {
+    const handleAddRound = useCallback(async () => {
         if (!newRound.levelName) {
             toast.error('Level Name is required');
             return;
@@ -107,9 +107,9 @@ const CandidateDetails = () => {
         } finally {
             setActionLoading(false);
         }
-    };
+    }, [newRound, selectedInterviewer, candidateId, fetchCandidate]);
 
-    const handleEditRound = async (roundId) => {
+    const handleEditRound = useCallback(async (roundId) => {
         if (!editingRoundForm.levelName) {
             toast.error('Level Name is required');
             return;
@@ -134,10 +134,10 @@ const CandidateDetails = () => {
         } finally {
             setActionLoading(false);
         }
-    };
+    }, [editingRoundForm, candidateId, fetchCandidate]);
 
 
-    const handleApplyWorkflowSubmit = async () => {
+    const handleApplyWorkflowSubmit = useCallback(async () => {
         if (!selectedWorkflow) return toast.error('Please select a workflow template');
         try {
             setActionLoading(true);
@@ -167,9 +167,9 @@ const CandidateDetails = () => {
         } finally {
             setActionLoading(false);
         }
-    };
+    }, [selectedWorkflow, interviewWorkflows, workflowMapping, candidateId, fetchCandidate]);
 
-    const handleDeleteRound = async (roundId) => {
+    const handleDeleteRound = useCallback(async (roundId) => {
         if (!window.confirm('Are you sure you want to delete this round?')) return;
         try {
             setActionLoading(true);
@@ -182,9 +182,9 @@ const CandidateDetails = () => {
         } finally {
             setActionLoading(false);
         }
-    };
+    }, [candidateId, fetchCandidate]);
 
-    const submitEvaluation = async (roundId) => {
+    const submitEvaluation = useCallback(async (roundId) => {
         if (!evaluationForm.feedback) {
             toast.error('Feedback is required');
             return;
@@ -208,9 +208,9 @@ const CandidateDetails = () => {
         } finally {
             setActionLoading(false);
         }
-    };
+    }, [evaluationForm, candidateId, fetchCandidate]);
 
-    const getStatusBadgeColor = (status) => {
+    const getStatusBadgeColor = useCallback((status) => {
         switch (status) {
             case 'Passed': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
             case 'Failed': return 'bg-red-100 text-red-700 border-red-200';
@@ -218,16 +218,16 @@ const CandidateDetails = () => {
             case 'Skipped': return 'bg-slate-100 text-slate-700 border-slate-200';
             default: return 'bg-amber-100 text-amber-700 border-amber-200'; // Pending
         }
-    };
+    }, []);
 
-    const getStatusIcon = (status) => {
+    const getStatusIcon = useCallback((status) => {
         switch (status) {
             case 'Passed': return <CheckCircle size={16} className="text-emerald-600" />;
             case 'Failed': return <XCircle size={16} className="text-red-600" />;
             case 'Scheduled': return <Calendar size={16} className="text-blue-600" />;
             default: return <Clock size={16} className="text-amber-600" />;
         }
-    };
+    }, []);
 
     if (loading) {
         return (
@@ -282,10 +282,13 @@ const CandidateDetails = () => {
 
     if (!candidate) return <div className="text-center p-8">Candidate not found</div>;
 
-    const isAdmin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
-    const userPermissions = user?.permissions || [];
-    const hasSuperApprove = userPermissions.includes('ta.super_approve') || userPermissions.includes('*') || isAdmin;
-    const canManageRounds = isAdmin || userPermissions.includes('ta.edit');
+    const { isAdmin, userPermissions, hasSuperApprove, canManageRounds } = useMemo(() => {
+        const admin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
+        const perms = user?.permissions || [];
+        const superApprove = perms.includes('ta.super_approve') || perms.includes('*') || admin;
+        const manageRounds = admin || perms.includes('ta.edit');
+        return { isAdmin: admin, userPermissions: perms, hasSuperApprove: superApprove, canManageRounds: manageRounds };
+    }, [user]);
 
     return (
         <div className="min-h-screen bg-slate-50 pb-12">

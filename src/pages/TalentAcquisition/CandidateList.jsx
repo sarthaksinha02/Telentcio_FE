@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -86,71 +86,75 @@ const CandidateList = ({ hiringRequestId }) => {
     };
 
     // Computed filtered candidates
-    const filteredCandidates = candidates.filter(candidate => {
-        const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
-        const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
-        const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
-        const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
+    const filteredCandidates = useMemo(() => {
+        return candidates.filter(candidate => {
+            const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
+            const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
+            const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
+            const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
 
-        // Interview filtering logic
-        let matchInterviewStatus = true;
-        if (filterInterviewStatus !== 'All') {
-            const rounds = candidate.interviewRounds || [];
-            const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
-            const hasFailed = rounds.some(r => r.status === 'Failed');
-            const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
+            // Interview filtering logic
+            let matchInterviewStatus = true;
+            if (filterInterviewStatus !== 'All') {
+                const rounds = candidate.interviewRounds || [];
+                const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
+                const hasFailed = rounds.some(r => r.status === 'Failed');
+                const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
 
-            if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-            if (filterInterviewStatus === 'Pending') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
-            if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
-            if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
-        }
-
-        let matchRating = true;
-        if (filterRating !== 'All') {
-            const rounds = candidate.interviewRounds || [];
-            const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-            if (ratedRounds.length === 0) {
-                 matchRating = false;                 
-            } else {
-                 const minRequired = Number(filterRating);
-                 const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                 matchRating = avgRating >= minRequired;
+                if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
+                if (filterInterviewStatus === 'Pending') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
+                if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
+                if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
             }
-        }
 
-        const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
+            let matchRating = true;
+            if (filterRating !== 'All') {
+                const rounds = candidate.interviewRounds || [];
+                const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                if (ratedRounds.length === 0) {
+                     matchRating = false;                 
+                } else {
+                     const minRequired = Number(filterRating);
+                     const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                     matchRating = avgRating >= minRequired;
+                }
+            }
 
-        return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy;
-    });
+            const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
+
+            return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy;
+        });
+    }, [candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
 
     const itemsPerPage = 15;
     const totalPages = Math.ceil(filteredCandidates.length / itemsPerPage) || 1;
     const paginatedCandidates = filteredCandidates.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
     // Compute Metrics for Summary Boxes
-    const metrics = {
-        total: candidates.length,
-        interested: candidates.filter(c => {
-            if (c.status !== 'Interested') return false;
-            if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
-            if (c.interviewRounds && c.interviewRounds.length > 0) return false;
-            return true;
-        }).length,
-        inInterviews: candidates.filter(c => {
-            const rounds = c.interviewRounds || [];
-            if (rounds.length === 0) return false;
-            if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
-            const hasFailed = rounds.some(r => r.status === 'Failed');
-            if (hasFailed) return false;
-            return true;
-        }).length,
-        hired: candidates.filter(c => c.decision === 'Hired').length,
-        rejected: candidates.filter(c => c.decision === 'Rejected').length,
-        onHold: candidates.filter(c => c.decision === 'On Hold').length,
-    };
+    const metrics = useMemo(() => {
+        return {
+            total: candidates.length,
+            interested: candidates.filter(c => {
+                if (c.status !== 'Interested') return false;
+                if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+                if (c.interviewRounds && c.interviewRounds.length > 0) return false;
+                return true;
+            }).length,
+            inInterviews: candidates.filter(c => {
+                const rounds = c.interviewRounds || [];
+                if (rounds.length === 0) return false;
+                if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+                const hasFailed = rounds.some(r => r.status === 'Failed');
+                if (hasFailed) return false;
+                return true;
+            }).length,
+            hired: candidates.filter(c => c.decision === 'Hired').length,
+            rejected: candidates.filter(c => c.decision === 'Rejected').length,
+            onHold: candidates.filter(c => c.decision === 'On Hold').length,
+        };
+    }, [candidates]);
 
-    const fetchCandidates = async () => {
+    const fetchCandidates = useCallback(async () => {
         try {
             setLoading(true);
             const response = await api.get(`/ta/candidates/${hiringRequestId}`);
@@ -161,19 +165,19 @@ const CandidateList = ({ hiringRequestId }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [hiringRequestId]);
 
-    const hEdit = (candidate) => {
+    const hEdit = useCallback((candidate) => {
         navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/edit`);
-    };
+    }, [navigate, hiringRequestId]);
 
-    const hView = (candidate) => {
+    const hView = useCallback((candidate) => {
         navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view`);
-    };
+    }, [navigate, hiringRequestId]);
 
     const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
 
-    const toggleMenu = (e, candidateId) => {
+    const toggleMenu = useCallback((e, candidateId) => {
         e.stopPropagation();
         if (activeMenu === candidateId) {
             setActiveMenu(null);
@@ -196,17 +200,17 @@ const CandidateList = ({ hiringRequestId }) => {
             setMenuPosition(positionStyles);
             setActiveMenu(candidateId);
         }
-    };
+    }, [activeMenu]);
 
-    const handleEdit = (candidate) => {
+    const handleEdit = useCallback((candidate) => {
         navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/edit`);
-    };
+    }, [navigate, hiringRequestId]);
 
-    const handleView = (candidate) => {
+    const handleView = useCallback((candidate) => {
         navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view`);
-    };
+    }, [navigate, hiringRequestId]);
 
-    const handleDelete = async (candidateId) => {
+    const handleDelete = useCallback(async (candidateId) => {
         if (!window.confirm('Are you sure you want to delete this candidate?')) return;
 
         try {
@@ -217,11 +221,11 @@ const CandidateList = ({ hiringRequestId }) => {
             console.error('Error deleting candidate:', error);
             toast.error(error.response?.data?.message || 'Failed to delete candidate');
         }
-    };
+    }, [fetchCandidates]);
 
-    const handleAddNew = () => {
+    const handleAddNew = useCallback(() => {
         navigate(`/ta/hiring-request/${hiringRequestId}/add-candidate`);
-    };
+    }, [navigate, hiringRequestId]);
 
     const getStatusColor = (status) => {
         switch (status) {

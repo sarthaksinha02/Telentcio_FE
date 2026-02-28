@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Users, ThumbsUp, ThumbsDown, CheckCircle, Clock, UserCheck, Eye, FileText, Upload } from 'lucide-react';
 import api from '../../api/axios';
@@ -21,7 +21,7 @@ const UserTADashboard = () => {
         }
     }, [userName]);
 
-    const fetchUserCandidates = async () => {
+    const fetchUserCandidates = useCallback(async () => {
         try {
             setLoading(true);
             const response = await api.get(`/ta/candidates/user/${encodeURIComponent(userName)}`);
@@ -32,31 +32,33 @@ const UserTADashboard = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [userName]);
 
     // Calculate metrics exactly as it's done on CandidateList
-    const metrics = {
-        total: candidates.length,
-        interested: candidates.filter(c => {
-            if (c.status !== 'Interested') return false;
-            if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
-            if (c.interviewRounds && c.interviewRounds.length > 0) return false;
-            return true;
-        }).length,
-        inInterviews: candidates.filter(c => {
-            const rounds = c.interviewRounds || [];
-            if (rounds.length === 0) return false;
-            if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
-            const hasFailed = rounds.some(r => r.status === 'Failed');
-            if (hasFailed) return false;
-            return true;
-        }).length,
-        hired: candidates.filter(c => c.decision === 'Hired').length,
-        rejected: candidates.filter(c => c.decision === 'Rejected').length,
-        onHold: candidates.filter(c => c.decision === 'On Hold').length,
-    };
+    const metrics = useMemo(() => {
+        return {
+            total: candidates.length,
+            interested: candidates.filter(c => {
+                if (c.status !== 'Interested') return false;
+                if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+                if (c.interviewRounds && c.interviewRounds.length > 0) return false;
+                return true;
+            }).length,
+            inInterviews: candidates.filter(c => {
+                const rounds = c.interviewRounds || [];
+                if (rounds.length === 0) return false;
+                if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+                const hasFailed = rounds.some(r => r.status === 'Failed');
+                if (hasFailed) return false;
+                return true;
+            }).length,
+            hired: candidates.filter(c => c.decision === 'Hired').length,
+            rejected: candidates.filter(c => c.decision === 'Rejected').length,
+            onHold: candidates.filter(c => c.decision === 'On Hold').length,
+        };
+    }, [candidates]);
 
-    const getStatusColor = (status) => {
+    const getStatusColor = useCallback((status) => {
         switch (status) {
             case 'Interested': return 'bg-green-100 text-green-700';
             case 'Not Interested': return 'bg-red-100 text-red-700';
@@ -64,18 +66,18 @@ const UserTADashboard = () => {
             case 'Not Picking': return 'bg-yellow-100 text-yellow-700';
             default: return 'bg-blue-100 text-blue-700';
         }
-    };
+    }, []);
 
-    const getDecisionColor = (decision) => {
+    const getDecisionColor = useCallback((decision) => {
         switch (decision) {
             case 'Hired': return 'text-emerald-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
             case 'On Hold': return 'text-amber-600 font-bold';
             default: return 'text-slate-600';
         }
-    };
+    }, []);
 
-    const getInterviewStatusSummary = (rounds = []) => {
+    const getInterviewStatusSummary = useCallback((rounds = []) => {
         if (!rounds || rounds.length === 0) return { label: 'None', color: 'text-slate-400 bg-slate-50 border-slate-200' };
 
         const pending = rounds.filter(r => r.status === 'Pending' || r.status === 'Scheduled').length;
@@ -92,7 +94,7 @@ const UserTADashboard = () => {
         if (passed === total) return { label: 'All Passed', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
 
         return { label: 'In Progress', color: 'text-blue-700 bg-blue-50 border-blue-200' };
-    };
+    }, []);
 
     if (loading) {
         return (
