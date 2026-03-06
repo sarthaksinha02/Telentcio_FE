@@ -244,11 +244,15 @@ const Discussions = () => {
                                         {discussion.dueDate ? (
                                             <div className="flex items-center text-slate-500 text-xs">
                                                 <Calendar size={12} className="mr-1 text-slate-400" />
-                                                {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
+                                                Due: {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
                                             </div>
                                         ) : (
                                             <span className="text-slate-400 text-xs italic">No due date</span>
                                         )}
+                                        <div className="flex items-center text-slate-500 text-xs">
+                                            <span className="mr-1 text-slate-400">Created:</span>
+                                            {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
+                                        </div>
                                     </div>
                                     <div className="flex items-center gap-2 pt-1">
                                         {discussion.discussion && discussion.discussion.length > 80 && (
@@ -278,6 +282,7 @@ const Discussions = () => {
                                 <tr>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-16">S.No</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600">Description</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Created Date</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Due Date</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-40">Status</th>
                                     <th className="px-6 py-4 text-right font-semibold text-slate-600 w-64">Actions</th>
@@ -292,6 +297,9 @@ const Discussions = () => {
                                                 onChange={(e) => setNewDiscussion({ ...newDiscussion, discussion: e.target.value })}
                                                 placeholder="Enter description"
                                                 className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-500 text-sm whitespace-nowrap">
+                                            {format(new Date(), 'dd MMM yyyy')}
                                         </td>
                                         <td className="px-6 py-4">
                                             <input type="date" value={newDiscussion.dueDate}
@@ -322,11 +330,11 @@ const Discussions = () => {
                                     </tr>
                                 )}
                                 {loading ? (
-                                    <tr><td colSpan="6" className="px-6 py-8">
+                                    <tr><td colSpan="7" className="px-6 py-8">
                                         <div className="flex justify-center"><Skeleton className="h-8 w-8 rounded-full" /></div>
                                     </td></tr>
                                 ) : discussions.length === 0 && !isCreating ? (
-                                    <tr><td colSpan="5" className="px-6 py-12 text-center text-slate-500">
+                                    <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center justify-center">
                                             <MessageSquare size={48} className="text-slate-200 mb-4" />
                                             <p className="text-lg font-medium text-slate-600">No discussions found</p>
@@ -343,6 +351,9 @@ const Discussions = () => {
                                                         onChange={(e) => setEditData({ ...editData, discussion: e.target.value })}
                                                         placeholder="Enter description"
                                                         className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-500 text-sm whitespace-nowrap">
+                                                    {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <input type="date" value={editData.dueDate}
@@ -380,6 +391,9 @@ const Discussions = () => {
                                                             ? `${discussion.discussion.substring(0, 55)}...`
                                                             : discussion.discussion}
                                                     </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-700 text-sm whitespace-nowrap">
+                                                    {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     {discussion.dueDate ? (
