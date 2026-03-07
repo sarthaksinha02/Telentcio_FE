@@ -93,7 +93,8 @@ const CandidateDetails = () => {
             const payload = {
                 levelName: newRound.levelName,
                 assignedTo: selectedInterviewer && selectedInterviewer.trim() !== '' ? [selectedInterviewer] : [],
-                scheduledDate: newRound.scheduledDate || undefined
+                scheduledDate: newRound.scheduledDate || undefined,
+                phase: currentPhase
             };
 
             await api.post(`/ta/candidates/${candidateId}/rounds`, payload);
@@ -154,7 +155,8 @@ const CandidateDetails = () => {
                 const payload = {
                     levelName: r.levelName,
                     assignedTo: mapping.assignedTo && mapping.assignedTo.trim() !== '' ? [mapping.assignedTo] : [],
-                    scheduledDate: mapping.scheduledDate || undefined
+                    scheduledDate: mapping.scheduledDate || undefined,
+                    phase: currentPhase
                 };
                 await api.post(`/ta/candidates/${candidateId}/rounds`, payload);
             }
@@ -639,311 +641,311 @@ const CandidateDetails = () => {
                                 </div>
                             ) : (
                                 (() => {
-                                    const displayedRounds = currentPhase === 1 ? candidate.interviewRounds.slice(0, 2) : candidate.interviewRounds;
+                                    const displayedRounds = candidate.interviewRounds.filter(r => (r.phase || 1) === currentPhase);
                                     return displayedRounds.map((round, index) => {
                                         const isAssigned = round.assignedTo?.some(u => u._id === user?._id || u._id?.toString() === user?._id?.toString());
-                                    const canEvaluate = (isAssigned || hasSuperApprove) && ['Pending', 'Scheduled'].includes(round.status);
-                                    const canEditFeedback = (isAssigned || hasSuperApprove) && ['Passed', 'Failed'].includes(round.status);
-                                    const isEvaluating = evaluatingRoundId === round._id;
-                                    const isEditingRound = editingRoundId === round._id;
+                                        const canEvaluate = (isAssigned || hasSuperApprove) && ['Pending', 'Scheduled'].includes(round.status);
+                                        const canEditFeedback = (isAssigned || hasSuperApprove) && ['Passed', 'Failed'].includes(round.status);
+                                        const isEvaluating = evaluatingRoundId === round._id;
+                                        const isEditingRound = editingRoundId === round._id;
 
-                                    return (
-                                        <div key={round._id} className="relative pl-8">
-                                            {/* Timeline Line */}
-                                            {index !== displayedRounds.length - 1 && (
-                                                <div className="absolute top-8 bottom-[-2rem] left-3.5 w-0.5 bg-slate-200"></div>
-                                            )}
+                                        return (
+                                            <div key={round._id} className="relative pl-8">
+                                                {/* Timeline Line */}
+                                                {index !== displayedRounds.length - 1 && (
+                                                    <div className="absolute top-8 bottom-[-2rem] left-3.5 w-0.5 bg-slate-200"></div>
+                                                )}
 
-                                            {/* Dot */}
-                                            <div className={`absolute top-1 left-1.5 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${round.status === 'Passed' ? 'bg-emerald-500' :
-                                                round.status === 'Failed' ? 'bg-red-500' :
-                                                    'bg-amber-400'
-                                                }`}></div>
+                                                {/* Dot */}
+                                                <div className={`absolute top-1 left-1.5 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${round.status === 'Passed' ? 'bg-emerald-500' :
+                                                    round.status === 'Failed' ? 'bg-red-500' :
+                                                        'bg-amber-400'
+                                                    }`}></div>
 
-                                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                                                {/* Round Header */}
-                                                <div className={`px-5 py-4 border-b flex justify-between items-center ${round.status === 'Passed' ? 'bg-emerald-50/50 border-emerald-100' :
-                                                    round.status === 'Failed' ? 'bg-red-50/50 border-red-100' :
-                                                        'bg-slate-50/50 border-slate-100'
-                                                    }`}>
-                                                    <div>
-                                                        <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                                                            {round.levelName}
-                                                            {getStatusIcon(round.status)}
-                                                        </h4>
-                                                        {round.scheduledDate && (
-                                                            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                                                                <Calendar size={12} /> Scheduled: {format(new Date(round.scheduledDate), 'PPp')}
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center gap-3">
-                                                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(round.status)}`}>
-                                                            {round.status}
-                                                        </span>
-                                                        {canManageRounds && ['Pending', 'Scheduled'].includes(round.status) && (
-                                                            <div className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1">
-                                                                <button
-                                                                    onClick={() => {
-                                                                        if (editingRoundId === round._id) {
-                                                                            setEditingRoundId(null);
-                                                                        } else {
-                                                                            setEditingRoundId(round._id);
-                                                                            setEvaluatingRoundId(null);
-                                                                            const formattedDate = round.scheduledDate ? new Date(round.scheduledDate).toISOString().slice(0, 16) : '';
-                                                                            setEditingRoundForm({
-                                                                                levelName: round.levelName,
-                                                                                scheduledDate: formattedDate,
-                                                                                assignedTo: round.assignedTo?.[0]?._id || ''
-                                                                            });
-                                                                        }
-                                                                    }}
-                                                                    className={`transition-colors ${isEditingRound ? 'text-blue-500' : 'text-slate-400 hover:text-blue-500'}`}
-                                                                    title="Edit Round"
-                                                                >
-                                                                    <Edit2 size={16} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleDeleteRound(round._id)}
-                                                                    className="text-slate-400 hover:text-red-500 transition-colors"
-                                                                    title="Delete Round"
-                                                                >
-                                                                    <Trash2 size={16} />
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                {/* Round Details */}
-                                                <div className="px-5 py-4">
-                                                    <div className="flex items-start gap-2 mb-4">
-                                                        <User size={16} className="text-slate-400 mt-0.5" />
+                                                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                                                    {/* Round Header */}
+                                                    <div className={`px-5 py-4 border-b flex justify-between items-center ${round.status === 'Passed' ? 'bg-emerald-50/50 border-emerald-100' :
+                                                        round.status === 'Failed' ? 'bg-red-50/50 border-red-100' :
+                                                            'bg-slate-50/50 border-slate-100'
+                                                        }`}>
                                                         <div>
-                                                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Assigned Evaluator</p>
-                                                            {round.assignedTo?.length > 0 ? (
-                                                                <p className="text-sm font-medium text-slate-800">
-                                                                    {round.assignedTo.map(u =>
-                                                                        u.firstName ? `${u.firstName} ${u.lastName}` : (u.email || 'Assigned User')
-                                                                    ).join(', ')}
+                                                            <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                                                                {round.levelName}
+                                                                {getStatusIcon(round.status)}
+                                                            </h4>
+                                                            {round.scheduledDate && (
+                                                                <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                                                    <Calendar size={12} /> Scheduled: {format(new Date(round.scheduledDate), 'PPp')}
                                                                 </p>
-                                                            ) : (
-                                                                <p className="text-sm text-slate-400 italic">Unassigned</p>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(round.status)}`}>
+                                                                {round.status}
+                                                            </span>
+                                                            {canManageRounds && ['Pending', 'Scheduled'].includes(round.status) && (
+                                                                <div className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (editingRoundId === round._id) {
+                                                                                setEditingRoundId(null);
+                                                                            } else {
+                                                                                setEditingRoundId(round._id);
+                                                                                setEvaluatingRoundId(null);
+                                                                                const formattedDate = round.scheduledDate ? new Date(round.scheduledDate).toISOString().slice(0, 16) : '';
+                                                                                setEditingRoundForm({
+                                                                                    levelName: round.levelName,
+                                                                                    scheduledDate: formattedDate,
+                                                                                    assignedTo: round.assignedTo?.[0]?._id || ''
+                                                                                });
+                                                                            }
+                                                                        }}
+                                                                        className={`transition-colors ${isEditingRound ? 'text-blue-500' : 'text-slate-400 hover:text-blue-500'}`}
+                                                                        title="Edit Round"
+                                                                    >
+                                                                        <Edit2 size={16} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleDeleteRound(round._id)}
+                                                                        className="text-slate-400 hover:text-red-500 transition-colors"
+                                                                        title="Delete Round"
+                                                                    >
+                                                                        <Trash2 size={16} />
+                                                                    </button>
+                                                                </div>
                                                             )}
                                                         </div>
                                                     </div>
 
-                                                    {/* Evaluation Results Overlay */}
-                                                    {['Passed', 'Failed'].includes(round.status) && !isEvaluating && (
-                                                        <div className={`rounded-lg p-4 border ${round.status === 'Passed' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-red-50/60 border-red-100'}`}>
-                                                            <div className="flex items-start gap-2">
-                                                                <MessageSquare size={16} className="text-slate-400 mt-0.5" />
-                                                                <div className="flex-1">
-                                                                    <div className="flex items-center justify-between mb-1">
-                                                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Evaluator Feedback</p>
-                                                                        {round.status === 'Passed' && round.rating && (
-                                                                            <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold border border-emerald-200">
-                                                                                ⭐ {round.rating}/10
-                                                                            </span>
+                                                    {/* Round Details */}
+                                                    <div className="px-5 py-4">
+                                                        <div className="flex items-start gap-2 mb-4">
+                                                            <User size={16} className="text-slate-400 mt-0.5" />
+                                                            <div>
+                                                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Assigned Evaluator</p>
+                                                                {round.assignedTo?.length > 0 ? (
+                                                                    <p className="text-sm font-medium text-slate-800">
+                                                                        {round.assignedTo.map(u =>
+                                                                            u.firstName ? `${u.firstName} ${u.lastName}` : (u.email || 'Assigned User')
+                                                                        ).join(', ')}
+                                                                    </p>
+                                                                ) : (
+                                                                    <p className="text-sm text-slate-400 italic">Unassigned</p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Evaluation Results Overlay */}
+                                                        {['Passed', 'Failed'].includes(round.status) && !isEvaluating && (
+                                                            <div className={`rounded-lg p-4 border ${round.status === 'Passed' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-red-50/60 border-red-100'}`}>
+                                                                <div className="flex items-start gap-2">
+                                                                    <MessageSquare size={16} className="text-slate-400 mt-0.5" />
+                                                                    <div className="flex-1">
+                                                                        <div className="flex items-center justify-between mb-1">
+                                                                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Evaluator Feedback</p>
+                                                                            {round.status === 'Passed' && round.rating && (
+                                                                                <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold border border-emerald-200">
+                                                                                    ⭐ {round.rating}/10
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{round.feedback}</p>
+
+                                                                        {round.evaluatedBy && (
+                                                                            <div className="mt-3 pt-3 border-t border-slate-200 text-xs text-slate-500 flex justify-between items-center">
+                                                                                <span>Evaluated by <span className="font-medium text-slate-700">{round.evaluatedBy.firstName} {round.evaluatedBy.lastName}</span></span>
+                                                                                {round.evaluatedAt && <span>{format(new Date(round.evaluatedAt), 'PP')}</span>}
+                                                                            </div>
                                                                         )}
                                                                     </div>
-                                                                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{round.feedback}</p>
-
-                                                                    {round.evaluatedBy && (
-                                                                        <div className="mt-3 pt-3 border-t border-slate-200 text-xs text-slate-500 flex justify-between items-center">
-                                                                            <span>Evaluated by <span className="font-medium text-slate-700">{round.evaluatedBy.firstName} {round.evaluatedBy.lastName}</span></span>
-                                                                            {round.evaluatedAt && <span>{format(new Date(round.evaluatedAt), 'PP')}</span>}
-                                                                        </div>
-                                                                    )}
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    )}
+                                                        )}
 
-                                                    {/* CTA to Evaluate / Edit Feedback */}
-                                                    {(canEvaluate || canEditFeedback) && !isEvaluating && !isEditingRound && (
-                                                        <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
-                                                            {canEvaluate && (
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setEvaluatingRoundId(round._id);
-                                                                        setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
-                                                                    }}
-                                                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-                                                                >
-                                                                    Submit Evaluation
-                                                                </button>
-                                                            )}
-                                                            {canEditFeedback && (
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setEvaluatingRoundId(round._id);
-                                                                        setEvaluationForm({
-                                                                            status: round.status,
-                                                                            feedback: round.feedback || '',
-                                                                            rating: round.rating || ''
-                                                                        });
-                                                                    }}
-                                                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors"
-                                                                >
-                                                                    <Edit2 size={14} /> Edit Feedback
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {/* Edit Form */}
-                                                    {isEditingRound && (
-                                                        <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
-                                                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                                                                <h5 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
-                                                                    <Edit2 size={16} /> Edit Round Details
-                                                                </h5>
-                                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Round Level/Title *</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={editingRoundForm.levelName}
-                                                                            onChange={(e) => setEditingRoundForm({ ...editingRoundForm, levelName: e.target.value })}
-                                                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                                                        />
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Assign Interviewer</label>
-                                                                        <select
-                                                                            value={editingRoundForm.assignedTo}
-                                                                            onChange={(e) => setEditingRoundForm({ ...editingRoundForm, assignedTo: e.target.value })}
-                                                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                                                        >
-                                                                            <option value="">-- Unassigned --</option>
-                                                                            {users.map(u => (
-                                                                                <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
-                                                                            ))}
-                                                                        </select>
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Scheduled Date</label>
-                                                                        <input
-                                                                            type="datetime-local"
-                                                                            value={editingRoundForm.scheduledDate}
-                                                                            onChange={(e) => setEditingRoundForm({ ...editingRoundForm, scheduledDate: e.target.value })}
-                                                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex justify-end gap-2">
+                                                        {/* CTA to Evaluate / Edit Feedback */}
+                                                        {(canEvaluate || canEditFeedback) && !isEvaluating && !isEditingRound && (
+                                                            <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
+                                                                {canEvaluate && (
                                                                     <button
-                                                                        onClick={() => setEditingRoundId(null)}
-                                                                        className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                                                                        onClick={() => {
+                                                                            setEvaluatingRoundId(round._id);
+                                                                            setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
+                                                                        }}
+                                                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
                                                                     >
-                                                                        Cancel
+                                                                        Submit Evaluation
                                                                     </button>
+                                                                )}
+                                                                {canEditFeedback && (
                                                                     <button
-                                                                        onClick={() => handleEditRound(round._id)}
-                                                                        disabled={actionLoading}
-                                                                        className="px-5 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                                                                        onClick={() => {
+                                                                            setEvaluatingRoundId(round._id);
+                                                                            setEvaluationForm({
+                                                                                status: round.status,
+                                                                                feedback: round.feedback || '',
+                                                                                rating: round.rating || ''
+                                                                            });
+                                                                        }}
+                                                                        className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors"
                                                                     >
-                                                                        {actionLoading && <Loader size={14} className="animate-spin" />} Save Changes
+                                                                        <Edit2 size={14} /> Edit Feedback
                                                                     </button>
-                                                                </div>
+                                                                )}
                                                             </div>
-                                                        </div>
-                                                    )}
+                                                        )}
 
-                                                    {/* Evaluation Form */}
-                                                    {isEvaluating && (
-                                                        <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
-                                                            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                                                                <h5 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
-                                                                    <CheckCircle size={16} /> Complete Round Assessment
-                                                                </h5>
-                                                                <div className="space-y-4">
-                                                                    <div>
-                                                                        <label className="block text-sm font-medium text-slate-700 mb-2">Decision Result *</label>
-                                                                        <div className="flex gap-4">
-                                                                            <label className="flex items-center gap-2 cursor-pointer">
-                                                                                <input
-                                                                                    type="radio"
-                                                                                    name={`status-${round._id}`}
-                                                                                    value="Passed"
-                                                                                    checked={evaluationForm.status === 'Passed'}
-                                                                                    onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value })}
-                                                                                    className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500"
-                                                                                />
-                                                                                <span className="text-sm font-medium text-slate-800">Pass</span>
-                                                                            </label>
-                                                                            <label className="flex items-center gap-2 cursor-pointer">
-                                                                                <input
-                                                                                    type="radio"
-                                                                                    name={`status-${round._id}`}
-                                                                                    value="Failed"
-                                                                                    checked={evaluationForm.status === 'Failed'}
-                                                                                    onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value, rating: '' })}
-                                                                                    className="w-4 h-4 text-red-600 border-slate-300 focus:ring-red-500"
-                                                                                />
-                                                                                <span className="text-sm font-medium text-slate-800">Fail</span>
-                                                                            </label>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* Rating dropdown — shown only when Pass is selected */}
-                                                                    {evaluationForm.status === 'Passed' && (
+                                                        {/* Edit Form */}
+                                                        {isEditingRound && (
+                                                            <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
+                                                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                                                    <h5 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
+                                                                        <Edit2 size={16} /> Edit Round Details
+                                                                    </h5>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                                                         <div>
-                                                                            <label className="block text-sm font-medium text-slate-700 mb-1">
-                                                                                Performance Rating
-                                                                                <span className="ml-1 text-xs text-slate-400 font-normal">(Optional, 1–10)</span>
-                                                                            </label>
+                                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Round Level/Title *</label>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={editingRoundForm.levelName}
+                                                                                onChange={(e) => setEditingRoundForm({ ...editingRoundForm, levelName: e.target.value })}
+                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Assign Interviewer</label>
                                                                             <select
-                                                                                value={evaluationForm.rating}
-                                                                                onChange={(e) => setEvaluationForm({ ...evaluationForm, rating: e.target.value })}
-                                                                                className="w-40 px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-white"
+                                                                                value={editingRoundForm.assignedTo}
+                                                                                onChange={(e) => setEditingRoundForm({ ...editingRoundForm, assignedTo: e.target.value })}
+                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                                                             >
-                                                                                <option value="">-- Select Rating --</option>
-                                                                                {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(n => (
-                                                                                    <option key={n} value={n}>{n} / 10{n === 10 ? ' — Outstanding' : n >= 8 ? ' — Excellent' : n >= 6 ? ' — Good' : n >= 4 ? ' — Average' : ' — Poor'}</option>
+                                                                                <option value="">-- Unassigned --</option>
+                                                                                {users.map(u => (
+                                                                                    <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
                                                                                 ))}
                                                                             </select>
                                                                         </div>
-                                                                    )}
-
-                                                                    <div>
-                                                                        <label className="block text-sm font-medium text-slate-700 mb-1">Qualitative Feedback / Remarks *</label>
-                                                                        <textarea
-                                                                            rows={3}
-                                                                            value={evaluationForm.feedback}
-                                                                            onChange={(e) => setEvaluationForm({ ...evaluationForm, feedback: e.target.value })}
-                                                                            placeholder="Detail the candidate's performance, strengths, and weaknesses observed in this round..."
-                                                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none"
-                                                                        ></textarea>
+                                                                        <div>
+                                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Scheduled Date</label>
+                                                                            <input
+                                                                                type="datetime-local"
+                                                                                value={editingRoundForm.scheduledDate}
+                                                                                onChange={(e) => setEditingRoundForm({ ...editingRoundForm, scheduledDate: e.target.value })}
+                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                                            />
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="flex justify-end gap-2 pt-2">
+                                                                    <div className="flex justify-end gap-2">
                                                                         <button
-                                                                            onClick={() => {
-                                                                                setEvaluatingRoundId(null);
-                                                                                setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
-                                                                            }}
+                                                                            onClick={() => setEditingRoundId(null)}
                                                                             className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
                                                                         >
                                                                             Cancel
                                                                         </button>
                                                                         <button
-                                                                            onClick={() => submitEvaluation(round._id)}
+                                                                            onClick={() => handleEditRound(round._id)}
                                                                             disabled={actionLoading}
                                                                             className="px-5 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
                                                                         >
-                                                                            {actionLoading && <Loader size={14} className="animate-spin" />}
-                                                                            {['Passed', 'Failed'].includes(round.status) ? 'Update Feedback' : 'Submit Decision'}
+                                                                            {actionLoading && <Loader size={14} className="animate-spin" />} Save Changes
                                                                         </button>
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    )}
+                                                        )}
+
+                                                        {/* Evaluation Form */}
+                                                        {isEvaluating && (
+                                                            <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
+                                                                <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                                                                    <h5 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
+                                                                        <CheckCircle size={16} /> Complete Round Assessment
+                                                                    </h5>
+                                                                    <div className="space-y-4">
+                                                                        <div>
+                                                                            <label className="block text-sm font-medium text-slate-700 mb-2">Decision Result *</label>
+                                                                            <div className="flex gap-4">
+                                                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                                                    <input
+                                                                                        type="radio"
+                                                                                        name={`status-${round._id}`}
+                                                                                        value="Passed"
+                                                                                        checked={evaluationForm.status === 'Passed'}
+                                                                                        onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value })}
+                                                                                        className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500"
+                                                                                    />
+                                                                                    <span className="text-sm font-medium text-slate-800">Pass</span>
+                                                                                </label>
+                                                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                                                    <input
+                                                                                        type="radio"
+                                                                                        name={`status-${round._id}`}
+                                                                                        value="Failed"
+                                                                                        checked={evaluationForm.status === 'Failed'}
+                                                                                        onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value, rating: '' })}
+                                                                                        className="w-4 h-4 text-red-600 border-slate-300 focus:ring-red-500"
+                                                                                    />
+                                                                                    <span className="text-sm font-medium text-slate-800">Fail</span>
+                                                                                </label>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Rating dropdown — shown only when Pass is selected */}
+                                                                        {evaluationForm.status === 'Passed' && (
+                                                                            <div>
+                                                                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                                                                    Performance Rating
+                                                                                    <span className="ml-1 text-xs text-slate-400 font-normal">(Optional, 1–10)</span>
+                                                                                </label>
+                                                                                <select
+                                                                                    value={evaluationForm.rating}
+                                                                                    onChange={(e) => setEvaluationForm({ ...evaluationForm, rating: e.target.value })}
+                                                                                    className="w-40 px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-white"
+                                                                                >
+                                                                                    <option value="">-- Select Rating --</option>
+                                                                                    {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(n => (
+                                                                                        <option key={n} value={n}>{n} / 10{n === 10 ? ' — Outstanding' : n >= 8 ? ' — Excellent' : n >= 6 ? ' — Good' : n >= 4 ? ' — Average' : ' — Poor'}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                            </div>
+                                                                        )}
+
+                                                                        <div>
+                                                                            <label className="block text-sm font-medium text-slate-700 mb-1">Qualitative Feedback / Remarks *</label>
+                                                                            <textarea
+                                                                                rows={3}
+                                                                                value={evaluationForm.feedback}
+                                                                                onChange={(e) => setEvaluationForm({ ...evaluationForm, feedback: e.target.value })}
+                                                                                placeholder="Detail the candidate's performance, strengths, and weaknesses observed in this round..."
+                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none"
+                                                                            ></textarea>
+                                                                        </div>
+                                                                        <div className="flex justify-end gap-2 pt-2">
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setEvaluatingRoundId(null);
+                                                                                    setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
+                                                                                }}
+                                                                                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => submitEvaluation(round._id)}
+                                                                                disabled={actionLoading}
+                                                                                className="px-5 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                                                                            >
+                                                                                {actionLoading && <Loader size={14} className="animate-spin" />}
+                                                                                {['Passed', 'Failed'].includes(round.status) ? 'Update Feedback' : 'Submit Decision'}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    );
+                                        );
                                     })
                                 })()
                             )}

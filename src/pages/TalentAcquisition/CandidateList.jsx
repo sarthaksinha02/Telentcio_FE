@@ -99,7 +99,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
             // Interview filtering logic
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
-                const rounds = candidate.interviewRounds || [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
                 const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
@@ -113,7 +113,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
 
             let matchRating = true;
             if (filterRating !== 'All') {
-                const rounds = candidate.interviewRounds || [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                 if (ratedRounds.length === 0) {
                     matchRating = false;
@@ -146,11 +146,12 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
             dynamicStatusCount: baseCandidates.filter(c => {
                 if (c.status !== targetStatus) return false;
                 if (c.decision && ['Rejected', 'On Hold'].includes(c.decision)) return false;
-                if (c.interviewRounds && c.interviewRounds.length > 0) return false;
+                const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
+                if (rounds.length > 0) return false;
                 return true;
             }).length,
             inInterviews: baseCandidates.filter(c => {
-                const rounds = c.interviewRounds || [];
+                const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
                 if (rounds.length === 0) return false;
                 if (c.decision && ['Rejected', 'On Hold'].includes(c.decision)) return false;
                 const hasFailed = rounds.some(r => r.status === 'Failed');
@@ -177,7 +178,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
-                const rounds = candidate.interviewRounds || [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
                 const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
@@ -189,7 +190,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
             }
             let matchRating = true;
             if (filterRating !== 'All') {
-                const rounds = candidate.interviewRounds || [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                 if (ratedRounds.length === 0) { matchRating = false; } else {
                     const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
@@ -207,7 +208,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
             totalShortlisted: base.length,
             totalScreened: base.filter(c => c.phase2Decision === 'Shortlisted').length,
             interviewScheduled: base.filter(c => {
-                const rounds = c.interviewRounds || [];
+                const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
                 return rounds.length > 0 && !rounds.some(r => r.status === 'Failed');
             }).length,
             hired: base.filter(c => c.phase2Decision === 'Hired').length
@@ -325,7 +326,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
             const dataToExport = activeList;
 
             dataToExport.forEach((candidate, index) => {
-                const rounds = candidate.interviewRounds || [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
                 const interviewDetails = rounds.map((r, i) => `R${i + 1} (${r.levelName}): ${r.status}${r.rating ? ` - ${r.rating}/10` : ''}`).join('\n');
                 const interviewRemark = rounds.map((r, i) => r.feedback ? `R${i + 1}: ${r.feedback}` : null).filter(Boolean).join('\n');
 
@@ -493,8 +494,8 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     {/* Phase Toggle */}
                     <div className="flex rounded-lg border border-slate-300 overflow-hidden">
                         <button
-                            onClick={() => { 
-                                setActivePhase(1); 
+                            onClick={() => {
+                                setActivePhase(1);
                                 setPage(1);
                                 setFilterStatus('Interested');
                                 setFilterDecision('All');
@@ -510,8 +511,8 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                             Phase 1
                         </button>
                         <button
-                            onClick={() => { 
-                                setActivePhase(2); 
+                            onClick={() => {
+                                setActivePhase(2);
                                 setPage(1);
                                 setFilterStatus('All');
                                 setFilterDecision('All');
@@ -549,7 +550,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
             {/* Pipeline Summary Boxes */}
             {activePhase === 1 ? (
                 <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-                    <div 
+                    <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -558,7 +559,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div 
+                    <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('None'); setFilterInterviewStatus('In_Process'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -567,7 +568,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div 
+                    <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -576,7 +577,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div 
+                    <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('Hired'); setFilterInterviewStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -585,7 +586,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div 
+                    <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -594,7 +595,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div 
+                    <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('On Hold'); setFilterInterviewStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -605,7 +606,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 </div>
             ) : (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div 
+                    <div
                         onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -614,7 +615,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div 
+                    <div
                         onClick={() => { setFilterDecision('Shortlisted'); setFilterStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -623,7 +624,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div 
+                    <div
                         onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -632,7 +633,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div 
+                    <div
                         onClick={() => { setFilterDecision('Hired'); setFilterInterviewStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -840,9 +841,10 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                                                 </td>
                                                 <td className="px-4 py-4 align-top">
                                                     {(() => {
-                                                        const summary = getInterviewStatusSummary(candidate.interviewRounds);
+                                                        const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
 
-                                                        const rounds = candidate.interviewRounds || [];
+                                                        const summary = getInterviewStatusSummary(rounds);
+
                                                         const hasFailed = rounds.some(r => r.status === 'Failed');
                                                         const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                                                         let avgRating = null;
@@ -861,7 +863,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                                                                 </span>
                                                                 <div className="flex flex-col gap-1">
                                                                     <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
-                                                                        {candidate.interviewRounds?.length || 0} rounds total
+                                                                        {rounds.length} rounds total
                                                                     </span>
                                                                     <div className="flex flex-wrap gap-1 mt-0.5">
                                                                         {ratedRounds.length > 0 && ratedRounds.slice(0, 2).map((r, idx) => (
