@@ -98,7 +98,7 @@ const ClientTADashboard = ({ clientName }) => {
                             value={selectedReqId}
                             onChange={(e) => setSelectedReqId(e.target.value)}
                             disabled={loading}
-                            className="bg-transparent text-sm font-semibold text-slate-800 focus:outline-none cursor-pointer max-w-[250px] truncate"
+                            className="bg-transparent text-sm font-semibold text-slate-800 focus:outline-none cursor-pointer max-w-62.5 truncate"
                         >
                             <option value="All">All Positions</option>
                             {data.requisitionsList.map(req => (
