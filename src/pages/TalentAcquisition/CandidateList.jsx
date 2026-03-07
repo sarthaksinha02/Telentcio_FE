@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
+import * as ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
-const CandidateList = ({ hiringRequestId }) => {
+const CandidateList = ({ hiringRequestId, positionName }) => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
@@ -27,6 +29,7 @@ const CandidateList = ({ hiringRequestId }) => {
 
     // Menu State
     const [activeMenu, setActiveMenu] = useState(null);
+    const [activePhase, setActivePhase] = useState(1);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -112,11 +115,11 @@ const CandidateList = ({ hiringRequestId }) => {
                 const rounds = candidate.interviewRounds || [];
                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                 if (ratedRounds.length === 0) {
-                     matchRating = false;                 
+                    matchRating = false;
                 } else {
-                     const minRequired = Number(filterRating);
-                     const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                     matchRating = avgRating >= minRequired;
+                    const minRequired = Number(filterRating);
+                    const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                    matchRating = avgRating >= minRequired;
                 }
             }
 
@@ -126,33 +129,96 @@ const CandidateList = ({ hiringRequestId }) => {
         });
     }, [candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
 
-    const itemsPerPage = 15;
-    const totalPages = Math.ceil(filteredCandidates.length / itemsPerPage) || 1;
-    const paginatedCandidates = filteredCandidates.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
 
     // Compute Metrics for Summary Boxes
     const metrics = useMemo(() => {
+        // Dynamically compute 'interested' (pre-screened) based on the current filterStatus
+        const targetStatus = filterStatus === 'All' ? 'Interested' : filterStatus;
+
+        // Apply PulledBy filter to the base dataset for metrics if a user is selected
+        const baseCandidates = filterPulledBy === 'All'
+            ? candidates
+            : candidates.filter(c => c.profilePulledBy === filterPulledBy);
+
         return {
-            total: candidates.length,
-            interested: candidates.filter(c => {
-                if (c.status !== 'Interested') return false;
-                if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+            total: baseCandidates.length,
+            dynamicStatusLabel: targetStatus,
+            dynamicStatusCount: baseCandidates.filter(c => {
+                if (c.status !== targetStatus) return false;
+                if (c.decision && ['Hired', 'Shortlisted', 'Rejected', 'On Hold'].includes(c.decision)) return false;
                 if (c.interviewRounds && c.interviewRounds.length > 0) return false;
                 return true;
             }).length,
-            inInterviews: candidates.filter(c => {
+            inInterviews: baseCandidates.filter(c => {
                 const rounds = c.interviewRounds || [];
                 if (rounds.length === 0) return false;
-                if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+                if (c.decision && ['Hired', 'Shortlisted', 'Rejected', 'On Hold'].includes(c.decision)) return false;
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 if (hasFailed) return false;
                 return true;
             }).length,
-            hired: candidates.filter(c => c.decision === 'Hired').length,
-            rejected: candidates.filter(c => c.decision === 'Rejected').length,
-            onHold: candidates.filter(c => c.decision === 'On Hold').length,
+            hired: baseCandidates.filter(c => c.decision === 'Shortlisted' || c.decision === 'Hired').length,
+            rejected: baseCandidates.filter(c => c.decision === 'Rejected').length,
+            onHold: baseCandidates.filter(c => c.decision === 'On Hold').length,
         };
+    }, [candidates, filterStatus, filterPulledBy]);
+
+    // --- Phase 2: shortlisted candidates + their metrics ---
+    const phase2Candidates = useMemo(() => {
+        return candidates.filter(c => c.decision === 'Shortlisted' || c.decision === 'Hired');
     }, [candidates]);
+
+    const phase2Filtered = useMemo(() => {
+        return phase2Candidates.filter(candidate => {
+            const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
+            const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
+            const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
+            const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
+            let matchInterviewStatus = true;
+            if (filterInterviewStatus !== 'All') {
+                const rounds = candidate.interviewRounds || [];
+                const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
+                const hasFailed = rounds.some(r => r.status === 'Failed');
+                const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
+                if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
+                if (filterInterviewStatus === 'Pending') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
+                if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
+                if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
+            }
+            let matchRating = true;
+            if (filterRating !== 'All') {
+                const rounds = candidate.interviewRounds || [];
+                const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                if (ratedRounds.length === 0) { matchRating = false; } else {
+                    const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                    matchRating = avgRating >= Number(filterRating);
+                }
+            }
+            const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
+            return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy;
+        });
+    }, [phase2Candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
+
+    const phase2Metrics = useMemo(() => {
+        const base = filterPulledBy === 'All' ? phase2Candidates : phase2Candidates.filter(c => c.profilePulledBy === filterPulledBy);
+        return {
+            total: base.length,
+            inInterviews: base.filter(c => {
+                const rounds = c.interviewRounds || [];
+                return rounds.length > 0 && !rounds.some(r => r.status === 'Failed');
+            }).length,
+            shortlistedTotal: base.filter(c => c.decision === 'Shortlisted').length,
+            hired: base.filter(c => c.decision === 'Hired').length,
+            rejected: base.filter(c => c.decision === 'Rejected').length,
+            onHold: base.filter(c => c.decision === 'On Hold').length,
+        };
+    }, [phase2Candidates, filterPulledBy]);
+
+    const itemsPerPage = 15;
+    const activeList = activePhase === 1 ? filteredCandidates : phase2Filtered;
+    const totalPages = Math.ceil(activeList.length / itemsPerPage) || 1;
+    const paginatedCandidates = activeList.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
     const fetchCandidates = useCallback(async () => {
         try {
@@ -227,6 +293,87 @@ const CandidateList = ({ hiringRequestId }) => {
         navigate(`/ta/hiring-request/${hiringRequestId}/add-candidate`);
     }, [navigate, hiringRequestId]);
 
+    const handleExportExcel = async () => {
+        try {
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('Candidates');
+
+            sheet.columns = [
+                { header: 'Serial No.', key: 'slNo', width: 10 },
+                { header: 'Submission Date', key: 'submissionDate', width: 15 },
+                { header: 'Source', key: 'source', width: 15 },
+                { header: 'Profile Pulled By', key: 'pulledBy', width: 20 },
+                { header: 'Name of Candidate', key: 'name', width: 25 },
+                { header: 'TAT To Join', key: 'tatToJoin', width: 15 },
+                { header: 'Notice Period', key: 'noticePeriod', width: 15 },
+                { header: 'Status', key: 'status', width: 15 },
+                { header: 'Remark', key: 'remark', width: 25 },
+                { header: 'CTC', key: 'ctc', width: 15 },
+                { header: 'Expected CTC', key: 'expectedCtc', width: 15 },
+                { header: 'Total Experience', key: 'experience', width: 15 },
+                { header: 'Qualification', key: 'qualification', width: 20 },
+                { header: 'Company', key: 'company', width: 20 },
+                { header: 'Location', key: 'location', width: 15 },
+                { header: 'Preferred Location', key: 'prefLocation', width: 20 },
+                { header: 'Email', key: 'email', width: 25 },
+                { header: 'Mobile No.', key: 'mobile', width: 15 },
+                { header: 'Offer Company', key: 'offerCompany', width: 20 },
+                { header: 'Date Of Joining', key: 'dateOfJoining', width: 15 },
+                { header: 'Interview Details', key: 'interviewDetails', width: 30 },
+                { header: 'Interview Remark', key: 'interviewRemark', width: 30 }
+            ];
+
+            // Style headers
+            sheet.getRow(1).font = { bold: true };
+            sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+            const dataToExport = activeList;
+
+            dataToExport.forEach((candidate, index) => {
+                const rounds = candidate.interviewRounds || [];
+                const interviewDetails = rounds.map((r, i) => `R${i + 1} (${r.levelName}): ${r.status}${r.rating ? ` - ${r.rating}/10` : ''}`).join('\n');
+                const interviewRemark = rounds.map((r, i) => r.feedback ? `R${i + 1}: ${r.feedback}` : null).filter(Boolean).join('\n');
+
+                sheet.addRow({
+                    slNo: index + 1,
+                    submissionDate: candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'dd-MMM-yyyy') : '-',
+                    source: candidate.source || '-',
+                    pulledBy: candidate.profilePulledBy || '-',
+                    name: candidate.candidateName || '-',
+                    tatToJoin: candidate.tatToJoin ? `${candidate.tatToJoin} days` : '-',
+                    noticePeriod: candidate.noticePeriod ? `${candidate.noticePeriod} days` : '-',
+                    status: candidate.status || '-',
+                    remark: candidate.remark || '-',
+                    ctc: candidate.currentCTC ? `${candidate.currentCTC}` : '-',
+                    expectedCtc: candidate.expectedCTC ? `${candidate.expectedCTC}` : '-',
+                    experience: candidate.totalExperience ? `${candidate.totalExperience} yrs` : '-',
+                    qualification: candidate.qualification || '-',
+                    company: candidate.currentCompany || '-',
+                    location: candidate.currentLocation || '-',
+                    prefLocation: candidate.preferredLocation || '-',
+                    email: candidate.email || '-',
+                    mobile: candidate.mobile || '-',
+                    offerCompany: candidate.inHandOffer ? (candidate.offerCompany || 'Yes') : 'No',
+                    dateOfJoining: candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : '-',
+                    interviewDetails: interviewDetails || '-',
+                    interviewRemark: interviewRemark || '-'
+                });
+            });
+
+            // Enable text wrapping for interview columns
+            sheet.getColumn('interviewDetails').alignment = { wrapText: true, vertical: 'top' };
+            sheet.getColumn('interviewRemark').alignment = { wrapText: true, vertical: 'top' };
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            saveAs(blob, `${positionName || 'Candidates'} Data sheet.xlsx`);
+            toast.success('Excel downloaded successfully');
+        } catch (error) {
+            console.error('Error exporting excel:', error);
+            toast.error('Failed to export excel');
+        }
+    };
+
     const getStatusColor = (status) => {
         switch (status) {
             case 'Interested':
@@ -259,6 +406,7 @@ const CandidateList = ({ hiringRequestId }) => {
 
     const getDecisionColor = (decision) => {
         switch (decision) {
+            case 'Shortlisted': return 'text-emerald-600 font-bold';
             case 'Hired': return 'text-emerald-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
             case 'On Hold': return 'text-amber-600 font-bold';
@@ -333,55 +481,127 @@ const CandidateList = ({ hiringRequestId }) => {
                 <div>
                     <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-widest leading-loose">Pipeline</h3>
                 </div>
-                {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                <div className="flex gap-2">
+                    {/* Phase Toggle */}
+                    <div className="flex rounded-lg border border-slate-300 overflow-hidden">
+                        <button
+                            onClick={() => { setActivePhase(1); setPage(1); }}
+                            className={`px-4 py-2 text-sm font-semibold transition-colors ${activePhase === 1
+                                ? 'bg-slate-800 text-white cursor-default'
+                                : 'bg-white text-slate-600 hover:bg-slate-100'
+                                }`}
+                        >
+                            Phase 1
+                        </button>
+                        <button
+                            onClick={() => { setActivePhase(2); setPage(1); }}
+                            className={`px-4 py-2 text-sm font-semibold border-l border-slate-300 transition-colors ${activePhase === 2
+                                ? 'bg-slate-800 text-white cursor-default'
+                                : 'bg-white text-slate-600 hover:bg-slate-100'
+                                }`}
+                        >
+                            Phase 2
+                        </button>
+                    </div>
                     <button
-                        onClick={handleAddNew}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                        onClick={handleExportExcel}
+                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
                     >
-                        <Plus size={18} />
-                        Add Candidate
+                        <Download size={18} />
+                        Export Excel
                     </button>
-                )}
-            </div>
-
-            {/* Pipeline Summary Boxes - Redesigned */}
-            <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.total}</span>
-                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Sourced</span>
-                    <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                </div>
-
-                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.interested}</span>
-                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Pre-Screened</span>
-                    <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                </div>
-
-                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.inInterviews}</span>
-                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">In Interviews</span>
-                    <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                </div>
-
-                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.hired}</span>
-                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Hired</span>
-                    <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                </div>
-
-                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.rejected}</span>
-                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
-                    <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                </div>
-
-                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.onHold}</span>
-                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">On Hold</span>
-                    <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                        <button
+                            onClick={handleAddNew}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                        >
+                            <Plus size={18} />
+                            Add Candidate
+                        </button>
+                    )}
                 </div>
             </div>
+
+            {/* Pipeline Summary Boxes */}
+            {activePhase === 1 ? (
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.total}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Sourced</span>
+                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.dynamicStatusCount}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">
+                            {metrics.dynamicStatusLabel === 'Interested' ? 'Pre-Screened' : metrics.dynamicStatusLabel}
+                        </span>
+                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.inInterviews}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">In Interviews</span>
+                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.hired}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Shortlisted</span>
+                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.rejected}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
+                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.onHold}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">On Hold</span>
+                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+                </div>
+            ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.total}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Sourced</span>
+                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.inInterviews}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">In Interviews</span>
+                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.shortlistedTotal}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Shortlisted</span>
+                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.hired}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Hired</span>
+                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.rejected}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
+                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.onHold}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">On Hold</span>
+                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+                </div>
+            )}
 
             {/* Filters */}
             <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-end">
@@ -422,7 +642,7 @@ const CandidateList = ({ hiringRequestId }) => {
                         className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                     >
                         <option value="All">All Decisions</option>
-                        <option value="Hired">Hired</option>
+                        <option value="Shortlisted">Shortlisted</option>
                         <option value="Rejected">Rejected</option>
                         <option value="On Hold">On Hold</option>
                         <option value="None">None</option>
@@ -520,228 +740,239 @@ const CandidateList = ({ hiringRequestId }) => {
                     <div className="w-full overflow-x-auto">
                         <div className="min-w-[1100px]">
                             <table className="w-full">
-                            <thead className="bg-slate-50 border-b border-slate-200">
-                                <tr key="header-row">
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Preference</th>
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>
-                                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled By</th>
-                                    <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200">
-                                {paginatedCandidates.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="8" className="px-4 py-8 text-center text-slate-500">
-                                            No candidates match the selected filters.
-                                        </td>
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr key="header-row">
+                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
+                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>
+                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>
+                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Preference</th>
+                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>
+                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>
+                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled By</th>
+                                        <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                                     </tr>
-                                ) : (
-                                    paginatedCandidates.map((candidate) => (
-                                        <tr key={candidate._id} className="hover:bg-slate-50 bg-white transition-colors border-b border-slate-100 last:border-0">
-                                            <td className="px-4 py-4 align-top">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="text-[13px] font-bold text-slate-700 leading-tight">
-                                                        {candidate.candidateName.split(' ')[0]}<br />
-                                                        {candidate.candidateName.split(' ').slice(1).join(' ')}
-                                                    </span>
-                                                </div>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200">
+                                    {paginatedCandidates.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="8" className="px-4 py-8 text-center text-slate-500">
+                                                No candidates match the selected filters.
                                             </td>
-                                            <td className="px-4 py-4 align-top">
-                                                <div className="flex flex-col gap-1 text-[12px]">
-                                                    <span className="text-slate-500 font-medium">{candidate.email}</span>
-                                                    <span className="text-slate-500 font-medium">{candidate.mobile}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4 align-top">
-                                                <span className="text-[13px] font-semibold text-slate-700">{candidate.totalExperience} yrs</span>
-                                            </td>
-                                            <td className="px-4 py-4 align-top">
-                                                <div className="flex flex-col gap-0.5 text-[13px]">
-                                                    {candidate.preference ? (
-                                                        <>
-                                                            <span className="text-slate-700 font-medium">
-                                                                {candidate.preference.split(' ')[0]}
-                                                            </span>
-                                                            <span className="text-slate-700 font-medium">
-                                                                {candidate.preference.split(' ').slice(1).join(' ')}
-                                                            </span>
-                                                        </>
-                                                    ) : (
-                                                        <span className="text-slate-400 italic">-</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4 align-top">
-                                                {(() => {
-                                                    const summary = getInterviewStatusSummary(candidate.interviewRounds);
-                                                    
-                                                    const rounds = candidate.interviewRounds || [];
-                                                    const hasFailed = rounds.some(r => r.status === 'Failed');
-                                                    const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                                                    let avgRating = null;
-                                                    
-                                                    if (!hasFailed && ratedRounds.length > 0) {
-                                                        const total = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0);
-                                                        // Format to 1 decimal place, or no decimals if whole number
-                                                        let calculatedAvg = total / ratedRounds.length;
-                                                        avgRating = Number.isInteger(calculatedAvg) ? calculatedAvg.toString() : calculatedAvg.toFixed(1);
-                                                    }
-
-                                                    return (
-                                                        <div className="flex flex-col gap-1.5 items-start">
-                                                            <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold tracking-wide ${summary.color}`}>
-                                                                {summary.label}
-                                                            </span>
-                                                            <div className="flex flex-col gap-1">
-                                                                <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
-                                                                    {candidate.interviewRounds?.length || 0} rounds total
-                                                                </span>
-                                                                {avgRating && (
-                                                                    <span className="text-[11px] font-bold text-amber-600 flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 self-start">
-                                                                        ⭐ {avgRating}/10
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                })()}
-                                            </td>
-                                            <td className="px-4 py-4 align-top">
-                                                <div className="relative inline-block w-full max-w-[110px]">
-                                                    <select
-                                                        value={candidate.decision || 'None'}
-                                                        onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
-                                                        className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
-                                                    >
-                                                        <option value="None" className="text-slate-600">None</option>
-                                                        <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
-                                                        <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
-                                                        <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
-                                                    </select>
-                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
-                                                        <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                                            <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                                                        </svg>
+                                        </tr>
+                                    ) : (
+                                        paginatedCandidates.map((candidate) => (
+                                            <tr key={candidate._id} className="hover:bg-slate-50 bg-white transition-colors border-b border-slate-100 last:border-0">
+                                                <td className="px-4 py-4 align-top">
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-[13px] font-bold text-slate-700 leading-tight">
+                                                            {candidate.candidateName.split(' ')[0]}<br />
+                                                            {candidate.candidateName.split(' ').slice(1).join(' ')}
+                                                        </span>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4 align-top">
-                                                <div className="flex flex-col gap-0.5 text-[12px] text-slate-500 font-medium whitespace-nowrap">
-                                                    <span 
-                                                        className="font-bold text-blue-600 mb-0.5 max-w-[120px] truncate cursor-pointer hover:underline" 
-                                                        title={candidate.profilePulledBy || '-'}
-                                                        onClick={() => candidate.profilePulledBy && navigate(`/ta/user-dashboard/${encodeURIComponent(candidate.profilePulledBy)}`)}
-                                                    >
-                                                        {candidate.profilePulledBy || '-'}
-                                                    </span>
-                                                    <span>{format(new Date(candidate.uploadedAt), 'MMM dd, yyyy')}</span>
-                                                    <span className="text-[10px] mt-0.5">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4 align-top text-center">
-                                                <button
-                                                    onClick={(e) => toggleMenu(e, candidate._id)}
-                                                    className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors relative"
-                                                >
-                                                    <MoreVertical size={18} />
-                                                </button>
+                                                </td>
+                                                <td className="px-4 py-4 align-top">
+                                                    <div className="flex flex-col gap-1 text-[12px]">
+                                                        <span className="text-slate-500 font-medium">{candidate.email}</span>
+                                                        <span className="text-slate-500 font-medium">{candidate.mobile}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-4 align-top">
+                                                    <span className="text-[13px] font-semibold text-slate-700">{candidate.totalExperience} yrs</span>
+                                                </td>
+                                                <td className="px-4 py-4 align-top">
+                                                    <div className="flex flex-col gap-0.5 text-[13px]">
+                                                        {candidate.preference ? (
+                                                            <>
+                                                                <span className="text-slate-700 font-medium">
+                                                                    {candidate.preference.split(' ')[0]}
+                                                                </span>
+                                                                <span className="text-slate-700 font-medium">
+                                                                    {candidate.preference.split(' ').slice(1).join(' ')}
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-slate-400 italic">-</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-4 align-top">
+                                                    {(() => {
+                                                        const summary = getInterviewStatusSummary(candidate.interviewRounds);
 
-                                                {/* Dropdown Menu */}
-                                                {activeMenu === candidate._id && typeof document !== 'undefined' && createPortal(
-                                                    <div
-                                                        className="fixed z-[9999] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
-                                                        style={menuPosition}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        <button
-                                                            onClick={() => {
-                                                                handleView(candidate);
-                                                                setActiveMenu(null);
-                                                            }}
-                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                                        const rounds = candidate.interviewRounds || [];
+                                                        const hasFailed = rounds.some(r => r.status === 'Failed');
+                                                        const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                                                        let avgRating = null;
+
+                                                        if (!hasFailed && ratedRounds.length > 0) {
+                                                            const total = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0);
+                                                            // Format to 1 decimal place, or no decimals if whole number
+                                                            let calculatedAvg = total / ratedRounds.length;
+                                                            avgRating = Number.isInteger(calculatedAvg) ? calculatedAvg.toString() : calculatedAvg.toFixed(1);
+                                                        }
+
+                                                        return (
+                                                            <div className="flex flex-col gap-1.5 items-start">
+                                                                <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold tracking-wide ${summary.color}`}>
+                                                                    {summary.label}
+                                                                </span>
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
+                                                                        {candidate.interviewRounds?.length || 0} rounds total
+                                                                    </span>
+                                                                    <div className="flex flex-wrap gap-1 mt-0.5">
+                                                                        {ratedRounds.length > 0 && ratedRounds.slice(0, 2).map((r, idx) => (
+                                                                            <span key={r._id || idx} title={r.roundName} className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                                                                R{idx + 1}: {r.rating}/10
+                                                                            </span>
+                                                                        ))}
+                                                                        {ratedRounds.length > 2 && (
+                                                                            <span
+                                                                                className="text-[10px] font-bold text-amber-600 flex items-center justify-center bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors"
+                                                                                onClick={(e) => { e.stopPropagation(); handleView(candidate); }}
+                                                                                title="View all rounds"
+                                                                            >
+                                                                                ...
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })()}
+                                                </td>
+                                                <td className="px-4 py-4 align-top">
+                                                    <div className="relative inline-block w-full max-w-[110px]">
+                                                        <select
+                                                            value={candidate.decision || 'None'}
+                                                            onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
+                                                            className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
                                                         >
-                                                            <Eye size={16} className="text-slate-500" />
-                                                            View Details
-                                                        </button>
-
-                                                        <a
-                                                            href={candidate.resumeUrl}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                                                            onClick={() => setActiveMenu(null)}
+                                                            <option value="None" className="text-slate-600">None</option>
+                                                            <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
+                                                            <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                            <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
+                                                        </select>
+                                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                                                            <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                                                <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                                                            </svg>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-4 align-top">
+                                                    <div className="flex flex-col gap-0.5 text-[12px] text-slate-500 font-medium whitespace-nowrap">
+                                                        <span
+                                                            className="font-bold text-blue-600 mb-0.5 max-w-[120px] truncate cursor-pointer hover:underline"
+                                                            title={candidate.profilePulledBy || '-'}
+                                                            onClick={() => candidate.profilePulledBy && navigate(`/ta/user-dashboard/${encodeURIComponent(candidate.profilePulledBy)}`)}
                                                         >
-                                                            <FileText size={16} className="text-slate-500" />
-                                                            View Resume
-                                                        </a>
+                                                            {candidate.profilePulledBy || '-'}
+                                                        </span>
+                                                        <span>{format(new Date(candidate.uploadedAt), 'MMM dd, yyyy')}</span>
+                                                        <span className="text-[10px] mt-0.5">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-4 align-top text-center">
+                                                    <button
+                                                        onClick={(e) => toggleMenu(e, candidate._id)}
+                                                        className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors relative"
+                                                    >
+                                                        <MoreVertical size={18} />
+                                                    </button>
 
-                                                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                    {/* Dropdown Menu */}
+                                                    {activeMenu === candidate._id && typeof document !== 'undefined' && createPortal(
+                                                        <div
+                                                            className="fixed z-[9999] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
+                                                            style={menuPosition}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
                                                             <button
                                                                 onClick={() => {
-                                                                    handleEdit(candidate);
+                                                                    handleView(candidate);
                                                                     setActiveMenu(null);
                                                                 }}
                                                                 className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
                                                             >
-                                                                <Edit size={16} className="text-slate-500" />
-                                                                Edit Candidate
+                                                                <Eye size={16} className="text-slate-500" />
+                                                                View Details
                                                             </button>
-                                                        )}
 
-                                                        <div className="border-t border-slate-100 my-1"></div>
-
-                                                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.delete')) && (
-                                                            <button
-                                                                onClick={() => {
-                                                                    handleDelete(candidate._id);
-                                                                    setActiveMenu(null);
-                                                                }}
-                                                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
+                                                            <a
+                                                                href={candidate.resumeUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                                                onClick={() => setActiveMenu(null)}
                                                             >
-                                                                <Trash2 size={16} />
-                                                                Delete Candidate
-                                                            </button>
-                                                        )}
-                                                    </div>,
-                                                    document.body
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                                                                <FileText size={16} className="text-slate-500" />
+                                                                View Resume
+                                                            </a>
 
-                {/* Pagination Controls */}
-                {!loading && filteredCandidates.length > 0 && (
-                    <div className="flex justify-end items-center mt-6 gap-4 pr-4 pb-4">
-                        <button
-                            onClick={() => setPage(p => Math.max(1, p - 1))}
-                            disabled={page === 1}
-                            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                        >
-                            Previous
-                        </button>
-                        <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
-                            Page {page} of {totalPages}
-                        </span>
-                        <button
-                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                            disabled={page === totalPages}
-                            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                        >
-                            Next
-                        </button>
+                                                            {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        handleEdit(candidate);
+                                                                        setActiveMenu(null);
+                                                                    }}
+                                                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                                                >
+                                                                    <Edit size={16} className="text-slate-500" />
+                                                                    Edit Candidate
+                                                                </button>
+                                                            )}
+
+                                                            <div className="border-t border-slate-100 my-1"></div>
+
+                                                            {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.delete')) && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        handleDelete(candidate._id);
+                                                                        setActiveMenu(null);
+                                                                    }}
+                                                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                    Delete Candidate
+                                                                </button>
+                                                            )}
+                                                        </div>,
+                                                        document.body
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                )}
+
+                    {/* Pagination Controls */}
+                    {!loading && filteredCandidates.length > 0 && (
+                        <div className="flex justify-end items-center mt-6 gap-4 pr-4 pb-4">
+                            <button
+                                onClick={() => setPage(p => Math.max(1, p - 1))}
+                                disabled={page === 1}
+                                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                            >
+                                Previous
+                            </button>
+                            <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
+                                Page {page} of {totalPages}
+                            </span>
+                            <button
+                                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                disabled={page === totalPages}
+                                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

@@ -1,15 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, Eye, EyeOff, Edit, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
+import * as ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { Download } from 'lucide-react';
 
 const Discussions = () => {
     const navigate = useNavigate();
     const [discussions, setDiscussions] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // Export Dates State
+    const [exportStartDate, setExportStartDate] = useState('');
+    const [exportEndDate, setExportEndDate] = useState('');
+    const [isExporting, setIsExporting] = useState(false);
+    const [showExportMenu, setShowExportMenu] = useState(false);
+    const exportMenuRef = useRef(null);
 
     // New states for inline creation
     const [isCreating, setIsCreating] = useState(false);
@@ -52,11 +62,132 @@ const Discussions = () => {
         fetchDiscussions(currentPage);
     }, [currentPage]);
 
+    // Close export menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
+                setShowExportMenu(false);
+            }
+        };
+        if (showExportMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.addEventListener('mousedown', handleClickOutside);
+        };
+    }, [showExportMenu]);
+
+    const handleExportExcel = async () => {
+        try {
+            setIsExporting(true);
+
+            // If no dates selected, use current month
+            let start = exportStartDate;
+            let end = exportEndDate;
+
+            if (!start || !end) {
+                const now = new Date();
+                start = format(startOfMonth(now), 'yyyy-MM-dd');
+                end = format(endOfMonth(now), 'yyyy-MM-dd');
+                // Optionally update state to show user what was used
+                setExportStartDate(start);
+                setExportEndDate(end);
+            }
+
+            // Fetch all discussions for the date range (using a large limit to get all)
+            // Realistically, backend might need a specific export endpoint, but we'll use existing with large limit
+            const res = await api.get(`/discussions?page=1&limit=1000`);
+            let exportData = res.data.discussions || [];
+
+            // Filter data by date range locally if backend doesn't support date filters on this endpoint yet
+            exportData = exportData.filter(d => {
+                if (!d.createdAt) return false;
+                const createdDate = new Date(d.createdAt);
+                const startDate = new Date(start);
+                startDate.setHours(0, 0, 0, 0);
+                const endDate = new Date(end);
+                endDate.setHours(23, 59, 59, 999);
+                return createdDate >= startDate && createdDate <= endDate;
+            });
+
+            if (exportData.length === 0) {
+                toast.error('No discussions found in this date range');
+                setIsExporting(false);
+                return;
+            }
+
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('Discussions');
+
+            sheet.columns = [
+                { header: 'S.No', key: 'slNo', width: 10 },
+                { header: 'Description', key: 'description', width: 50 },
+                { header: 'Created Date', key: 'createdDate', width: 20 },
+                { header: 'Due Date', key: 'dueDate', width: 20 },
+                { header: 'Status', key: 'status', width: 20 },
+            ];
+
+            sheet.getRow(1).font = { bold: true };
+            sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+            exportData.forEach((item, index) => {
+                const row = sheet.addRow({
+                    slNo: index + 1,
+                    description: item.discussion || '-',
+                    createdDate: item.createdAt ? format(new Date(item.createdAt), 'dd MMM yyyy') : '-',
+                    dueDate: item.dueDate ? format(new Date(item.dueDate), 'dd MMM yyyy') : 'No due date',
+                    status: item.status || '-',
+                });
+
+                const statusCell = row.getCell('status');
+                const statusStr = (item.status || '').toLowerCase();
+
+                // Set styles matching the UI badge colors
+                if (statusStr === 'inprogress') {
+                    statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; // Amber-100
+                    statusCell.font = { color: { argb: 'FFB45309' } }; // Amber-700
+                } else if (statusStr === 'mark as complete') {
+                    statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; // Green-100
+                    statusCell.font = { color: { argb: 'FF15803D' } }; // Green-700
+                } else if (statusStr === 'on-hold') {
+                    statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Slate-100
+                    statusCell.font = { color: { argb: 'FF334155' } }; // Slate-700
+                } else {
+                    statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } }; // Blue-100
+                    statusCell.font = { color: { argb: 'FF1D4ED8' } }; // Blue-700
+                }
+            });
+
+            sheet.getColumn('description').alignment = { wrapText: true, vertical: 'top' };
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            saveAs(blob, `Discussions_Export_${start}_to_${end}.xlsx`);
+            toast.success('Excel downloaded successfully');
+            setShowExportMenu(false);
+
+        } catch (error) {
+            console.error('Error exporting excel:', error);
+            toast.error('Failed to export excel');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     const handleStatusChange = async (id, newStatus) => {
         try {
             await api.put(`/discussions/${id}`, { status: newStatus });
             toast.success('Status updated');
-            setDiscussions(prev => prev.map(d => d._id === id ? { ...d, status: newStatus } : d));
+            setDiscussions(prev => {
+                const updated = prev.map(d => d._id === id ? { ...d, status: newStatus } : d);
+                return updated.sort((a, b) => {
+                    const aCompleted = a.status === 'mark as complete';
+                    const bCompleted = b.status === 'mark as complete';
+                    if (aCompleted && !bCompleted) return 1;
+                    if (!aCompleted && bCompleted) return -1;
+                    return 0;
+                });
+            });
         } catch (error) {
             console.error('Error updating status:', error);
             toast.error('Failed to update status');
@@ -114,8 +245,17 @@ const Discussions = () => {
             await api.put(`/discussions/${id}`, payload);
             toast.success('Discussion updated');
 
-            // Update local state
-            setDiscussions(prev => prev.map(d => d._id === id ? { ...d, ...payload } : d));
+            // Update local state and push completed to bottom
+            setDiscussions(prev => {
+                const updated = prev.map(d => d._id === id ? { ...d, ...payload } : d);
+                return updated.sort((a, b) => {
+                    const aCompleted = a.status === 'mark as complete';
+                    const bCompleted = b.status === 'mark as complete';
+                    if (aCompleted && !bCompleted) return 1;
+                    if (!aCompleted && bCompleted) return -1;
+                    return 0;
+                });
+            });
 
             setEditingId(null);
             setEditData(null);
@@ -196,13 +336,76 @@ const Discussions = () => {
                         </h1>
                         <p className="text-sm text-slate-500 mt-1">Create and manage team discussions, tasks, and topics.</p>
                     </div>
-                    <button
-                        onClick={() => setIsCreating(true)}
-                        className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm w-full sm:w-auto"
-                    >
-                        <Plus size={18} />
-                        <span>Create Discussion</span>
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-3 sm:mt-0 items-center">
+                        <div className="relative" ref={exportMenuRef}>
+                            <button
+                                onClick={() => setShowExportMenu(!showExportMenu)}
+                                className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm w-full sm:w-auto"
+                            >
+                                <Download size={18} />
+                                <span>Export Data</span>
+                            </button>
+
+                            {/* Export Dropdown Menu */}
+                            {showExportMenu && (
+                                <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                                        <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                                            <Download size={16} className="text-emerald-600" />
+                                            Export to Excel
+                                        </h3>
+                                        <button
+                                            onClick={() => setShowExportMenu(false)}
+                                            className="text-slate-400 hover:text-slate-600 transition-colors"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Start Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={exportStartDate}
+                                                    onChange={(e) => setExportStartDate(e.target.value)}
+                                                    className="w-full text-xs py-1.5 px-2 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 text-slate-700"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">End Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={exportEndDate}
+                                                    onChange={(e) => setExportEndDate(e.target.value)}
+                                                    className="w-full text-xs py-1.5 px-2 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 text-slate-700"
+                                                />
+                                            </div>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 leading-tight">
+                                            Leave dates empty to export all discussions from the current month.
+                                        </p>
+                                        <button
+                                            onClick={handleExportExcel}
+                                            disabled={isExporting}
+                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors mt-2"
+                                        >
+                                            {isExporting ? <Loader size={14} className="animate-spin" /> : <Download size={14} />}
+                                            Download Excel
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            onClick={() => setIsCreating(true)}
+                            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm w-full sm:w-auto"
+                        >
+                            <Plus size={18} />
+                            <span>Create Discussion</span>
+                        </button>
+                    </div>
                 </div>
 
                 {/* List View */}
@@ -475,6 +678,7 @@ const Discussions = () => {
                     )}
                 </div>
             </div>
+
         </div>
     );
 };

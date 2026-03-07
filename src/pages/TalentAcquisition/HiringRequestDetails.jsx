@@ -523,7 +523,7 @@ const HiringRequestDetails = () => {
                 )}
 
                 {activeTab === 'applications' && (
-                    <CandidateList hiringRequestId={id} />
+                    <CandidateList hiringRequestId={id} positionName={request?.positionName} />
                 )}
 
 

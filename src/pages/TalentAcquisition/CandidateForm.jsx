@@ -33,6 +33,9 @@ const CandidateForm = () => {
         profilePulledBy: '',
         currentCTC: '',
         expectedCTC: '',
+        inHandOffer: false,
+        offerCompany: '',
+        offerCTC: '',
         preference: 'Neutral / Average',
         totalExperience: '',
         qualification: '',
@@ -49,6 +52,9 @@ const CandidateForm = () => {
 
     const [sourceOptions, setSourceOptions] = useState([]);
     const [users, setUsers] = useState([]);
+
+    // Duplicate detection state: { email: null | 'checking' | string, mobile: null | 'checking' | string }
+    const [dupCheck, setDupCheck] = useState({ email: null, mobile: null });
 
     useEffect(() => {
         fetchSourceOptions();
@@ -140,6 +146,9 @@ const CandidateForm = () => {
                     profilePulledBy: candidate.profilePulledBy || '',
                     currentCTC: candidate.currentCTC || '',
                     expectedCTC: candidate.expectedCTC || '',
+                    inHandOffer: candidate.inHandOffer || false,
+                    offerCompany: candidate.offerCompany || '',
+                    offerCTC: candidate.offerCTC || '',
                     preference: candidate.preference || 'Neutral / Average',
                     totalExperience: candidate.totalExperience || '',
                     qualification: candidate.qualification || '',
@@ -226,6 +235,37 @@ const CandidateForm = () => {
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+        // Clear duplicate warning when user edits the field
+        if (name === 'email' || name === 'mobile') {
+            setDupCheck(prev => ({ ...prev, [name]: null }));
+        }
+    };
+
+    // Called onBlur for email/mobile — only in add mode, skipped in edit mode
+    const checkDuplicate = async (field, value) => {
+        if (isEditMode || !value || !hiringRequestId) return;
+        setDupCheck(prev => ({ ...prev, [field]: 'checking' }));
+        try {
+            const res = await api.get(`/ta/candidates/${hiringRequestId}`);
+            const allCandidates = res.data.candidates || [];
+            const trimmed = value.trim().toLowerCase();
+            const duplicate = allCandidates.find(c =>
+                field === 'email'
+                    ? c.email?.toLowerCase() === trimmed
+                    : c.mobile?.trim() === value.trim()
+            );
+            if (duplicate) {
+                setDupCheck(prev => ({
+                    ...prev,
+                    [field]: `"${duplicate.candidateName}" is already added with this ${field === 'email' ? 'email' : 'mobile number'}.`
+                }));
+            } else {
+                setDupCheck(prev => ({ ...prev, [field]: null }));
+            }
+        } catch {
+            // silently ignore — backend will catch it on submit anyway
+            setDupCheck(prev => ({ ...prev, [field]: null }));
+        }
     };
 
     const handleSourceChange = (e) => {
@@ -268,6 +308,16 @@ const CandidateForm = () => {
 
         if (!formData.candidateName || !formData.email || !formData.mobile || !formData.totalExperience) {
             toast.error('Please fill all required fields');
+            return;
+        }
+
+        // Block submission if a duplicate was detected
+        if (dupCheck.email && dupCheck.email !== 'checking') {
+            toast.error('Please resolve the duplicate email before submitting.');
+            return;
+        }
+        if (dupCheck.mobile && dupCheck.mobile !== 'checking') {
+            toast.error('Please resolve the duplicate mobile number before submitting.');
             return;
         }
 
@@ -479,10 +529,22 @@ const CandidateForm = () => {
                                     name="email"
                                     value={formData.email}
                                     onChange={handleChange}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    onBlur={(e) => checkDuplicate('email', e.target.value)}
+                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all ${dupCheck.email && dupCheck.email !== 'checking'
+                                        ? 'border-red-400 bg-red-50'
+                                        : 'border-slate-300'
+                                        }`}
                                     required
                                     disabled={isViewMode}
                                 />
+                                {dupCheck.email === 'checking' && (
+                                    <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">⏳ Checking for duplicates...</p>
+                                )}
+                                {dupCheck.email && dupCheck.email !== 'checking' && (
+                                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-medium">
+                                        ⚠️ {dupCheck.email}
+                                    </p>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-sm font-semibold text-slate-700 mb-1">Mobile Number *</label>
@@ -491,10 +553,22 @@ const CandidateForm = () => {
                                     name="mobile"
                                     value={formData.mobile}
                                     onChange={handleChange}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                    onBlur={(e) => checkDuplicate('mobile', e.target.value)}
+                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all ${dupCheck.mobile && dupCheck.mobile !== 'checking'
+                                        ? 'border-red-400 bg-red-50'
+                                        : 'border-slate-300'
+                                        }`}
                                     required
                                     disabled={isViewMode}
                                 />
+                                {dupCheck.mobile === 'checking' && (
+                                    <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">⏳ Checking for duplicates...</p>
+                                )}
+                                {dupCheck.mobile && dupCheck.mobile !== 'checking' && (
+                                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-medium">
+                                        ⚠️ {dupCheck.mobile}
+                                    </p>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-sm font-semibold text-slate-700 mb-1">Source *</label>
@@ -631,6 +705,59 @@ const CandidateForm = () => {
                                     <option value="Very Poor">Very Poor</option>
                                 </select>
                             </div>
+                        </div>
+
+                        {/* In-Hand Offer */}
+                        <div className="border border-slate-200 rounded-xl p-5 bg-slate-50">
+                            <div className="flex items-center gap-3 mb-1">
+                                <button
+                                    type="button"
+                                    onClick={() => !isViewMode && setFormData(prev => ({ ...prev, inHandOffer: !prev.inHandOffer, offerCompany: !prev.inHandOffer ? prev.offerCompany : '', offerCTC: !prev.inHandOffer ? prev.offerCTC : '' }))}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.inHandOffer ? 'bg-amber-500' : 'bg-slate-300'
+                                        } ${isViewMode ? 'cursor-default' : 'cursor-pointer'}`}
+                                    disabled={isViewMode}
+                                >
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${formData.inHandOffer ? 'translate-x-6' : 'translate-x-1'
+                                        }`} />
+                                </button>
+                                <label className="text-sm font-semibold text-slate-700">
+                                    Candidate has an In-Hand Offer
+                                </label>
+                                {formData.inHandOffer && (
+                                    <span className="text-[11px] font-bold uppercase tracking-wide text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Active</span>
+                                )}
+                            </div>
+                            <p className="text-xs text-slate-400 mb-4 ml-14">Toggle on if the candidate already has an offer from another company.</p>
+
+                            {formData.inHandOffer && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-600 mb-1">Company That Offered *</label>
+                                        <input
+                                            type="text"
+                                            name="offerCompany"
+                                            value={formData.offerCompany}
+                                            onChange={handleChange}
+                                            placeholder="e.g. Infosys"
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all text-sm"
+                                            disabled={isViewMode}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-600 mb-1">Their Offered CTC</label>
+                                        <input
+                                            type="number"
+                                            name="offerCTC"
+                                            value={formData.offerCTC}
+                                            onChange={handleChange}
+                                            min="0"
+                                            placeholder="e.g. 800000"
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all text-sm"
+                                            disabled={isViewMode}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Professional Details */}

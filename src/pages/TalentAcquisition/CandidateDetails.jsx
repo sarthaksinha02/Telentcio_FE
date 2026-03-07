@@ -255,7 +255,7 @@ const CandidateDetails = () => {
                         </div>
                     </div>
                 </div>
-                <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="w-full px-3 sm:px-4 lg:px-6 mt-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
                     <div className="lg:col-span-1 space-y-6">
                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                             <Skeleton className="h-6 w-40 mb-6" />
@@ -293,7 +293,7 @@ const CandidateDetails = () => {
     return (
         <div className="min-h-screen bg-slate-50 pb-12">
             <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="w-full px-3 sm:px-4 lg:px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div className="flex items-center gap-4">
                         <button onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications`)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
                             <ArrowLeft size={20} />
@@ -324,9 +324,9 @@ const CandidateDetails = () => {
                 </div>
             </div>
 
-            <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="w-full px-3 sm:px-4 lg:px-6 mt-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
                 {/* Left Column: Basic Details Summary */}
-                <div className="lg:col-span-1 space-y-6">
+                <div className="lg:col-span-2 space-y-6">
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                         <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Profile Summary</h3>
 
@@ -375,6 +375,28 @@ const CandidateDetails = () => {
                                     <p className="text-slate-700 font-medium">{candidate.expectedCTC ? `₹${candidate.expectedCTC?.toLocaleString()}` : 'N/A'}</p>
                                 </div>
                             </div>
+
+                            {/* In-Hand Offer */}
+                            {candidate.inHandOffer ? (
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                    <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">In-Hand Offer</p>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Company</p>
+                                            <p className="text-slate-800 font-semibold text-sm">{candidate.offerCompany || 'N/A'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Their CTC</p>
+                                            <p className="text-slate-800 font-semibold text-sm">{candidate.offerCTC ? `₹${candidate.offerCTC.toLocaleString()}` : 'N/A'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">In-Hand Offer</p>
+                                    <span className="text-xs text-slate-400 font-medium">No</span>
+                                </div>
+                            )}
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -439,7 +461,7 @@ const CandidateDetails = () => {
                 </div>
 
                 {/* Right Column: Interview Workflow Timeline */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className="lg:col-span-3 space-y-6">
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-slate-800">Interview Timeline</h3>
