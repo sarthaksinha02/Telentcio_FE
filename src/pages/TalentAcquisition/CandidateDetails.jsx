@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -11,6 +11,9 @@ const CandidateDetails = () => {
     const { user } = useAuth();
     const { hiringRequestId, candidateId } = useParams();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const phaseParam = searchParams.get('phase');
+    const currentPhase = phaseParam ? parseInt(phaseParam, 10) : 2;
 
     const [candidate, setCandidate] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -635,8 +638,10 @@ const CandidateDetails = () => {
                                     No interview rounds have been scheduled yet.
                                 </div>
                             ) : (
-                                candidate.interviewRounds.map((round, index) => {
-                                    const isAssigned = round.assignedTo?.some(u => u._id === user?._id || u._id?.toString() === user?._id?.toString());
+                                (() => {
+                                    const displayedRounds = currentPhase === 1 ? candidate.interviewRounds.slice(0, 2) : candidate.interviewRounds;
+                                    return displayedRounds.map((round, index) => {
+                                        const isAssigned = round.assignedTo?.some(u => u._id === user?._id || u._id?.toString() === user?._id?.toString());
                                     const canEvaluate = (isAssigned || hasSuperApprove) && ['Pending', 'Scheduled'].includes(round.status);
                                     const canEditFeedback = (isAssigned || hasSuperApprove) && ['Passed', 'Failed'].includes(round.status);
                                     const isEvaluating = evaluatingRoundId === round._id;
@@ -645,7 +650,7 @@ const CandidateDetails = () => {
                                     return (
                                         <div key={round._id} className="relative pl-8">
                                             {/* Timeline Line */}
-                                            {index !== candidate.interviewRounds.length - 1 && (
+                                            {index !== displayedRounds.length - 1 && (
                                                 <div className="absolute top-8 bottom-[-2rem] left-3.5 w-0.5 bg-slate-200"></div>
                                             )}
 
@@ -939,7 +944,8 @@ const CandidateDetails = () => {
                                             </div>
                                         </div>
                                     );
-                                })
+                                    })
+                                })()
                             )}
                         </div>
                     </div>

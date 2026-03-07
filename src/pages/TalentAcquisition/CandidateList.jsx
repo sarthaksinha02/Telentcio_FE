@@ -88,7 +88,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
         }
     };
 
-    // Computed filtered candidates
+    // Computed filtered candidates (Phase 1 — Shortlisted/Hired also appear here AND in Phase 2)
     const filteredCandidates = useMemo(() => {
         return candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
@@ -108,6 +108,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 if (filterInterviewStatus === 'Pending') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
                 if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
                 if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
+                if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed;
             }
 
             let matchRating = true;
@@ -131,12 +132,10 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
 
 
 
-    // Compute Metrics for Summary Boxes
+    // Compute Metrics for Summary Boxes (Phase 1 — shows all candidates including Shortlisted/Hired)
     const metrics = useMemo(() => {
-        // Dynamically compute 'interested' (pre-screened) based on the current filterStatus
         const targetStatus = filterStatus === 'All' ? 'Interested' : filterStatus;
 
-        // Apply PulledBy filter to the base dataset for metrics if a user is selected
         const baseCandidates = filterPulledBy === 'All'
             ? candidates
             : candidates.filter(c => c.profilePulledBy === filterPulledBy);
@@ -146,19 +145,20 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
             dynamicStatusLabel: targetStatus,
             dynamicStatusCount: baseCandidates.filter(c => {
                 if (c.status !== targetStatus) return false;
-                if (c.decision && ['Hired', 'Shortlisted', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+                if (c.decision && ['Rejected', 'On Hold'].includes(c.decision)) return false;
                 if (c.interviewRounds && c.interviewRounds.length > 0) return false;
                 return true;
             }).length,
             inInterviews: baseCandidates.filter(c => {
                 const rounds = c.interviewRounds || [];
                 if (rounds.length === 0) return false;
-                if (c.decision && ['Hired', 'Shortlisted', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+                if (c.decision && ['Rejected', 'On Hold'].includes(c.decision)) return false;
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 if (hasFailed) return false;
                 return true;
             }).length,
-            hired: baseCandidates.filter(c => c.decision === 'Shortlisted' || c.decision === 'Hired').length,
+            shortlisted: candidates.filter(c => c.decision === 'Shortlisted').length,
+            hired: candidates.filter(c => c.decision === 'Hired').length,
             rejected: baseCandidates.filter(c => c.decision === 'Rejected').length,
             onHold: baseCandidates.filter(c => c.decision === 'On Hold').length,
         };
@@ -173,7 +173,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
         return phase2Candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
-            const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
+            const matchDecision = filterDecision === 'All' || (candidate.phase2Decision || 'None') === filterDecision;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
@@ -185,6 +185,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 if (filterInterviewStatus === 'Pending') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
                 if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
                 if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
+                if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed;
             }
             let matchRating = true;
             if (filterRating !== 'All') {
@@ -203,15 +204,13 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
     const phase2Metrics = useMemo(() => {
         const base = filterPulledBy === 'All' ? phase2Candidates : phase2Candidates.filter(c => c.profilePulledBy === filterPulledBy);
         return {
-            total: base.length,
-            inInterviews: base.filter(c => {
+            totalShortlisted: base.length,
+            totalScreened: base.filter(c => c.phase2Decision === 'Shortlisted').length,
+            interviewScheduled: base.filter(c => {
                 const rounds = c.interviewRounds || [];
                 return rounds.length > 0 && !rounds.some(r => r.status === 'Failed');
             }).length,
-            shortlistedTotal: base.filter(c => c.decision === 'Shortlisted').length,
-            hired: base.filter(c => c.decision === 'Hired').length,
-            rejected: base.filter(c => c.decision === 'Rejected').length,
-            onHold: base.filter(c => c.decision === 'On Hold').length,
+            hired: base.filter(c => c.phase2Decision === 'Hired').length
         };
     }, [phase2Candidates, filterPulledBy]);
 
@@ -235,10 +234,6 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
 
     const hEdit = useCallback((candidate) => {
         navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/edit`);
-    }, [navigate, hiringRequestId]);
-
-    const hView = useCallback((candidate) => {
-        navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view`);
     }, [navigate, hiringRequestId]);
 
     const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
@@ -273,8 +268,8 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
     }, [navigate, hiringRequestId]);
 
     const handleView = useCallback((candidate) => {
-        navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view`);
-    }, [navigate, hiringRequestId]);
+        navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view?phase=${activePhase}`);
+    }, [navigate, hiringRequestId, activePhase]);
 
     const handleDelete = useCallback(async (candidateId) => {
         if (!window.confirm('Are you sure you want to delete this candidate?')) return;
@@ -402,6 +397,19 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
         }
     };
 
+    const handlePhase2DecisionChange = async (candidateId, newDecision) => {
+        try {
+            await api.patch(`/ta/candidates/${candidateId}/phase2-decision`, { phase2Decision: newDecision });
+            toast.success('Phase 2 Decision updated');
+            setCandidates(prev => prev.map(c =>
+                c._id === candidateId ? { ...c, phase2Decision: newDecision } : c
+            ));
+        } catch (error) {
+            console.error('Error updating Phase 2 decision:', error);
+            toast.error('Failed to update Phase 2 decision');
+        }
+    };
+
 
 
     const getDecisionColor = (decision) => {
@@ -485,7 +493,15 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     {/* Phase Toggle */}
                     <div className="flex rounded-lg border border-slate-300 overflow-hidden">
                         <button
-                            onClick={() => { setActivePhase(1); setPage(1); }}
+                            onClick={() => { 
+                                setActivePhase(1); 
+                                setPage(1);
+                                setFilterStatus('Interested');
+                                setFilterDecision('All');
+                                setFilterInterviewStatus('All');
+                                setFilterPreference('All');
+                                setFilterRating('All');
+                            }}
                             className={`px-4 py-2 text-sm font-semibold transition-colors ${activePhase === 1
                                 ? 'bg-slate-800 text-white cursor-default'
                                 : 'bg-white text-slate-600 hover:bg-slate-100'
@@ -494,7 +510,15 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                             Phase 1
                         </button>
                         <button
-                            onClick={() => { setActivePhase(2); setPage(1); }}
+                            onClick={() => { 
+                                setActivePhase(2); 
+                                setPage(1);
+                                setFilterStatus('All');
+                                setFilterDecision('All');
+                                setFilterInterviewStatus('All');
+                                setFilterPreference('All');
+                                setFilterRating('All');
+                            }}
                             className={`px-4 py-2 text-sm font-semibold border-l border-slate-300 transition-colors ${activePhase === 2
                                 ? 'bg-slate-800 text-white cursor-default'
                                 : 'bg-white text-slate-600 hover:bg-slate-100'
@@ -525,81 +549,98 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
             {/* Pipeline Summary Boxes */}
             {activePhase === 1 ? (
                 <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <div 
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
                         <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.total}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Sourced</span>
                         <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.dynamicStatusCount}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">
-                            {metrics.dynamicStatusLabel === 'Interested' ? 'Pre-Screened' : metrics.dynamicStatusLabel}
-                        </span>
-                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                    </div>
-
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <div 
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('None'); setFilterInterviewStatus('In_Process'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
                         <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.inInterviews}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">In Interviews</span>
                         <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.hired}</span>
+                    <div 
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.shortlisted}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Shortlisted</span>
+                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div 
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('Hired'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.hired}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Hired</span>
                         <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <div 
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
                         <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.rejected}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
                         <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <div 
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('On Hold'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
                         <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.onHold}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">On Hold</span>
                         <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.total}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Sourced</span>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div 
+                        onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.totalShortlisted}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Profile Sent</span>
                         <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.inInterviews}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">In Interviews</span>
-                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                    </div>
-
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.shortlistedTotal}</span>
+                    <div 
+                        onClick={() => { setFilterDecision('Shortlisted'); setFilterStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.totalScreened}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Shortlisted</span>
-                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
+                    <div 
+                        onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.interviewScheduled}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Interview Scheduled</span>
+                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div 
+                        onClick={() => { setFilterDecision('Hired'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
                         <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.hired}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Hired</span>
                         <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.rejected}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
-                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                    </div>
-
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.onHold}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">On Hold</span>
-                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                    </div>
                 </div>
             )}
 
@@ -643,6 +684,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     >
                         <option value="All">All Decisions</option>
                         <option value="Shortlisted">Shortlisted</option>
+                        <option value="Hired">Hired</option>
                         <option value="Rejected">Rejected</option>
                         <option value="On Hold">On Hold</option>
                         <option value="None">None</option>
@@ -657,7 +699,8 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     >
                         <option value="All">All Interviews</option>
                         <option value="None">None Scheduled</option>
-                        <option value="Pending">In Progress</option>
+                        <option value="In_Process">In Interviews (Active)</option>
+                        <option value="Pending">In Progress / Pending</option>
                         <option value="Passed">All Passed</option>
                         <option value="Failed">Failed</option>
                     </select>
@@ -843,18 +886,35 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                                                 </td>
                                                 <td className="px-4 py-4 align-top">
                                                     <div className="relative inline-block w-full max-w-[110px]">
-                                                        <select
-                                                            value={candidate.decision || 'None'}
-                                                            onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
-                                                            className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
-                                                        >
-                                                            <option value="None" className="text-slate-600">None</option>
-                                                            <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
-                                                            <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
-                                                            <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
-                                                        </select>
+                                                        {activePhase === 1 ? (
+                                                            <select
+                                                                value={candidate.decision || 'None'}
+                                                                onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
+                                                                className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                            >
+                                                                <option value="None" className="text-slate-600">None</option>
+                                                                <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
+                                                                <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
+                                                                <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                                <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
+                                                            </select>
+                                                        ) : (
+                                                            <select
+                                                                value={candidate.phase2Decision || 'None'}
+                                                                onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
+                                                                className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                            >
+                                                                <option value="None" className="text-slate-600">None</option>
+                                                                <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
+                                                                <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
+                                                                <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                                <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
+                                                            </select>
+                                                        )}
                                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
                                                             <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                                                 <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />

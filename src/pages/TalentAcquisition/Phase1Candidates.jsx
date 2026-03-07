@@ -64,7 +64,7 @@ const Phase1Candidates = () => {
                 } else if (['Pending', 'Scheduled', 'Failed', 'Passed'].includes(filterInterviewStatus)) {
                     matchInterviewStatus = candidate.interviewRounds?.some(round => round.status === filterInterviewStatus);
                 } else if (filterInterviewStatus === 'In_Process') {
-                    matchInterviewStatus = candidate.interviewRounds?.length > 0 && !candidate.interviewRounds.some(round => ['Failed', 'Passed', 'Skipped'].includes(round.status));
+                    matchInterviewStatus = candidate.interviewRounds?.length > 0 && !candidate.interviewRounds.some(round => round.status === 'Failed');
                 }
             }
 
@@ -115,18 +115,16 @@ const Phase1Candidates = () => {
             : candidates.filter(c => c.profilePulledBy === filterPulledBy);
 
         return {
-            total: filterPulledBy === 'All' ? totalCandidates : baseCandidates.length, // If filtered, use local array length instead of total backend count
-            dynamicStatusLabel: targetStatus,
-            dynamicStatusCount: baseCandidates.filter(c => c.status === targetStatus).length,
-            inInterviews: baseCandidates.filter(c => {
+            totalShortlisted: filterPulledBy === 'All' ? totalCandidates : baseCandidates.length, // If filtered, use local array length instead of total backend count
+            totalScreened: baseCandidates.filter(c => c.status === 'Interested').length,
+            interviewScheduled: baseCandidates.filter(c => {
                 const rounds = c.interviewRounds || [];
                 if (rounds.length === 0) return false;
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 if (hasFailed) return false;
                 return true;
             }).length,
-            rejected: baseCandidates.filter(c => c.decision === 'Rejected').length, // Should be 0 on this page if backend filters correctly
-            onHold: baseCandidates.filter(c => c.decision === 'On Hold').length, // Should be 0 on this page if backend filters correctly
+            hired: baseCandidates.filter(c => c.decision === 'Hired').length,
         };
     }, [candidates, totalCandidates, filterStatus, filterPulledBy]);
 
@@ -164,7 +162,7 @@ const Phase1Candidates = () => {
     }, [navigate, hiringRequestId]);
 
     const handleView = useCallback((candidate) => {
-        navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view`);
+        navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view?phase=1`);
     }, [navigate, hiringRequestId]);
 
     const handleDelete = useCallback(async (candidateId) => {
@@ -238,8 +236,8 @@ const Phase1Candidates = () => {
                     <Skeleton className="h-10 w-36" />
                 </div>
                 {/* Skeleton for Summary Boxes */}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-                    {[...Array(6)].map((_, i) => (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    {[...Array(4)].map((_, i) => (
                         <Skeleton key={i} className="h-24 w-full rounded-none" />
                     ))}
                 </div>
@@ -315,43 +313,41 @@ const Phase1Candidates = () => {
             <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
                 {/* Pipeline Summary Boxes - Redesigned */}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.total}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Sourced</span>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div 
+                        onClick={() => { setFilterDecision('All'); setFilterStatus('All'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.totalShortlisted}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Shortlisted</span>
                         <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.dynamicStatusCount}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">
-                            {metrics.dynamicStatusLabel === 'Interested' ? 'Pre-Screened' : metrics.dynamicStatusLabel}
-                        </span>
-                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    <div 
+                        onClick={() => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.totalScreened}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Screened</span>
+                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.inInterviews}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">In Interviews</span>
-                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    <div 
+                        onClick={() => { setFilterInterviewStatus('In_Process'); setFilterDecision('All'); setFilterStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.interviewScheduled}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Interview Scheduled</span>
+                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{totalCandidates}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Shortlisted Total</span>
+                    <div 
+                        onClick={() => { setFilterDecision('Hired'); setFilterStatus('All'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.hired}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Hired</span>
                         <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                    </div>
-
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.rejected}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
-                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                    </div>
-
-                    <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors">
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.onHold}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">On Hold</span>
-                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
                 </div>
 
@@ -395,7 +391,8 @@ const Phase1Candidates = () => {
                         >
                             <option value="All">All Interviews</option>
                             <option value="None">None Scheduled</option>
-                            <option value="Pending">In Progress</option>
+                            <option value="In_Process">In Interviews (Active)</option>
+                            <option value="Pending">In Progress / Pending</option>
                             <option value="Passed">All Passed</option>
                             <option value="Failed">Failed</option>
                         </select>
@@ -573,6 +570,7 @@ const Phase1Candidates = () => {
                                                             >
                                                                 <option value="None" className="text-slate-600">None</option>
                                                                 <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
+                                                                <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
                                                                 <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
                                                                 <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
                                                             </select>
