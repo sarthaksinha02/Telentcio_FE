@@ -311,7 +311,7 @@ const Phase1Candidates = () => {
             <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
                 {/* Pipeline Summary Boxes - Redesigned */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                     <div 
                         onClick={() => { setFilterDecision('All'); setFilterStatus('All'); setFilterInterviewStatus('All'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"

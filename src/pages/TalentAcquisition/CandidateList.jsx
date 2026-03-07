@@ -647,7 +647,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
 
             {/* Pipeline Summary Boxes */}
             {activePhase === 1 ? (
-                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                     <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
@@ -694,7 +694,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     </div>
                 </div>
             ) : activePhase === 2 ? (
-                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                     <div
                         onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('All'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
