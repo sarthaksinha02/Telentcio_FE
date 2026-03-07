@@ -650,94 +650,94 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
                     <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.total}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.total}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Sourced</span>
-                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('None'); setFilterInterviewStatus('In_Process'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.inInterviews}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.inInterviews}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">In Interviews</span>
-                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.shortlisted}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.shortlisted}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Shortlisted</span>
-                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.rejected}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.rejected}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
-                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('On Hold'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.onHold}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.onHold}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">On Hold</span>
-                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
                 </div>
             ) : activePhase === 2 ? (
                 <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
                     <div
                         onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.totalShortlisted}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.totalShortlisted}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Profile Sent</span>
-                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterDecision('Shortlisted_Selected'); setFilterStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.totalScreened}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.totalScreened}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Shortlisted</span>
-                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterDecision('None'); setFilterInterviewStatus('In_Process'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.interviewScheduled}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.interviewScheduled}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Interview Scheduled</span>
-                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.selected}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.selected}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Selected</span>
-                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.rejected}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.rejected}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
-                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                 </div>
@@ -745,47 +745,47 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                     <div
                         onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase3Metrics.total}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase3Metrics.total}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Candidates</span>
-                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterDecision('Offer Sent'); setFilterStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase3Metrics.offerSent}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase3Metrics.offerSent}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Offer Sent</span>
-                        <FileText className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <FileText className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterDecision('Offer Accepted'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase3Metrics.offerAccepted}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase3Metrics.offerAccepted}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Offer Accepted</span>
-                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterDecision('Joined'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase3Metrics.joined}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase3Metrics.joined}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Joined</span>
-                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div
                         onClick={() => { setFilterDecision('No Show_Offer Declined'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase3Metrics.noShow}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase3Metrics.noShow}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">No Show / Declined</span>
-                        <XCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <XCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
                 </div>
             )}

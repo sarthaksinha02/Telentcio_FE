@@ -80,7 +80,7 @@ const ClientTADashboard = ({ clientName }) => {
     // Prepare Bar Chart Data for requested phases
     const barData = [
         { name: 'Sourced', value: data.totalSourced || 0, fill: '#3b82f6' },
-        { name: 'Shortlisted in 2nd Phase', value: data.pipeline['Phase 2 Shortlisted / Interviews'] || 0, fill: '#8b5cf6' },
+        { name: 'Shortlisted in 2nd Phase', value: data.pipeline['Phase 2 Shortlisted'] || 0, fill: '#8b5cf6' },
         { name: 'Joined', value: data.pipeline['Joined'] || 0, fill: '#10b981' }
     ];
 
@@ -184,7 +184,7 @@ const ClientTADashboard = ({ clientName }) => {
                         </div>
                         <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                              <p className="text-sm text-slate-600">
-                                Current bottleneck check: There are <span className="font-bold text-slate-800">{data.pipeline['Phase 2 Shortlisted / Interviews'] || 0}</span> candidates actively interviewing/shortlisted across {selectedReqId === 'All' ? 'all requisitions' : 'this requisition'}.
+                                Current bottleneck check: There are <span className="font-bold text-slate-800">{data.pipeline['Phase 2 In Interviews'] || 0}</span> candidates actively interviewing across {selectedReqId === 'All' ? 'all requisitions' : 'this requisition'}.
                             </p>
                         </div>
                     </div>

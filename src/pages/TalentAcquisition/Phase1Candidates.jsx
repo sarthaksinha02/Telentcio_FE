@@ -314,29 +314,29 @@ const Phase1Candidates = () => {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     <div 
                         onClick={() => { setFilterDecision('All'); setFilterStatus('All'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.totalShortlisted}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.totalShortlisted}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Shortlisted</span>
-                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div 
                         onClick={() => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.totalScreened}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.totalScreened}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Screened</span>
-                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                     <div 
                         onClick={() => { setFilterInterviewStatus('In_Process'); setFilterDecision('All'); setFilterStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                        className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.interviewScheduled}</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.interviewScheduled}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Interview Scheduled</span>
-                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
                 </div>
