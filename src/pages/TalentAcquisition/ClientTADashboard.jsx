@@ -14,7 +14,7 @@ const StatCard = ({ title, value, subtitle, icon: Icon, colorClass }) => (
         <div>
 
 
-        
+
             <p className="text-sm font-medium text-slate-500">{title}</p>
             <h3 className="text-2xl font-bold text-slate-800 mt-1">{value}</h3>
             {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
@@ -113,39 +113,39 @@ const ClientTADashboard = ({ clientName }) => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard 
-                    title="Total Requisitions" 
-                    value={data.totalReqs} 
+                <StatCard
+                    title="Total Requisitions"
+                    value={data.totalReqs}
                     subtitle={`${data.activeReqs} Active | ${data.closedReqs} Closed`}
-                    icon={Briefcase} 
-                    colorClass="bg-blue-50 text-blue-600" 
+                    icon={Briefcase}
+                    colorClass="bg-blue-50 text-blue-600"
                 />
-                <StatCard 
-                    title="Open Positions" 
-                    value={data.totalOpenPositions} 
+                <StatCard
+                    title="Open Positions"
+                    value={data.totalOpenPositions}
                     subtitle="Currently seeking"
-                    icon={Users} 
-                    colorClass="bg-purple-50 text-purple-600" 
+                    icon={Users}
+                    colorClass="bg-purple-50 text-purple-600"
                 />
-                <StatCard 
-                    title="Total Hired" 
-                    value={data.pipeline['Joined'] || 0} 
+                <StatCard
+                    title="Total Hired"
+                    value={data.pipeline['Joined'] || 0}
                     subtitle={`Hiring Ratio: ${data.hiringRatio}%`}
-                    icon={FileCheck} 
-                    colorClass="bg-emerald-50 text-emerald-600" 
+                    icon={FileCheck}
+                    colorClass="bg-emerald-50 text-emerald-600"
                 />
-                <StatCard 
-                    title="In Interviews" 
-                    value={data.pipeline['Phase 2 Shortlisted / Interviews'] || 0} 
+                <StatCard
+                    title="In Interviews"
+                    value={data.pipeline['Phase 2 In Interviews'] || 0}
                     subtitle="Active pipeline"
-                    icon={Users} 
-                    colorClass="bg-amber-50 text-amber-600" 
+                    icon={Users}
+                    colorClass="bg-amber-50 text-amber-600"
                 />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                 {/* Pipeline Funnel */}
-                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                {/* Pipeline Funnel */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                     <h4 className="font-bold text-slate-700 mb-4">Key Pipeline Metrics</h4>
                     <div className="h-64 mt-4">
                         <ResponsiveContainer width="100%" height="100%">
@@ -153,7 +153,7 @@ const ClientTADashboard = ({ clientName }) => {
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b', fontWeight: 500 }} axisLine={false} tickLine={false} />
                                 <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                                <Tooltip 
+                                <Tooltip
                                     cursor={{ fill: '#f8fafc' }}
                                     contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }}
                                     formatter={(value) => [value, 'Candidates']}
@@ -183,7 +183,7 @@ const ClientTADashboard = ({ clientName }) => {
                             </p>
                         </div>
                         <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
-                             <p className="text-sm text-slate-600">
+                            <p className="text-sm text-slate-600">
                                 Current bottleneck check: There are <span className="font-bold text-slate-800">{data.pipeline['Phase 2 In Interviews'] || 0}</span> candidates actively interviewing across {selectedReqId === 'All' ? 'all requisitions' : 'this requisition'}.
                             </p>
                         </div>

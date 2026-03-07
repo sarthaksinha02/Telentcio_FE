@@ -134,25 +134,11 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
 
 
 
-    // Compute Metrics for Summary Boxes (Phase 1 — shows all candidates including Shortlisted/Hired)
+    // Compute Metrics for Summary Boxes (Phase 1 — computed from filteredCandidates so all active filters are reflected)
     const metrics = useMemo(() => {
-        const targetStatus = filterStatus === 'All' ? 'Interested' : filterStatus;
-
-        const baseCandidates = filterPulledBy === 'All'
-            ? candidates
-            : candidates.filter(c => c.profilePulledBy === filterPulledBy);
-
         return {
-            total: baseCandidates.length,
-            dynamicStatusLabel: targetStatus,
-            dynamicStatusCount: baseCandidates.filter(c => {
-                if (c.status !== targetStatus) return false;
-                if (c.decision && ['Rejected', 'On Hold'].includes(c.decision)) return false;
-                const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
-                if (rounds.length > 0) return false;
-                return true;
-            }).length,
-            inInterviews: baseCandidates.filter(c => {
+            total: filteredCandidates.length,
+            inInterviews: filteredCandidates.filter(c => {
                 const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
                 if (rounds.length === 0) return false;
                 if (c.decision && c.decision !== 'None') return false;
@@ -160,11 +146,11 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 if (hasFailed) return false;
                 return true;
             }).length,
-            shortlisted: candidates.filter(c => c.decision === 'Shortlisted').length,
-            rejected: baseCandidates.filter(c => c.decision === 'Rejected').length,
-            onHold: baseCandidates.filter(c => c.decision === 'On Hold').length,
+            shortlisted: filteredCandidates.filter(c => c.decision === 'Shortlisted').length,
+            rejected: filteredCandidates.filter(c => c.decision === 'Rejected').length,
+            onHold: filteredCandidates.filter(c => c.decision === 'On Hold').length,
         };
-    }, [candidates, filterStatus, filterPulledBy]);
+    }, [filteredCandidates]);
 
     // --- Phase 2: shortlisted candidates + their metrics ---
     const phase2Candidates = useMemo(() => {
@@ -210,20 +196,20 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
     }, [phase2Candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
 
     const phase2Metrics = useMemo(() => {
-        const base = filterPulledBy === 'All' ? phase2Candidates : phase2Candidates.filter(c => c.profilePulledBy === filterPulledBy);
+        // Use phase2Filtered so all active filters are reflected in the cards
         return {
-            totalShortlisted: base.length,
-            totalScreened: base.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
-            selected: base.filter(c => c.phase2Decision === 'Selected').length,
-            rejected: base.filter(c => c.phase2Decision === 'Rejected').length,
-            interviewScheduled: base.filter(c => {
+            totalShortlisted: phase2Filtered.length,
+            totalScreened: phase2Filtered.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
+            selected: phase2Filtered.filter(c => c.phase2Decision === 'Selected').length,
+            rejected: phase2Filtered.filter(c => c.phase2Decision === 'Rejected').length,
+            interviewScheduled: phase2Filtered.filter(c => {
                 const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
                 if (rounds.length === 0) return false;
                 if (c.phase2Decision && c.phase2Decision !== 'None') return false;
                 return !rounds.some(r => r.status === 'Failed');
             }).length
         };
-    }, [phase2Candidates, filterPulledBy]);
+    }, [phase2Filtered]);
 
     // --- Phase 3: Offer & Onboarding ---
     const phase3Candidates = useMemo(() => {
@@ -271,15 +257,15 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
     }, [phase3Candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
 
     const phase3Metrics = useMemo(() => {
-        const base = filterPulledBy === 'All' ? phase3Candidates : phase3Candidates.filter(c => c.profilePulledBy === filterPulledBy);
+        // Use phase3Filtered so all active filters are reflected in the cards
         return {
-            total: base.length,
-            offerSent: base.filter(c => c.phase3Decision === 'Offer Sent').length,
-            offerAccepted: base.filter(c => c.phase3Decision === 'Offer Accepted').length,
-            joined: base.filter(c => c.phase3Decision === 'Joined').length,
-            noShow: base.filter(c => c.phase3Decision === 'No Show' || c.phase3Decision === 'Offer Declined').length
+            total: phase3Filtered.length,
+            offerSent: phase3Filtered.filter(c => c.phase3Decision === 'Offer Sent').length,
+            offerAccepted: phase3Filtered.filter(c => c.phase3Decision === 'Offer Accepted').length,
+            joined: phase3Filtered.filter(c => c.phase3Decision === 'Joined').length,
+            noShow: phase3Filtered.filter(c => c.phase3Decision === 'No Show' || c.phase3Decision === 'Offer Declined').length
         };
-    }, [phase3Candidates, filterPulledBy]);
+    }, [phase3Filtered]);
 
     const itemsPerPage = 15;
     const activeList = activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered;
