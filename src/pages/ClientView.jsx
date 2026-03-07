@@ -83,7 +83,7 @@ const ClientView = () => {
 
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-            <div className="max-w-3xl mx-auto space-y-6">
+            <div className="max-w-7xl mx-auto space-y-6">
 
                 {/* Header */}
                 <div className="flex items-center justify-between">

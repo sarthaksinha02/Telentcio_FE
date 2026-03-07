@@ -124,7 +124,6 @@ const Phase1Candidates = () => {
                 if (hasFailed) return false;
                 return true;
             }).length,
-            hired: baseCandidates.filter(c => c.decision === 'Hired').length,
         };
     }, [candidates, totalCandidates, filterStatus, filterPulledBy]);
 
@@ -199,7 +198,6 @@ const Phase1Candidates = () => {
     const getDecisionColor = (decision) => {
         switch (decision) {
             case 'Shortlisted': return 'text-emerald-600 font-bold';
-            case 'Hired': return 'text-emerald-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
             case 'On Hold': return 'text-amber-600 font-bold';
             default: return 'text-slate-600';
@@ -341,14 +339,6 @@ const Phase1Candidates = () => {
                         <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
-                    <div 
-                        onClick={() => { setFilterDecision('Hired'); setFilterStatus('All'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.hired}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Hired</span>
-                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                    </div>
                 </div>
 
                 {/* Filters */}
@@ -570,7 +560,6 @@ const Phase1Candidates = () => {
                                                             >
                                                                 <option value="None" className="text-slate-600">None</option>
                                                                 <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
-                                                                <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
                                                                 <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
                                                                 <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
                                                             </select>

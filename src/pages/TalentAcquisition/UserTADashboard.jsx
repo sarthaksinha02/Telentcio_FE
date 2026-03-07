@@ -40,19 +40,18 @@ const UserTADashboard = () => {
             total: candidates.length,
             interested: candidates.filter(c => {
                 if (c.status !== 'Interested') return false;
-                if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+                if (c.decision && ['Rejected', 'On Hold'].includes(c.decision)) return false;
                 if (c.interviewRounds && c.interviewRounds.length > 0) return false;
                 return true;
             }).length,
             inInterviews: candidates.filter(c => {
                 const rounds = c.interviewRounds || [];
                 if (rounds.length === 0) return false;
-                if (c.decision && ['Hired', 'Rejected', 'On Hold'].includes(c.decision)) return false;
+                if (c.decision && ['Rejected', 'On Hold'].includes(c.decision)) return false;
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 if (hasFailed) return false;
                 return true;
             }).length,
-            hired: candidates.filter(c => c.decision === 'Hired').length,
             rejected: candidates.filter(c => c.decision === 'Rejected').length,
             onHold: candidates.filter(c => c.decision === 'On Hold').length,
         };
@@ -70,7 +69,6 @@ const UserTADashboard = () => {
 
     const getDecisionColor = useCallback((decision) => {
         switch (decision) {
-            case 'Hired': return 'text-emerald-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
             case 'On Hold': return 'text-amber-600 font-bold';
             default: return 'text-slate-600';
@@ -136,11 +134,6 @@ const UserTADashboard = () => {
                     <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.inInterviews}</span>
                     <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">In Interviews</span>
                     <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                </div>
-                <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group">
-                    <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.hired}</span>
-                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Hired</span>
-                    <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                 </div>
                 <div className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group">
                     <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.rejected}</span>

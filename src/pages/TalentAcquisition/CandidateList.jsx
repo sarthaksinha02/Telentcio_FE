@@ -91,7 +91,6 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
     // Computed filtered candidates (Phase 1 — Shortlisted/Hired also appear here AND in Phase 2)
     const filteredCandidates = useMemo(() => {
         return candidates.filter(candidate => {
-            if (candidate.decision === 'Hired') return false; // Remove hired from phase 1
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
             const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
@@ -161,7 +160,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 if (hasFailed) return false;
                 return true;
             }).length,
-            shortlisted: candidates.filter(c => c.decision === 'Shortlisted' && c.decision !== 'Hired').length,
+            shortlisted: candidates.filter(c => c.decision === 'Shortlisted').length,
             rejected: baseCandidates.filter(c => c.decision === 'Rejected').length,
             onHold: baseCandidates.filter(c => c.decision === 'On Hold').length,
         };
@@ -169,7 +168,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
 
     // --- Phase 2: shortlisted candidates + their metrics ---
     const phase2Candidates = useMemo(() => {
-        return candidates.filter(c => c.decision === 'Shortlisted' && c.decision !== 'Hired'); // Only Phase 1 Shortlisted enter Phase 2. They remain here regardless of Phase 2 decision.
+        return candidates.filter(c => c.decision === 'Shortlisted'); // Only Phase 1 Shortlisted enter Phase 2.
     }, [candidates]);
 
     const phase2Filtered = useMemo(() => {
@@ -497,7 +496,8 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
         switch (decision) {
             case 'Selected': return 'text-purple-600 font-bold';
             case 'Shortlisted': return 'text-emerald-600 font-bold';
-            case 'Hired': return 'text-emerald-600 font-bold';
+            case 'Phase 3 Offer Stage': return 'text-purple-600 font-bold';
+            case 'Joined': return 'text-emerald-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
             case 'On Hold': return 'text-amber-600 font-bold';
             default: return 'text-slate-600';
@@ -1044,7 +1044,6 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                                                             >
                                                                 <option value="None" className="text-slate-600">None</option>
                                                                 <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
-                                                                <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
                                                                 <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
                                                                 <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
                                                             </select>

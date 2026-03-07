@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import Skeleton from '../../components/Skeleton';
 import { Briefcase, Users, FileCheck, AlertTriangle } from 'lucide-react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
-const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'];
+const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b', '#06b6d4', '#ec4899', '#14b8a6'];
 
 const StatCard = ({ title, value, subtitle, icon: Icon, colorClass }) => (
     <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-100 flex items-start space-x-4">
@@ -32,13 +32,15 @@ const ClientTADashboard = ({ clientName }) => {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [selectedReqId, setSelectedReqId] = useState('All');
 
     useEffect(() => {
         const fetchAnalytics = async () => {
             if (!clientName) return;
             try {
                 setLoading(true);
-                const res = await api.get(`/ta/analytics/client/${encodeURIComponent(clientName)}`);
+                const query = selectedReqId !== 'All' ? `?hiringRequestId=${selectedReqId}` : '';
+                const res = await api.get(`/ta/analytics/client/${encodeURIComponent(clientName)}${query}`);
                 if (res.data.success) {
                     setData(res.data.data);
                 } else {
@@ -54,9 +56,9 @@ const ClientTADashboard = ({ clientName }) => {
         };
 
         fetchAnalytics();
-    }, [clientName]);
+    }, [clientName, selectedReqId]);
 
-    if (loading) {
+    if (loading && !data) {
         return (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 p-6">
                 {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
@@ -75,21 +77,39 @@ const ClientTADashboard = ({ clientName }) => {
 
     if (!data) return null;
 
-    // Prepare Pie Chart Data
-    const pieData = Object.keys(data.pipeline)
-        .filter(key => data.pipeline[key] > 0)
-        .map(key => ({
-            name: key,
-            value: data.pipeline[key]
-        }));
+    // Prepare Bar Chart Data for requested phases
+    const barData = [
+        { name: 'Sourced', value: data.totalSourced || 0, fill: '#3b82f6' },
+        { name: 'Shortlisted in 2nd Phase', value: data.pipeline['Phase 2 Shortlisted / Interviews'] || 0, fill: '#8b5cf6' },
+        { name: 'Joined', value: data.pipeline['Joined'] || 0, fill: '#10b981' }
+    ];
 
     return (
         <div className="space-y-6 mt-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h3 className="text-lg font-bold text-slate-800">Recruitment Overview for {clientName}</h3>
-                    <p className="text-sm text-slate-500">Live metrics across all active and historic requisitions</p>
+                    <p className="text-sm text-slate-500">Live metrics across {selectedReqId === 'All' ? 'all active and historic' : 'selected '} requisitions</p>
                 </div>
+                {data.requisitionsList && data.requisitionsList.length > 0 && (
+                    <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm">
+                        <span className="text-sm font-medium text-slate-600">Position:</span>
+                        <select
+                            value={selectedReqId}
+                            onChange={(e) => setSelectedReqId(e.target.value)}
+                            disabled={loading}
+                            className="bg-transparent text-sm font-semibold text-slate-800 focus:outline-none cursor-pointer max-w-[250px] truncate"
+                        >
+                            <option value="All">All Positions</option>
+                            {data.requisitionsList.map(req => (
+                                <option key={req.id} value={req.id}>
+                                    {req.title} {req.status === 'Closed' ? '(Closed)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                        {loading && <div className="animate-spin h-4 w-4 border-2 border-indigo-500 rounded-full border-t-transparent"></div>}
+                    </div>
+                )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -109,14 +129,14 @@ const ClientTADashboard = ({ clientName }) => {
                 />
                 <StatCard 
                     title="Total Hired" 
-                    value={data.pipeline['Hired'] || 0} 
+                    value={data.pipeline['Joined'] || 0} 
                     subtitle={`Hiring Ratio: ${data.hiringRatio}%`}
                     icon={FileCheck} 
                     colorClass="bg-emerald-50 text-emerald-600" 
                 />
                 <StatCard 
                     title="In Interviews" 
-                    value={data.pipeline['In Interviews'] || 0} 
+                    value={data.pipeline['Phase 2 Shortlisted / Interviews'] || 0} 
                     subtitle="Active pipeline"
                     icon={Users} 
                     colorClass="bg-amber-50 text-amber-600" 
@@ -126,44 +146,26 @@ const ClientTADashboard = ({ clientName }) => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                  {/* Pipeline Funnel */}
                  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                    <h4 className="font-bold text-slate-700 mb-4">Candidate Pipeline Breakdown</h4>
-                    {pieData.length > 0 ? (
-                        <div className="h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={pieData}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={60}
-                                        outerRadius={90}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                    >
-                                        {pieData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip 
-                                        formatter={(value, name) => [value, name]}
-                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                            <div className="flex flex-wrap justify-center gap-4 mt-2">
-                                {pieData.map((entry, index) => (
-                                    <div key={entry.name} className="flex items-center space-x-2 text-xs text-slate-600">
-                                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}></div>
-                                        <span>{entry.name} ({entry.value})</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="h-64 flex items-center justify-center text-slate-400">
-                            No candidate data available in the pipeline.
-                        </div>
-                    )}
+                    <h4 className="font-bold text-slate-700 mb-4">Key Pipeline Metrics</h4>
+                    <div className="h-64 mt-4">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={barData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b', fontWeight: 500 }} axisLine={false} tickLine={false} />
+                                <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                                <Tooltip 
+                                    cursor={{ fill: '#f8fafc' }}
+                                    contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }}
+                                    formatter={(value) => [value, 'Candidates']}
+                                />
+                                <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={60}>
+                                    {barData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
                 </div>
 
                 {/* Requirements / Summary */}
@@ -182,7 +184,7 @@ const ClientTADashboard = ({ clientName }) => {
                         </div>
                         <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                              <p className="text-sm text-slate-600">
-                                Current bottleneck check: There are <span className="font-bold text-slate-800">{data.pipeline['In Interviews'] || 0}</span> candidates actively interviewing across all requisitions.
+                                Current bottleneck check: There are <span className="font-bold text-slate-800">{data.pipeline['Phase 2 Shortlisted / Interviews'] || 0}</span> candidates actively interviewing/shortlisted across {selectedReqId === 'All' ? 'all requisitions' : 'this requisition'}.
                             </p>
                         </div>
                     </div>
