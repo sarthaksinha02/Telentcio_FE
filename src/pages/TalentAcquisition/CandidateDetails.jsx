@@ -215,6 +215,18 @@ const CandidateDetails = () => {
         }
     }, [evaluationForm, candidateId, fetchCandidate]);
 
+    const handlePhase3DecisionChange = async (newDecision) => {
+        try {
+            await api.patch(`/ta/candidates/${candidateId}/phase3-decision`, { phase3Decision: newDecision });
+            toast.success('Phase 3 Decision updated');
+            setCandidate(prev => ({ ...prev, phase3Decision: newDecision }));
+            window.dispatchEvent(new Event('refreshNotifications'));
+        } catch (error) {
+            console.error('Error updating Phase 3 decision:', error);
+            toast.error('Failed to update Phase 3 decision');
+        }
+    };
+
     const getStatusBadgeColor = useCallback((status) => {
         switch (status) {
             case 'Passed': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
@@ -343,13 +355,83 @@ const CandidateDetails = () => {
                                         <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-medium border border-slate-200">
                                             {candidate.status}
                                         </span>
-                                        {candidate.decision && candidate.decision !== 'None' && (
+                                        {currentPhase === 1 && candidate.decision && candidate.decision !== 'None' && (
                                             <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.decision === 'Hired' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                                 candidate.decision === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
                                                     'bg-amber-50 text-amber-700 border-amber-200'
                                                 }`}>
-                                                Decision: {candidate.decision}
+                                                Phase 1: {candidate.decision}
                                             </span>
+                                        )}
+                                        {currentPhase === 2 && candidate.phase2Decision && candidate.phase2Decision !== 'None' && (
+                                            <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.phase2Decision === 'Hired' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                candidate.phase2Decision === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                    'bg-amber-50 text-amber-700 border-amber-200'
+                                                }`}>
+                                                Phase 2: {candidate.phase2Decision}
+                                            </span>
+                                        )}
+                                        {currentPhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None' && (
+                                            <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.phase3Decision === 'Joined' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                candidate.phase3Decision === 'Offer Sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                    candidate.phase3Decision === 'No Show' || candidate.phase3Decision === 'Offer Declined' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                        'bg-amber-50 text-amber-700 border-amber-200'
+                                                }`}>
+                                                Phase 3: {candidate.phase3Decision}
+                                            </span>
+                                        )}
+
+                                        {/* Dropdown to change decision based on active phase */}
+                                        {canManageRounds && (
+                                            <div className="mt-2 w-full max-w-[200px]">
+                                                {currentPhase === 1 ? (
+                                                    <select
+                                                        value={candidate.decision || 'None'}
+                                                        onChange={(e) => {
+                                                            // Currently, list UI handles patch, let's keep consistency or just show it readonly here,
+                                                            // But user wants to update from details too if possible.
+                                                            // For now, list is main place, but we can add patch if missing.
+                                                            toast.error("Please update Phase 1 decision from Candidate List page.");
+                                                        }}
+                                                        disabled
+                                                        className="w-full appearance-none px-3 py-1.5 pr-8 text-sm font-bold rounded-lg border border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
+                                                    >
+                                                        <option value="None">None</option>
+                                                        <option value="Shortlisted">Shortlisted</option>
+                                                        <option value="Hired">Hired</option>
+                                                        <option value="Rejected">Rejected</option>
+                                                        <option value="On Hold">On Hold</option>
+                                                    </select>
+                                                ) : currentPhase === 2 ? (
+                                                    <select
+                                                        value={candidate.phase2Decision || 'None'}
+                                                        onChange={(e) => {
+                                                            toast.error("Please update Phase 2 decision from Candidate List page.");
+                                                        }}
+                                                        disabled
+                                                        className="w-full appearance-none px-3 py-1.5 pr-8 text-sm font-bold rounded-lg border border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
+                                                    >
+                                                        <option value="None">None</option>
+                                                        <option value="Shortlisted">Shortlisted</option>
+                                                        <option value="Hired">Hired</option>
+                                                        <option value="Rejected">Rejected</option>
+                                                        <option value="On Hold">On Hold</option>
+                                                    </select>
+                                                ) : (
+                                                    <select
+                                                        value={candidate.phase3Decision || 'None'}
+                                                        onChange={(e) => handlePhase3DecisionChange(e.target.value)}
+                                                        className="w-full appearance-none px-3 py-1.5 pr-8 text-sm font-bold rounded-lg border border-slate-300 bg-white outline-none cursor-pointer hover:border-blue-400 focus:ring-2 focus:ring-blue-100 text-slate-700 transition-colors"
+                                                    >
+                                                        <option value="None">-- Set Phase 3 Status --</option>
+                                                        <option value="Offer Sent">Offer Sent</option>
+                                                        <option value="Offer Accepted">Offer Accepted</option>
+                                                        <option value="Joined">Joined</option>
+                                                        <option value="No Show">No Show</option>
+                                                        <option value="Offer Declined">Offer Declined</option>
+                                                    </select>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 </div>

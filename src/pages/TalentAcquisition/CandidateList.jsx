@@ -91,6 +91,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
     // Computed filtered candidates (Phase 1 — Shortlisted/Hired also appear here AND in Phase 2)
     const filteredCandidates = useMemo(() => {
         return candidates.filter(candidate => {
+            if (candidate.decision === 'Hired') return false; // Remove hired from phase 1
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
             const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
@@ -104,11 +105,13 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
 
+                matchInterviewStatus = false;
+
                 if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-                if (filterInterviewStatus === 'Pending') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
-                if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
-                if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
-                if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed;
+                else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
+                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
+                else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
+                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && (!candidate.decision || candidate.decision === 'None');
             }
 
             let matchRating = true;
@@ -153,13 +156,12 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
             inInterviews: baseCandidates.filter(c => {
                 const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
                 if (rounds.length === 0) return false;
-                if (c.decision && ['Rejected', 'On Hold'].includes(c.decision)) return false;
+                if (c.decision && c.decision !== 'None') return false;
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 if (hasFailed) return false;
                 return true;
             }).length,
-            shortlisted: candidates.filter(c => c.decision === 'Shortlisted').length,
-            hired: candidates.filter(c => c.decision === 'Hired').length,
+            shortlisted: candidates.filter(c => c.decision === 'Shortlisted' && c.decision !== 'Hired').length,
             rejected: baseCandidates.filter(c => c.decision === 'Rejected').length,
             onHold: baseCandidates.filter(c => c.decision === 'On Hold').length,
         };
@@ -167,14 +169,17 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
 
     // --- Phase 2: shortlisted candidates + their metrics ---
     const phase2Candidates = useMemo(() => {
-        return candidates.filter(c => c.decision === 'Shortlisted' || c.decision === 'Hired');
+        return candidates.filter(c => c.decision === 'Shortlisted' && c.decision !== 'Hired'); // Only Phase 1 Shortlisted enter Phase 2. They remain here regardless of Phase 2 decision.
     }, [candidates]);
 
     const phase2Filtered = useMemo(() => {
         return phase2Candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
-            const matchDecision = filterDecision === 'All' || (candidate.phase2Decision || 'None') === filterDecision;
+            const matchDecision = filterDecision === 'All' ||
+                (filterDecision === 'Shortlisted_Selected'
+                    ? (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected')
+                    : (candidate.phase2Decision || 'None') === filterDecision);
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
@@ -182,11 +187,14 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
+
+                matchInterviewStatus = false;
+
                 if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-                if (filterInterviewStatus === 'Pending') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
-                if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
-                if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
-                if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed;
+                else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
+                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
+                else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
+                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && (!candidate.phase2Decision || candidate.phase2Decision === 'None');
             }
             let matchRating = true;
             if (filterRating !== 'All') {
@@ -206,17 +214,76 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
         const base = filterPulledBy === 'All' ? phase2Candidates : phase2Candidates.filter(c => c.profilePulledBy === filterPulledBy);
         return {
             totalShortlisted: base.length,
-            totalScreened: base.filter(c => c.phase2Decision === 'Shortlisted').length,
+            totalScreened: base.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
+            selected: base.filter(c => c.phase2Decision === 'Selected').length,
+            rejected: base.filter(c => c.phase2Decision === 'Rejected').length,
             interviewScheduled: base.filter(c => {
                 const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
-                return rounds.length > 0 && !rounds.some(r => r.status === 'Failed');
-            }).length,
-            hired: base.filter(c => c.phase2Decision === 'Hired').length
+                if (rounds.length === 0) return false;
+                if (c.phase2Decision && c.phase2Decision !== 'None') return false;
+                return !rounds.some(r => r.status === 'Failed');
+            }).length
         };
     }, [phase2Candidates, filterPulledBy]);
 
+    // --- Phase 3: Offer & Onboarding ---
+    const phase3Candidates = useMemo(() => {
+        return candidates.filter(c => c.phase2Decision === 'Selected'); // "Selected" in Phase 2 moves them to Phase 3. They also remain in Phase 2.
+    }, [candidates]);
+
+    const phase3Filtered = useMemo(() => {
+        return phase3Candidates.filter(candidate => {
+            const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
+            const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
+            const matchDecision = filterDecision === 'All' ||
+                (filterDecision === 'No Show_Offer Declined'
+                    ? (candidate.phase3Decision === 'No Show' || candidate.phase3Decision === 'Offer Declined')
+                    : (candidate.phase3Decision || 'None') === filterDecision);
+            const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
+
+            let matchInterviewStatus = true;
+            if (filterInterviewStatus !== 'All') {
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 3) : [];
+                const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
+                const hasFailed = rounds.some(r => r.status === 'Failed');
+                const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
+
+                matchInterviewStatus = false;
+
+                if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
+                else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
+                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
+                else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
+                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && !['No Show', 'Offer Declined'].includes(candidate.phase3Decision);
+            }
+
+            let matchRating = true;
+            if (filterRating !== 'All') {
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 3) : [];
+                const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                if (ratedRounds.length === 0) { matchRating = false; } else {
+                    const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                    matchRating = avgRating >= Number(filterRating);
+                }
+            }
+            const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
+            return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy;
+        });
+    }, [phase3Candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
+
+    const phase3Metrics = useMemo(() => {
+        const base = filterPulledBy === 'All' ? phase3Candidates : phase3Candidates.filter(c => c.profilePulledBy === filterPulledBy);
+        return {
+            total: base.length,
+            offerSent: base.filter(c => c.phase3Decision === 'Offer Sent').length,
+            offerAccepted: base.filter(c => c.phase3Decision === 'Offer Accepted').length,
+            joined: base.filter(c => c.phase3Decision === 'Joined').length,
+            noShow: base.filter(c => c.phase3Decision === 'No Show' || c.phase3Decision === 'Offer Declined').length
+        };
+    }, [phase3Candidates, filterPulledBy]);
+
     const itemsPerPage = 15;
-    const activeList = activePhase === 1 ? filteredCandidates : phase2Filtered;
+    const activeList = activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered;
     const totalPages = Math.ceil(activeList.length / itemsPerPage) || 1;
     const paginatedCandidates = activeList.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
@@ -411,10 +478,24 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
         }
     };
 
+    const handlePhase3DecisionChange = async (candidateId, newDecision) => {
+        try {
+            await api.patch(`/ta/candidates/${candidateId}/phase3-decision`, { phase3Decision: newDecision });
+            toast.success('Phase 3 Decision updated');
+            setCandidates(prev => prev.map(c =>
+                c._id === candidateId ? { ...c, phase3Decision: newDecision } : c
+            ));
+        } catch (error) {
+            console.error('Error updating Phase 3 decision:', error);
+            toast.error('Failed to update Phase 3 decision');
+        }
+    };
+
 
 
     const getDecisionColor = (decision) => {
         switch (decision) {
+            case 'Selected': return 'text-purple-600 font-bold';
             case 'Shortlisted': return 'text-emerald-600 font-bold';
             case 'Hired': return 'text-emerald-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
@@ -527,6 +608,23 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         >
                             Phase 2
                         </button>
+                        <button
+                            onClick={() => {
+                                setActivePhase(3);
+                                setPage(1);
+                                setFilterStatus('All');
+                                setFilterDecision('All');
+                                setFilterInterviewStatus('All');
+                                setFilterPreference('All');
+                                setFilterRating('All');
+                            }}
+                            className={`px-4 py-2 text-sm font-semibold border-l border-slate-300 transition-colors ${activePhase === 3
+                                ? 'bg-slate-800 text-white cursor-default'
+                                : 'bg-white text-slate-600 hover:bg-slate-100'
+                                }`}
+                        >
+                            Phase 3
+                        </button>
                     </div>
                     <button
                         onClick={handleExportExcel}
@@ -578,15 +676,6 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     </div>
 
                     <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('Hired'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{metrics.hired}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Hired</span>
-                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
-                    </div>
-
-                    <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
@@ -604,8 +693,8 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
                 </div>
-            ) : (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            ) : activePhase === 2 ? (
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
                     <div
                         onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
@@ -616,7 +705,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     </div>
 
                     <div
-                        onClick={() => { setFilterDecision('Shortlisted'); setFilterStatus('All'); }}
+                        onClick={() => { setFilterDecision('Shortlisted_Selected'); setFilterStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
                         <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.totalScreened}</span>
@@ -625,7 +714,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     </div>
 
                     <div
-                        onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); }}
+                        onClick={() => { setFilterDecision('None'); setFilterInterviewStatus('In_Process'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
                         <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.interviewScheduled}</span>
@@ -634,14 +723,70 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     </div>
 
                     <div
-                        onClick={() => { setFilterDecision('Hired'); setFilterInterviewStatus('All'); }}
+                        onClick={() => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }}
                         className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.hired}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Hired</span>
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.selected}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Selected</span>
                         <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
                     </div>
 
+                    <div
+                        onClick={() => { setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase2Metrics.rejected}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
+                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                </div>
+            ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div
+                        onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase3Metrics.total}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Candidates</span>
+                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div
+                        onClick={() => { setFilterDecision('Offer Sent'); setFilterStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase3Metrics.offerSent}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Offer Sent</span>
+                        <FileText className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div
+                        onClick={() => { setFilterDecision('Offer Accepted'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase3Metrics.offerAccepted}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Offer Accepted</span>
+                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div
+                        onClick={() => { setFilterDecision('Joined'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase3Metrics.joined}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Joined</span>
+                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
+
+                    <div
+                        onClick={() => { setFilterDecision('No Show_Offer Declined'); setFilterInterviewStatus('All'); }}
+                        className="bg-white border-t border-x border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-5 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[28px] font-light text-slate-800 leading-none mb-1 relative z-10">{phase3Metrics.noShow}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">No Show / Declined</span>
+                        <XCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-5 size-16 group-hover:opacity-10 transition-opacity" />
+                    </div>
                 </div>
             )}
 
@@ -684,8 +829,9 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                     >
                         <option value="All">All Decisions</option>
+                        {activePhase === 2 && <option value="Selected">Selected</option>}
                         <option value="Shortlisted">Shortlisted</option>
-                        <option value="Hired">Hired</option>
+                        {activePhase === 3 && <option value="Hired">Hired</option>}
                         <option value="Rejected">Rejected</option>
                         <option value="On Hold">On Hold</option>
                         <option value="None">None</option>
@@ -902,7 +1048,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                                                                 <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
                                                                 <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
                                                             </select>
-                                                        ) : (
+                                                        ) : activePhase === 2 ? (
                                                             <select
                                                                 value={candidate.phase2Decision || 'None'}
                                                                 onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
@@ -912,9 +1058,24 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                                                             >
                                                                 <option value="None" className="text-slate-600">None</option>
                                                                 <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
-                                                                <option value="Hired" className="text-emerald-600 font-bold">Hired</option>
+                                                                <option value="Selected" className="text-purple-600 font-bold">Selected</option>
                                                                 <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
                                                                 <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
+                                                            </select>
+                                                        ) : (
+                                                            <select
+                                                                value={candidate.phase3Decision || 'None'}
+                                                                onChange={(e) => handlePhase3DecisionChange(candidate._id, e.target.value)}
+                                                                className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase3Decision || 'None')}`}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                            >
+                                                                <option value="None" className="text-slate-600">None</option>
+                                                                <option value="Offer Sent" className="text-blue-600 font-bold">Offer Sent</option>
+                                                                <option value="Offer Accepted" className="text-amber-600 font-bold">Offer Accepted</option>
+                                                                <option value="Joined" className="text-emerald-600 font-bold">Joined</option>
+                                                                <option value="No Show" className="text-rose-600 font-bold">No Show</option>
+                                                                <option value="Offer Declined" className="text-rose-600 font-bold">Offer Declined</option>
                                                             </select>
                                                         )}
                                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
