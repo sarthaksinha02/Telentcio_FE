@@ -37,6 +37,11 @@ const CandidateDetails = () => {
     const [selectedWorkflow, setSelectedWorkflow] = useState('');
     const [workflowMapping, setWorkflowMapping] = useState({});
 
+    // Internal Remark state (separate from sourcing remark)
+    const [internalRemarkText, setInternalRemarkText] = useState('');
+    const [internalRemarkEditing, setInternalRemarkEditing] = useState(false);
+    const [internalRemarkLoading, setInternalRemarkLoading] = useState(false);
+
     // Users List for Assessment assignment
     const [users, setUsers] = useState([]);
     const [selectedInterviewer, setSelectedInterviewer] = useState('');
@@ -55,6 +60,7 @@ const CandidateDetails = () => {
                 ]);
 
                 setCandidate(candRes.data);
+                setInternalRemarkText(candRes.data.internalRemark || '');
                 setUsers(usersRes.data.data || usersRes.data || []);
                 setRoles(rolesRes.data || []);
                 setInterviewWorkflows(workflowsRes.data || []);
@@ -224,6 +230,21 @@ const CandidateDetails = () => {
         } catch (error) {
             console.error('Error updating Phase 3 decision:', error);
             toast.error('Failed to update Phase 3 decision');
+        }
+    };
+
+    const handleUpdateInternalRemark = async () => {
+        try {
+            setInternalRemarkLoading(true);
+            await api.patch(`/ta/candidates/${candidateId}/internal-remark`, { internalRemark: internalRemarkText });
+            setCandidate(prev => ({ ...prev, internalRemark: internalRemarkText }));
+            setInternalRemarkEditing(false);
+            toast.success('Internal remark saved successfully');
+        } catch (error) {
+            console.error('Error saving internal remark:', error);
+            toast.error('Failed to save internal remark');
+        } finally {
+            setInternalRemarkLoading(false);
         }
     };
 
@@ -526,7 +547,7 @@ const CandidateDetails = () => {
                             {candidate.remark && (
                                 <div>
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Remark</p>
-                                    <p className="text-slate-700 font-medium text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 mt-1">{candidate.remark}</p>
+                                    <p className="text-slate-700 text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 whitespace-pre-wrap">{candidate.remark}</p>
                                 </div>
                             )}
 
@@ -1032,6 +1053,52 @@ const CandidateDetails = () => {
                                 })()
                             )}
                         </div>
+                    </div>
+
+                    {/* Internal Remark Card */}
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Internal Remark</h3>
+                            {!internalRemarkEditing && (
+                                <button
+                                    onClick={() => { setInternalRemarkText(candidate.internalRemark || ''); setInternalRemarkEditing(true); }}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-medium"
+                                >
+                                    <Edit2 size={12} /> {candidate.internalRemark ? 'Edit' : 'Add Remark'}
+                                </button>
+                            )}
+                        </div>
+                        {internalRemarkEditing ? (
+                            <div className="space-y-2">
+                                <textarea
+                                    rows={4}
+                                    value={internalRemarkText}
+                                    onChange={(e) => setInternalRemarkText(e.target.value)}
+                                    placeholder="Add an internal remark about this candidate..."
+                                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 resize-none"
+                                    autoFocus
+                                />
+                                <div className="flex justify-end gap-2">
+                                    <button
+                                        onClick={() => setInternalRemarkEditing(false)}
+                                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleUpdateInternalRemark}
+                                        disabled={internalRemarkLoading}
+                                        className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+                                    >
+                                        {internalRemarkLoading && <Loader size={12} className="animate-spin" />} Save Remark
+                                    </button>
+                                </div>
+                            </div>
+                        ) : candidate.internalRemark ? (
+                            <p className="text-slate-700 text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 whitespace-pre-wrap">{candidate.internalRemark}</p>
+                        ) : (
+                            <p className="text-slate-400 text-sm italic">No remark added yet. Click "Add Remark" to write one.</p>
+                        )}
                     </div>
                 </div>
             </div>

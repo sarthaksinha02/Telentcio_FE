@@ -152,6 +152,29 @@ const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
                                         </div>
                                     </div>
 
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Last Working Day</p>
+                                            <p className="text-slate-700 font-medium">{candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd MMM yyyy') : 'N/A'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Preference</p>
+                                            <p className="text-slate-700 font-medium">{candidate.preference || 'N/A'}</p>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Company</p>
+                                        <p className="text-slate-700 font-medium">{candidate.currentCompany || 'N/A'}</p>
+                                    </div>
+
+                                    {candidate.remark && (
+                                        <div>
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Remark</p>
+                                            <p className="text-slate-700 font-medium text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 mt-1">{candidate.remark}</p>
+                                        </div>
+                                    )}
+
                                      {candidate.pastExperience && candidate.pastExperience.length > 0 && (
                                         <div className="pt-2 border-t border-slate-100 mt-2">
                                             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Past Experience</p>
