@@ -85,6 +85,7 @@ const Roles = () => {
         }
     };
 
+
     const handleEdit = (role, isView = false) => {
         setRoleName(role.name);
         setSelectedPerms(role.permissions.map(p => p._id));
