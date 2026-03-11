@@ -433,12 +433,27 @@ const Attendance = () => {
         }).toLowerCase();
     };
 
-    const calculateDuration = (start, end) => {
+    const calculateDuration = (start, end, recordDate) => {
         if (!start) return '--';
         const startTime = new Date(start);
-        const endTime = end ? new Date(end) : currentTime;
+        let endTime;
 
-        // Prevent negative duration if system time somehow lags (rare but possible)
+        if (end) {
+            endTime = new Date(end);
+        } else {
+            const today = new Date();
+            const rDate = recordDate ? new Date(recordDate) : today;
+            const isToday = rDate.toDateString() === today.toDateString();
+
+            if (isToday) {
+                endTime = currentTime; // Use living timer for today
+            } else {
+                endTime = new Date(rDate);
+                endTime.setHours(23, 59, 59, 999);
+            }
+        }
+
+        // Prevent negative duration
         if (endTime < startTime) return '0h 0m 0s';
 
         const diffString = Math.abs(endTime - startTime);
@@ -531,7 +546,7 @@ const Attendance = () => {
                 status,
                 record ? formatTime(record.clockIn, record.clockInIST) : '-',
                 record ? formatTime(record.clockOut, record.clockOutIST) : '-',
-                record ? calculateDuration(record.clockIn, record.clockOut) : '-'
+                record ? calculateDuration(record.clockIn, record.clockOut, day) : '-'
             ]);
 
             row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
@@ -633,14 +648,7 @@ const Attendance = () => {
                         checkOutRow[colKey] = record.clockOutIST ? extractTime(record.clockOutIST) : (record.clockOut ? formatTimeSimple(record.clockOut) : '-');
 
                         // Calculate duration
-                        if (record.clockIn && record.clockOut) {
-                            const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
-                            const hrs = Math.floor(dur / 3600000);
-                            const mins = Math.floor((dur % 3600000) / 60000);
-                            durationRow[colKey] = `${hrs}h ${mins}m`;
-                        } else {
-                            durationRow[colKey] = '-';
-                        }
+                        durationRow[colKey] = calculateDuration(record.clockIn, record.clockOut, colDate);
                     } else {
                         checkInRow[colKey] = '-';
                         checkOutRow[colKey] = '-';

@@ -10,7 +10,7 @@ import { saveAs } from 'file-saver';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
 
-const Timesheet = () => {
+const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false }) => {
     const { user } = useAuth();
     const [viewDate, setViewDate] = useState(() => {
         const params = new URLSearchParams(window.location.search);
@@ -27,7 +27,7 @@ const Timesheet = () => {
 
 
     // Approval Logic
-    const [activeTab, setActiveTab] = useState('timesheet');
+    const [activeTab, setActiveTab] = useState(initialTab || 'timesheet');
     const [pendingApprovals, setPendingApprovals] = useState([]);
     const [loadingApprovals, setLoadingApprovals] = useState(false);
 
@@ -336,8 +336,8 @@ const Timesheet = () => {
 
     // Check for userId in URL (for Manager view)
     const queryParams = new URLSearchParams(window.location.search);
-    const targetUserId = queryParams.get('userId');
-    const targetUserName = queryParams.get('name');
+    const targetUserId = propUserId || queryParams.get('userId');
+    const targetUserName = propUserName || queryParams.get('name');
 
     const fetchData = async () => {
         try {
@@ -483,7 +483,7 @@ const Timesheet = () => {
 
     useEffect(() => {
         fetchData();
-    }, [viewDate]); // Re-fetch when month changes
+    }, [viewDate, targetUserId]); // Re-fetch when month or user changes
 
     // Generate days for current view (Monthly)
     const monthStart = startOfMonth(viewDate);
@@ -494,9 +494,7 @@ const Timesheet = () => {
     const [selectedCell, setSelectedCell] = useState(null); // { date: Date, project: ProjectObj, logs: [] }
 
     const handleExportAttendance = async () => {
-        const queryParams = new URLSearchParams(window.location.search);
-        const targetUserId = queryParams.get('userId');
-        // If targetUserId exists, use it. Otherwise use logged-in user._id
+        // Use the component-level targetUserId which already accounts for propUserId or query params
         const exportUserId = targetUserId || user?._id;
 
         if (!exportUserId) {
@@ -551,10 +549,27 @@ const Timesheet = () => {
                 if (!dateString) return '--:--';
                 return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
             };
-            const calculateDuration = (start, end) => {
+            const calculateDuration = (start, end, recordDate) => {
                 if (!start) return '--';
                 const s = new Date(start);
-                const e = end ? new Date(end) : new Date();
+                let e;
+
+                if (end) {
+                    e = new Date(end);
+                } else {
+                    const today = new Date();
+                    const rDate = recordDate ? new Date(recordDate) : today;
+                    const isToday = rDate.toDateString() === today.toDateString();
+
+                    if (isToday) {
+                        e = new Date(); // Live time for today
+                    } else {
+                        // Auto-checkout at midnight for past dates
+                        e = new Date(rDate);
+                        e.setHours(23, 59, 59, 999);
+                    }
+                }
+
                 if (e < s) return '0h 0m';
                 const diff = Math.abs(e - s);
                 const h = Math.floor(diff / (1000 * 60 * 60));
@@ -598,7 +613,7 @@ const Timesheet = () => {
                     status,
                     record ? formatTime(record.clockIn, record.clockInIST) : '-',
                     record ? formatTime(record.clockOut, record.clockOutIST) : '-',
-                    record ? calculateDuration(record.clockIn, record.clockOut) : '-'
+                    record ? calculateDuration(record.clockIn, record.clockOut, day) : '-'
                 ]);
                 row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
                 row.alignment = { horizontal: 'center' };
@@ -880,45 +895,47 @@ const Timesheet = () => {
     const canViewTimesheets = user?.roles?.includes('Admin') || user?.permissions?.includes('timesheet.view');
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10 overflow-x-hidden">
-            <div className="w-full max-w-7xl mx-auto space-y-6 overflow-x-hidden">
+        <div className={`${isEmbedded ? 'w-full' : 'min-h-screen bg-slate-100 p-6 md:p-10'} font-sans overflow-x-hidden`}>
+            <div className={`w-full ${isEmbedded ? '' : 'max-w-7xl mx-auto space-y-6'} overflow-x-hidden`}>
 
                 {/* Tabs & Header */}
                 <div className="flex flex-col space-y-4">
                     <div className="flex justify-between items-center">
-                        <div className="flex space-x-1 bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
-                            <button
-                                onClick={() => setActiveTab('timesheet')}
-                                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'timesheet' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                            >
-                                Timesheet View
-                            </button>
-                            {(canApprove) && (
+                        {!isEmbedded && (
+                            <div className="flex space-x-1 bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
                                 <button
-                                    onClick={() => setActiveTab('approvals')}
-                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center space-x-2 ${activeTab === 'approvals' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    onClick={() => setActiveTab('timesheet')}
+                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'timesheet' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
-                                    <span>Pending Approvals</span>
-                                    {pendingApprovals.length > 0 && (
-                                        <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                                            {pendingApprovals.length}
-                                        </span>
-                                    )}
+                                    Timesheet View
                                 </button>
-                            )}
-                            {canViewAttendance && (
-                                <button
-                                    onClick={() => setActiveTab('attendance')}
-                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center space-x-2 ${activeTab === 'attendance' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    <FileText size={16} />
-                                    <span>Attendance View</span>
-                                </button>
-                            )}
-                        </div>
+                                {(canApprove) && (
+                                    <button
+                                        onClick={() => setActiveTab('approvals')}
+                                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center space-x-2 ${activeTab === 'approvals' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        <span>Pending Approvals</span>
+                                        {pendingApprovals.length > 0 && (
+                                            <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                                                {pendingApprovals.length}
+                                            </span>
+                                        )}
+                                    </button>
+                                )}
+                                {canViewAttendance && (
+                                    <button
+                                        onClick={() => setActiveTab('attendance')}
+                                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center space-x-2 ${activeTab === 'attendance' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        <FileText size={16} />
+                                        <span>Attendance View</span>
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
                         {/* User Picker — visible to Admin, Manager, or timesheet.view permission */}
-                        {(canViewTimesheets || user?.roles?.includes('Manager')) && usersList.length > 0 && (
+                        {!isEmbedded && (canViewTimesheets || user?.roles?.includes('Manager')) && usersList.length > 0 && (
                             <div className="flex items-center space-x-2">
                                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Viewing:</label>
                                 <select

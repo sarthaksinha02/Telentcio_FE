@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Search, Edit2, Shield, Calendar, Download, FileText } from 'lucide-react';
+import { UserPlus, Search, Edit2, Shield, Calendar, Download, FileText, MoreVertical, Eye } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -37,10 +38,29 @@ const Users = () => {
         return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     };
 
-    const calculateDuration = (start, end) => {
+    const calculateDuration = (start, end, recordDate) => {
         if (!start) return '--';
         const startTime = new Date(start);
-        const endTime = end ? new Date(end) : new Date();
+        let endTime;
+
+        if (end) {
+            endTime = new Date(end);
+        } else {
+            const today = new Date();
+            const rDate = recordDate ? new Date(recordDate) : today;
+
+            // If it's today and no checkout, use current time
+            // If it's a past date and no checkout, auto-checkout at 11:59:59 PM
+            const isToday = rDate.toDateString() === today.toDateString();
+
+            if (isToday) {
+                endTime = today;
+            } else {
+                endTime = new Date(rDate);
+                endTime.setHours(23, 59, 59, 999);
+            }
+        }
+
         if (endTime < startTime) return '0h 0m';
         const diffString = Math.abs(endTime - startTime);
         const hours = Math.floor(diffString / (1000 * 60 * 60));
@@ -130,7 +150,7 @@ const Users = () => {
                     status,
                     record ? formatTime(record.clockIn, record.clockInIST) : '-',
                     record ? formatTime(record.clockOut, record.clockOutIST) : '-',
-                    record ? calculateDuration(record.clockIn, record.clockOut) : '-'
+                    record ? calculateDuration(record.clockIn, record.clockOut, day) : '-'
                 ]);
 
                 row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
@@ -331,19 +351,16 @@ const Users = () => {
                         else checkOutRow[colKey] = '-';
 
                         // Duration
-                        if (record.clockIn && record.clockOut) {
-                            const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
-                            const hrs = Math.floor(dur / 3600000);
-                            const mins = Math.floor((dur % 3600000) / 60000);
+                        durationRow[colKey] = calculateDuration(record.clockIn, record.clockOut, dateObj);
 
-                            let durationSuffix = '';
-                            if (durationHours >= 5 && durationHours < 8) {
-                                durationSuffix = ' (Half Day)';
+                        // Half Day Suffix Logic
+                        if (record.clockIn) {
+                            const start = new Date(record.clockIn);
+                            const end = record.clockOut ? new Date(record.clockOut) : new Date(dateObj).setHours(23, 59, 59, 999);
+                            const durHrs = Math.abs(end - start) / 3600000;
+                            if (durHrs >= 5 && durHrs < 8) {
+                                durationRow[colKey] += ' (Half Day)';
                             }
-
-                            durationRow[colKey] = `${hrs}h ${mins}m${durationSuffix}`;
-                        } else {
-                            durationRow[colKey] = '-';
                         }
                     } else {
                         checkInRow[colKey] = '-';
@@ -734,95 +751,69 @@ const Users = () => {
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
-                                <tr>
-                                    <th className="px-6 py-3">Employee</th>
-                                    <th className="px-6 py-3">Email</th>
-                                    <th className="px-6 py-3">Role</th>
-                                    <th className="px-6 py-3">Department</th>
-                                    <th className="px-6 py-3">Type</th>
-                                    <th className="px-6 py-3">Reporting To</th>
-                                    <th className="px-6 py-3">Status</th>
-                                    <th className="px-6 py-3 text-right">Actions</th>
+                                <tr className="text-[11px] uppercase tracking-wider">
+                                    <th className="px-3 py-2">Employee</th>
+                                    <th className="px-3 py-2">Email</th>
+                                    <th className="px-3 py-2">Role</th>
+                                    <th className="px-3 py-2">Department</th>
+                                    <th className="px-3 py-2">Type</th>
+                                    <th className="px-3 py-2">Reporting To</th>
+                                    <th className="px-3 py-2">Status</th>
+                                    <th className="px-3 py-2 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {filteredUsers.map((employee) => (
-                                    <tr key={employee._id} className="hover:bg-slate-50/50">
-                                        <td className="px-6 py-3">
-                                            <div className="flex items-center space-x-3">
-                                                <div className="h-9 w-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
+                                    <tr key={employee._id} className="hover:bg-slate-50/50 text-[13px] border-b border-slate-50 last:border-0 transition-colors">
+                                        <td className="px-3 py-2">
+                                            <div className="flex items-center space-x-2">
+                                                <div className="h-7 w-7 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px] shrink-0">
                                                     {employee.firstName.charAt(0)}{employee.lastName?.charAt(0)}
                                                 </div>
-                                                <div>
-                                                    <div className="font-medium text-slate-800">{employee.firstName} {employee.lastName}</div>
-                                                    <div className="text-xs text-slate-500">{employee.employeeCode || 'N/A'}</div>
+                                                <div className="min-w-0">
+                                                    <div className="font-semibold text-slate-800 truncate">{employee.firstName} {employee.lastName}</div>
+                                                    <div className="text-[10px] text-slate-500">{employee.employeeCode || 'N/A'}</div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-3 text-slate-600">{employee.email}</td>
-                                        <td className="px-6 py-3">
+                                        <td className="px-3 py-2 text-slate-600 truncate max-w-[150px]" title={employee.email}>{employee.email}</td>
+                                        <td className="px-3 py-2">
                                             {employee.roles.map(r => (
-                                                <span key={r._id} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 mr-1">
+                                                <span key={r._id} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 mr-1 whitespace-nowrap">
                                                     <Shield size={10} className="mr-1" /> {r.name}
                                                 </span>
                                             ))}
                                         </td>
-                                        <td className="px-6 py-3 text-slate-600">{employee.department || '-'}</td>
-                                        <td className="px-6 py-3">
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                        <td className="px-3 py-2 text-slate-600 truncate max-w-[100px]">{employee.department || '-'}</td>
+                                        <td className="px-3 py-2">
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
                                                 {employee.employmentType || 'Full Time'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-3 text-slate-600">
+                                        <td className="px-3 py-2 text-slate-600">
                                             {employee.reportingManagers && employee.reportingManagers.length > 0 ? (
-                                                <div className="flex flex-col space-y-1">
+                                                <div className="flex flex-col">
                                                     {employee.reportingManagers.map(mgr => (
-                                                        <div key={mgr._id} className="flex flex-col border-l-2 border-slate-200 pl-2">
-                                                            <span className="font-medium text-xs text-slate-700">{mgr.firstName} {mgr.lastName}</span>
-                                                            <span className="text-[10px] text-slate-400">{mgr.email}</span>
-                                                        </div>
+                                                        <span key={mgr._id} className="font-medium text-[11px] text-slate-700 truncate max-w-[120px]" title={mgr.email}>{mgr.firstName} {mgr.lastName.charAt(0)}.</span>
                                                     ))}
                                                 </div>
                                             ) : (
-                                                <span className="text-xs text-slate-400 italic">None</span>
+                                                <span className="text-[11px] text-slate-400 italic">None</span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-3">
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${employee.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                        <td className="px-3 py-2">
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${employee.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
                                                 {employee.isActive ? 'Active' : 'Inactive'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-3 text-right">
-                                            <div className="flex items-center justify-end space-x-2">
-                                                {canEdit && (
-                                                    <button onClick={() => handleEdit(employee)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"><Edit2 size={16} /></button>
-                                                )}
-
-                                                {/* View Timesheet Action (Visible if Admin, manager, or has timesheet.view) */}
-                                                {(canEdit || user?.permissions?.includes('timesheet.view') || employee.reportingManagers?.some(rm => rm._id === user._id)) && (
-                                                    <button
-                                                        onClick={() => {
-                                                            // Navigate to timesheet with user context
-                                                            window.location.href = `/timesheet?userId=${employee._id}&name=${employee.firstName} ${employee.lastName}`;
-                                                        }}
-                                                        className="text-emerald-600 hover:text-emerald-800 p-1 hover:bg-emerald-50 rounded"
-                                                        title="View Timesheet"
-                                                    >
-                                                        <Calendar size={16} />
-                                                    </button>
-                                                )}
-
-                                                {/* View Dossier Action */}
-                                                {(canEdit || user?.permissions?.includes('dossier.view')) && (
-                                                    <button
-                                                        onClick={() => navigate(`/dossier/${employee._id}`)}
-                                                        className="text-purple-600 hover:text-purple-800 p-1 hover:bg-purple-50 rounded"
-                                                        title="View Dossier"
-                                                    >
-                                                        <FileText size={16} />
-                                                    </button>
-                                                )}
-                                            </div>
+                                        <td className="px-3 py-2 text-right">
+                                            <button
+                                                onClick={() => navigate(`/users/${employee._id}`)}
+                                                className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-colors border border-blue-200 shadow-sm whitespace-nowrap"
+                                                title="View Profile"
+                                            >
+                                                View Profile
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}

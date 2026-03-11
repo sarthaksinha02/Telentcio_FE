@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
-import { Plus, Search, Filter, Briefcase, Clock, CheckCircle, XCircle, AlertCircle, Settings } from 'lucide-react';
+import { Plus, Search, Filter, Briefcase, Clock, CheckCircle, XCircle, AlertCircle, Settings, TrendingUp } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
 
@@ -21,7 +21,7 @@ const HiringRequestList = () => {
             setLoading(true);
             const [reqRes, clientRes] = await Promise.all([
                 api.get('/ta/hiring-request', {
-                    params: { 
+                    params: {
                         status: filterStatus === 'All' ? '' : filterStatus,
                         page,
                         limit: 10
@@ -90,10 +90,16 @@ const HiringRequestList = () => {
                         >
                             <Settings size={18} /> Workflows
                         </Link>
+                        <Link
+                            to="/ta/analysis"
+                            className="bg-white border border-slate-300 hover:bg-blue-50 text-slate-700 hover:text-blue-700 hover:border-blue-200 px-4 py-2 rounded-lg flex items-center gap-2 transition-all font-medium text-sm shadow-sm"
+                        >
+                            <TrendingUp size={18} /> Global Analysis
+                        </Link>
                         {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
                             <Link
                                 to="/ta/create-request"
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium text-sm"
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium text-sm shadow-sm"
                             >
                                 <Plus size={18} /> Raising Requisition
                             </Link>
@@ -167,8 +173,8 @@ const HiringRequestList = () => {
                                                 (() => {
                                                     const clientId = getClientIdByName(req.client);
                                                     return clientId ? (
-                                                        <Link 
-                                                            to={`/clients/${clientId}/view?tab=ta`} 
+                                                        <Link
+                                                            to={`/clients/${clientId}/view?tab=ta`}
                                                             className="hover:text-blue-800 hover:underline transition-colors"
                                                             title="View Client TA Dashboard"
                                                         >
@@ -192,7 +198,7 @@ const HiringRequestList = () => {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <button
-                                                onClick={() => navigate(`/ta/view/${req._id}${req.status === 'Approved' ? '?tab=applications' : ''}`)}
+                                                onClick={() => navigate(`/ta/view/${req._id}${(req.status === 'Approved' || req.status === 'Closed') ? '?tab=applications' : ''}`)}
                                                 className="text-blue-600 hover:text-blue-800 font-medium text-xs px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
                                             >
                                                 View Details

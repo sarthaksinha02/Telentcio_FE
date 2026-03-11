@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -10,7 +10,7 @@ import Skeleton from '../../components/Skeleton';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
-const CandidateList = ({ hiringRequestId, positionName }) => {
+const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
@@ -25,6 +25,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
     const [filterInterviewStatus, setFilterInterviewStatus] = useState('All');
     const [filterRating, setFilterRating] = useState('All');
     const [filterPulledBy, setFilterPulledBy] = useState('All');
+    const [filterTransferred, setFilterTransferred] = useState('All');
     const [users, setUsers] = useState([]);
 
     // Menu State
@@ -88,13 +89,42 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
         }
     };
 
-    // Computed filtered candidates (Phase 1 — Shortlisted/Hired also appear here AND in Phase 2)
-    const filteredCandidates = useMemo(() => {
+    // Base filter applies global filters (Preference, Experience, Rating, PulledBy) but NOT Status/Decision/InterviewStatus
+    // This allows the cards to show correct overall metrics even when a specific card (which sets Status/Decision) is clicked.
+    const basePhase1Candidates = useMemo(() => {
         return candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
+            const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
+
+            let matchRating = true;
+            if (filterRating !== 'All') {
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
+                const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                if (ratedRounds.length === 0) {
+                    matchRating = false;
+                } else {
+                    const minRequired = Number(filterRating);
+                    const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                    matchRating = avgRating >= minRequired;
+                }
+            }
+
+            const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
+            const matchTransferred = filterTransferred === 'All'
+                ? true
+                : filterTransferred === 'Transferred'
+                    ? candidate.isTransferred
+                    : !candidate.isTransferred;
+
+            return matchPreference && matchExperience && matchRating && matchPulledBy && matchTransferred;
+        });
+    }, [candidates, filterPreference, filterExperience, filterRating, filterPulledBy, filterTransferred]);
+
+    // Computed filtered candidates (Phase 1 — Shortlisted/Hired also appear here AND in Phase 2)
+    const filteredCandidates = useMemo(() => {
+        return basePhase1Candidates.filter(candidate => {
             const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
             const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
-            const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
 
             // Interview filtering logic
             let matchInterviewStatus = true;
@@ -113,32 +143,16 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && (!candidate.decision || candidate.decision === 'None');
             }
 
-            let matchRating = true;
-            if (filterRating !== 'All') {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
-                const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                if (ratedRounds.length === 0) {
-                    matchRating = false;
-                } else {
-                    const minRequired = Number(filterRating);
-                    const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                    matchRating = avgRating >= minRequired;
-                }
-            }
-
-            const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
-
-            return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy;
+            return matchStatus && matchDecision && matchInterviewStatus;
         });
-    }, [candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
+    }, [basePhase1Candidates, filterStatus, filterDecision, filterInterviewStatus]);
 
-
-
-    // Compute Metrics for Summary Boxes (Phase 1 — computed from filteredCandidates so all active filters are reflected)
+    // Compute Metrics for Summary Boxes (Phase 1 — computed from basePhase1Candidates)
     const metrics = useMemo(() => {
         return {
-            total: filteredCandidates.length,
-            inInterviews: filteredCandidates.filter(c => {
+            total: basePhase1Candidates.length,
+            interested: basePhase1Candidates.filter(c => c.status === 'Interested').length,
+            inInterviews: basePhase1Candidates.filter(c => {
                 const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
                 if (rounds.length === 0) return false;
                 if (c.decision && c.decision !== 'None') return false;
@@ -146,11 +160,12 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 if (hasFailed) return false;
                 return true;
             }).length,
-            shortlisted: filteredCandidates.filter(c => c.decision === 'Shortlisted').length,
-            rejected: filteredCandidates.filter(c => c.decision === 'Rejected').length,
-            onHold: filteredCandidates.filter(c => c.decision === 'On Hold').length,
+            shortlisted: basePhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
+            rejected: basePhase1Candidates.filter(c => c.decision === 'Rejected').length,
+            onHold: basePhase1Candidates.filter(c => c.decision === 'On Hold').length,
+            transferred: basePhase1Candidates.filter(c => c.isTransferred).length
         };
-    }, [filteredCandidates]);
+    }, [basePhase1Candidates]);
 
     // --- Phase 2: shortlisted candidates + their metrics ---
     const phase2Candidates = useMemo(() => {
@@ -191,9 +206,14 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 }
             }
             const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
-            return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy;
+            const matchTransferred = filterTransferred === 'All'
+                ? true
+                : filterTransferred === 'Transferred'
+                    ? candidate.isTransferred
+                    : !candidate.isTransferred;
+            return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy && matchTransferred;
         });
-    }, [phase2Candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
+    }, [phase2Candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterTransferred]);
 
     const phase2Metrics = useMemo(() => {
         // Use phase2Filtered so all active filters are reflected in the cards
@@ -252,9 +272,14 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                 }
             }
             const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
-            return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy;
+            const matchTransferred = filterTransferred === 'All'
+                ? true
+                : filterTransferred === 'Transferred'
+                    ? candidate.isTransferred
+                    : !candidate.isTransferred;
+            return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy && matchTransferred;
         });
-    }, [phase3Candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
+    }, [phase3Candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterTransferred]);
 
     const phase3Metrics = useMemo(() => {
         // Use phase3Filtered so all active filters are reflected in the cards
@@ -275,15 +300,18 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
     const fetchCandidates = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await api.get(`/ta/candidates/${hiringRequestId}`);
-            setCandidates(response.data.candidates || []);
+            const endpoint = isLegacyView
+                ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
+                : `/ta/candidates/${hiringRequestId}`;
+            const response = await api.get(endpoint);
+            setCandidates(isLegacyView ? response.data : response.data.candidates || []);
         } catch (error) {
             console.error('Error fetching candidates:', error);
             toast.error('Failed to load candidates');
         } finally {
             setLoading(false);
         }
-    }, [hiringRequestId]);
+    }, [hiringRequestId, isLegacyView]);
 
     const hEdit = useCallback((candidate) => {
         navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/edit`);
@@ -340,6 +368,19 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
     const handleAddNew = useCallback(() => {
         navigate(`/ta/hiring-request/${hiringRequestId}/add-candidate`);
     }, [navigate, hiringRequestId]);
+
+    const handleTransfer = useCallback(async (candidateId) => {
+        if (!window.confirm("Move this candidate to the newest active requisition? This creates a copy and resets their statuses for a fresh pipeline start.")) return;
+
+        try {
+            const res = await api.post(`/ta/hiring-request/transfer-candidate/${candidateId}`);
+            toast.success(res.data.message || 'Candidate transferred successfully');
+            fetchCandidates(); // Refresh list to maybe update visual indicators if we implement fetching transfer status
+        } catch (error) {
+            console.error('Transfer error:', error);
+            toast.error(error.response?.data?.message || 'Failed to transfer candidate');
+        }
+    }, [fetchCandidates]);
 
     const handleExportExcel = async () => {
         try {
@@ -633,9 +674,9 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
 
             {/* Pipeline Summary Boxes */}
             {activePhase === 1 ? (
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
                     <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); }}
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
                         <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.total}</span>
@@ -644,7 +685,16 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     </div>
 
                     <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('None'); setFilterInterviewStatus('In_Process'); }}
+                        onClick={() => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }}
+                        className="bg-white border border-slate-200 border-b-4 border-b-green-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
+                    >
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.interested}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Interested</span>
+                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-green-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
+                    </div>
+
+                    <div
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('None'); setFilterInterviewStatus('In_Process'); setFilterTransferred('All'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
                         <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.inInterviews}</span>
@@ -653,7 +703,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     </div>
 
                     <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); }}
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
                         <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.shortlisted}</span>
@@ -661,23 +711,26 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
-                    <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.rejected}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
-                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
 
                     <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('On Hold'); setFilterInterviewStatus('All'); }}
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('On Hold'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
                         <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.onHold}</span>
                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">On Hold</span>
                         <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
+
+                    {!isLegacyView && (
+                        <div
+                            onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('Transferred'); }}
+                            className="bg-slate-50 border border-slate-200 border-b-4 border-b-blue-600 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-100 transition-colors cursor-pointer active:scale-[0.98]"
+                        >
+                            <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.transferred}</span>
+                            <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Transferred</span>
+                            <Briefcase className="absolute -right-2 top-1/2 -translate-y-1/2 text-blue-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
+                        </div>
+                    )}
                 </div>
             ) : activePhase === 2 ? (
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -856,7 +909,15 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                     <label className="block text-xs font-semibold text-slate-500 mb-1">Pulled By</label>
                     <select
                         value={filterPulledBy}
-                        onChange={(e) => setFilterPulledBy(e.target.value)}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            setFilterPulledBy(val);
+                            if (val !== 'All') {
+                                setFilterStatus('All');
+                                setFilterDecision('All');
+                                setFilterInterviewStatus('All');
+                            }
+                        }}
                         className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
                     >
                         <option value="All">All Users</option>
@@ -867,6 +928,20 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         ))}
                     </select>
                 </div>
+                {!isLegacyView && (
+                    <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1">Origin</label>
+                        <select
+                            value={filterTransferred}
+                            onChange={(e) => setFilterTransferred(e.target.value)}
+                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                        >
+                            <option value="All">All Origins</option>
+                            <option value="New">New Applications</option>
+                            <option value="Transferred">Transferred</option>
+                        </select>
+                    </div>
+                )}
                 <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-1">Min Experience (Yrs)</label>
                     <input
@@ -878,7 +953,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                         className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
                     />
                 </div>
-                {(filterPreference !== 'All' || filterStatus !== 'Interested' || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All') && (
+                {(filterPreference !== 'All' || filterStatus !== 'Interested' || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
                     <button
                         onClick={() => {
                             setFilterPreference('All');
@@ -888,6 +963,7 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                             setFilterInterviewStatus('All');
                             setFilterRating('All');
                             setFilterPulledBy('All');
+                            setFilterTransferred('All');
                         }}
                         className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
                     >
@@ -944,6 +1020,11 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                                                             {candidate.candidateName.split(' ')[0]}<br />
                                                             {candidate.candidateName.split(' ').slice(1).join(' ')}
                                                         </span>
+                                                        {candidate.isTransferred && !isLegacyView && (
+                                                            <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded font-bold w-max uppercase tracking-wider mt-1 border border-blue-200" title="Moved from an older requisition">
+                                                                Transferred
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-4 align-top">
@@ -1130,6 +1211,19 @@ const CandidateList = ({ hiringRequestId, positionName }) => {
                                                                 >
                                                                     <Edit size={16} className="text-slate-500" />
                                                                     Edit Candidate
+                                                                </button>
+                                                            )}
+
+                                                            {isLegacyView && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        handleTransfer(candidate._id);
+                                                                        setActiveMenu(null);
+                                                                    }}
+                                                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
+                                                                >
+                                                                    <Briefcase size={16} className="text-blue-500" />
+                                                                    Transfer to Active Requisition
                                                                 </button>
                                                             )}
 

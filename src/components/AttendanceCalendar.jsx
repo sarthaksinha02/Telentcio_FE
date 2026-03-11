@@ -10,19 +10,10 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date 
         }
     }, [date]);
 
-    useEffect(() => {
-        if (!date) { // Only trigger onMonthChange if not controlled? Or always?
-            // If controlled, parent handles change via onMonthChange.
-            // If I trigger onMonthChange here, parent might update 'date' prop, causing loop if not careful.
-            // But onMonthChange is usually "request to fetch data".
-        }
-        // Actually, the original logic was: mount -> trigger onMonthChange.
-        // If I change currentDate locally (prev/next), trigger onMonthChange.
-        // If 'date' prop updates, currentDate updates. Does that trigger onMonthChange?
-        // Yes, because of dependency [currentDate].
-        // This is fine.
-        onMonthChange(currentDate.getFullYear(), currentDate.getMonth() + 1);
-    }, [currentDate]);
+    // Removed the effect that triggers onMonthChange on every currentDate change
+    // to prevent circular loops with parent components that manage the 'date' prop.
+    // Sync with parent is now handled via manual prev/next clicks and the useEffect([date]) above.
+
 
     const getDaysInMonth = (date) => {
         const year = date.getFullYear();
@@ -40,11 +31,15 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date 
     const blanks = Array.from({ length: startDay }, (_, i) => i);
 
     const prevMonth = () => {
-        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+        const next = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+        setCurrentDate(next);
+        onMonthChange(next.getFullYear(), next.getMonth() + 1);
     };
 
     const nextMonth = () => {
-        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+        const next = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+        setCurrentDate(next);
+        onMonthChange(next.getFullYear(), next.getMonth() + 1);
     };
 
     const getStatusColor = (status) => {

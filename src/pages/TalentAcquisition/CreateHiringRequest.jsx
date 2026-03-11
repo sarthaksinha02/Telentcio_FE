@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign, X, Loader } from 'lucide-react';
@@ -57,6 +57,51 @@ const Input = ({ label, name, value, onChange, type = "text", required, options,
     </div>
 );
 
+const TagInput = ({ label, tags = [], onTagsChange, placeholder, gridCols = 1 }) => {
+    const [inputValue, setInputValue] = useState('');
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && inputValue.trim()) {
+            e.preventDefault();
+            if (!tags.includes(inputValue.trim())) {
+                onTagsChange([...tags, inputValue.trim()]);
+            }
+            setInputValue('');
+        }
+    };
+
+    const removeTag = (tagToRemove) => {
+        onTagsChange(tags.filter(tag => tag !== tagToRemove));
+    };
+
+    return (
+        <div className={gridCols === 2 ? "md:col-span-2" : ""}>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                {label}
+            </label>
+            <div className={`w-full border border-slate-300 rounded-lg p-1.5 min-h-[42px] bg-slate-50 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 transition-all flex flex-wrap gap-2 items-center`}>
+                {tags.map((tag, index) => (
+                    <span key={index} className="bg-blue-600 text-white text-xs font-semibold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm">
+                        {tag}
+                        <button type="button" onClick={() => removeTag(tag)} className="hover:text-blue-200 transition-colors">
+                            <X size={14} />
+                        </button>
+                    </span>
+                ))}
+                <input
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={tags.length === 0 ? placeholder : ""}
+                    className="flex-1 bg-transparent border-none outline-none text-sm p-1 placeholder:text-slate-400 min-w-[120px]"
+                />
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1 italic">Type a skill and press Enter to add</p>
+        </div>
+    );
+};
+
 const CreateHiringRequest = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -66,6 +111,7 @@ const CreateHiringRequest = () => {
         client: '', // New field
         workflowId: '', // Workflow selection
         interviewWorkflowId: '', // Interview Workflow template selection
+        previousRequestId: '', // For reopening
 
         // Role Info
         title: '',
@@ -78,8 +124,8 @@ const CreateHiringRequest = () => {
         replacedEmployeeId: '',
 
         // Requirements
-        mustHaveSkills: '',
-        niceToHaveSkills: '',
+        mustHaveSkills: [],
+        niceToHaveSkills: [],
         experienceMin: '',
         experienceMax: '',
         location: 'Onsite',
@@ -92,6 +138,9 @@ const CreateHiringRequest = () => {
         budgetMax: '',
         priority: 'Medium'
     });
+
+    const [searchParams] = useSearchParams();
+    const reopenFrom = searchParams.get('reopenFrom');
 
     const [workflows, setWorkflows] = useState([]); // Store available workflows
     const [interviewWorkflows, setInterviewWorkflows] = useState([]); // Store interview templates
@@ -117,27 +166,28 @@ const CreateHiringRequest = () => {
         fetchWorkflowsData();
     }, []);
 
-    // Fetch data if in edit mode
     useEffect(() => {
-        if (id) {
+        if (id || reopenFrom) {
             const fetchRequest = async () => {
                 try {
                     setLoading(true);
-                    const res = await api.get(`/ta/hiring-request/${id}`);
+                    const res = await api.get(`/ta/hiring-request/${id || reopenFrom}`);
                     const data = res.data;
 
                     setFormData({
                         client: data.client || '',
-                        workflowId: data.workflowId?._id || data.workflowId || '', // Handle both populated and non-populated
+                        workflowId: data.workflowId?._id || data.workflowId || '',
                         interviewWorkflowId: data.interviewWorkflowId?._id || data.interviewWorkflowId || '',
+                        previousRequestId: reopenFrom ? reopenFrom : '', // Set if reopening
                         title: data.roleDetails.title,
+
                         department: data.roleDetails.department,
                         employmentType: data.roleDetails.employmentType,
                         purpose: data.purpose,
                         replacedEmployeeName: data.replacementDetails?.employeeName || '',
                         replacedEmployeeId: data.replacementDetails?.employeeId || '',
-                        mustHaveSkills: data.requirements.mustHaveSkills.join(', '),
-                        niceToHaveSkills: data.requirements.niceToHaveSkills.join(', '),
+                        mustHaveSkills: data.requirements.mustHaveSkills || [],
+                        niceToHaveSkills: data.requirements.niceToHaveSkills || [],
                         experienceMin: data.requirements.experienceMin,
                         experienceMax: data.requirements.experienceMax,
                         location: data.requirements.location,
@@ -158,7 +208,7 @@ const CreateHiringRequest = () => {
             };
             fetchRequest();
         }
-    }, [id, navigate]);
+    }, [id, reopenFrom, navigate]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -223,6 +273,7 @@ const CreateHiringRequest = () => {
                 client: formData.client,
                 workflowId: formData.workflowId, // Send selected workflow ID
                 interviewWorkflowId: formData.interviewWorkflowId || undefined, // Send selected interview workflow
+                previousRequestId: formData.previousRequestId || undefined,
                 roleDetails: {
                     title: formData.title,
                     department: formData.department,
@@ -234,8 +285,8 @@ const CreateHiringRequest = () => {
                     employeeId: formData.replacedEmployeeId
                 } : {},
                 requirements: {
-                    mustHaveSkills: formData.mustHaveSkills.split(',').map(s => s.trim()).filter(Boolean),
-                    niceToHaveSkills: formData.niceToHaveSkills.split(',').map(s => s.trim()).filter(Boolean),
+                    mustHaveSkills: formData.mustHaveSkills,
+                    niceToHaveSkills: formData.niceToHaveSkills,
                     experienceMin: Number(formData.experienceMin),
                     experienceMax: Number(formData.experienceMax),
                     location: formData.location,
@@ -401,8 +452,20 @@ const CreateHiringRequest = () => {
                 </Section>
 
                 <Section title="3. Job Requirements" icon={FileText}>
-                    <Input label="Must-Have Skills" name="mustHaveSkills" value={formData.mustHaveSkills} onChange={handleChange} placeholder="Comma separated (e.g. React, Node.js)" gridCols={2} />
-                    <Input label="Nice-To-Have Skills" name="niceToHaveSkills" value={formData.niceToHaveSkills} onChange={handleChange} placeholder="Comma separated" gridCols={2} />
+                    <TagInput
+                        label="Must-Have Skills"
+                        tags={formData.mustHaveSkills}
+                        onTagsChange={(tags) => setFormData(prev => ({ ...prev, mustHaveSkills: tags }))}
+                        placeholder="e.g. React, Node.js"
+                        gridCols={2}
+                    />
+                    <TagInput
+                        label="Nice-To-Have Skills"
+                        tags={formData.niceToHaveSkills}
+                        onTagsChange={(tags) => setFormData(prev => ({ ...prev, niceToHaveSkills: tags }))}
+                        placeholder="e.g. Docker, AWS"
+                        gridCols={2}
+                    />
                     <Input label="Min Experience (Yrs)" name="experienceMin" type="number" value={formData.experienceMin} onChange={handleChange} />
                     <Input label="Max Experience (Yrs)" name="experienceMax" type="number" value={formData.experienceMax} onChange={handleChange} />
                     <Input label="Work Location" name="location" value={formData.location} onChange={handleChange} options={['Onsite', 'Remote', 'Hybrid']} />

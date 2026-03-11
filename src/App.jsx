@@ -18,6 +18,7 @@ import ClientView from './pages/ClientView';
 import Projects from './pages/Projects';
 import ProjectDetails from './pages/ProjectDetails';
 import Profile from './pages/Profile';
+import EmployeeProfile from './pages/EmployeeProfile';
 import Holidays from './pages/Holidays';
 import LeaveConfig from './pages/LeaveConfig';
 import Leaves from './pages/Leaves';
@@ -36,6 +37,7 @@ import MeetingDetails from './pages/MeetingDetails';
 import HelpDesk from './pages/HelpDesk';
 import QueryDetails from './pages/QueryDetails';
 import Discussions from './pages/Discussions';
+import GlobalTADashboard from './pages/TalentAcquisition/GlobalTADashboard';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleRoute from './components/RoleRoute';
@@ -78,6 +80,7 @@ function App() {
                 <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/view" element={<CandidateDetails />} />
                 <Route path="/ta/hiring-request/:hiringRequestId/phase1" element={<Phase1Candidates />} />
                 <Route path="/ta/user-dashboard/:userName" element={<UserTADashboard />} />
+                <Route path="/ta/analysis" element={<GlobalTADashboard />} />
 
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/holidays" element={<Holidays />} />
@@ -117,6 +120,7 @@ function App() {
                 {/* Users Management (Internal access control) */}
                 {/* Users Management */}
                 <Route path="/users" element={<UsersAccessWrapper />} />
+                <Route path="/users/:id" element={<UsersAccessWrapper Component={EmployeeProfile} />} />
 
                 <Route path="/unauthorized" element={<Unauthorized />} />
               </Route>
@@ -133,7 +137,7 @@ function App() {
 
 export default App;
 
-const UsersAccessWrapper = () => {
+const UsersAccessWrapper = ({ Component = Users }) => {
   const { user } = useAuth();
 
   if (!user) return null;
@@ -142,5 +146,5 @@ const UsersAccessWrapper = () => {
     user.permissions?.includes('user.read') ||
     user.directReportsCount > 0;
 
-  return canAccess ? <Users /> : <Navigate to="/unauthorized" />;
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
 };

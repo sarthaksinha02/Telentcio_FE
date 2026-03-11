@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/Button'; // Assuming Button component exists
 import CandidateList from './CandidateList';
+import LegacyApplicationsView from './LegacyApplicationsView';
 import Skeleton from '../../components/Skeleton';
 
 const DetailRow = ({ label, value }) => (
@@ -203,7 +204,7 @@ const HiringRequestDetails = () => {
 
                         {/* Center: Tabs with Pill Design */}
                         <div className="hidden md:flex bg-slate-100/50 p-1 rounded-xl">
-                            {['overview', ...(request.status === 'Approved' ? ['applications'] : [])].map((tab) => (
+                            {['overview', ...((request.status === 'Approved' || request.status === 'Closed') ? ['applications'] : []), ...(request.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -480,6 +481,28 @@ const HiringRequestDetails = () => {
                                             {actionLoading ? <Loader className="animate-spin" size={16} /> : <XCircle size={16} />} Close Request
                                         </button>
                                     )}
+
+                                    {request.status === 'Closed' && !request.reopenedToId && (
+                                        <button
+                                            onClick={() => navigate(`/ta/create-request?reopenFrom=${id}`)}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-xl font-medium text-sm transition-all shadow-sm"
+                                        >
+                                            <Briefcase size={16} /> Reopen Requisition
+                                        </button>
+                                    )}
+
+                                    {request.reopenedToId && (
+                                        <div className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-center shadow-inner">
+                                            <p className="text-xs font-semibold text-slate-600 mb-2">Superseded By</p>
+                                            <button
+                                                onClick={() => navigate(`/ta/view/${request.reopenedToId}`)}
+                                                className="text-blue-600 hover:text-blue-800 font-bold text-sm underline transition-colors"
+                                            >
+                                                View Active Requisition
+                                            </button>
+                                        </div>
+                                    )}
+
                                 </div>
                             </div>
 
@@ -526,6 +549,9 @@ const HiringRequestDetails = () => {
                     <CandidateList hiringRequestId={id} positionName={request?.positionName} />
                 )}
 
+                {activeTab === 'legacy applications' && request.previousRequestId && (
+                    <LegacyApplicationsView hiringRequestId={id} />
+                )}
 
             </div>
         </div>
