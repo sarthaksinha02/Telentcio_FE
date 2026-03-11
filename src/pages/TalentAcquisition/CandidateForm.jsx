@@ -676,7 +676,7 @@ const CandidateForm = () => {
                                         value={formData.totalExperience}
                                         onChange={handleChange}
                                         min="0"
-                                        step="0.5"
+                                        step="any"
                                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
                                         required
                                         disabled={isViewMode}
@@ -860,7 +860,7 @@ const CandidateForm = () => {
                                                 type="number"
                                                 placeholder="Years"
                                                 min="0"
-                                                step="0.5"
+                                                step="any"
                                                 value={exp.experienceYears}
                                                 onChange={(e) => handleExperienceChange(index, 'experienceYears', e.target.value)}
                                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
