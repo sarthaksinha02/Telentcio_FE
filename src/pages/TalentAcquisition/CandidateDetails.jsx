@@ -25,7 +25,7 @@ const CandidateDetails = () => {
 
     // Evaluation State
     const [evaluatingRoundId, setEvaluatingRoundId] = useState(null);
-    const [evaluationForm, setEvaluationForm] = useState({ status: 'Passed', feedback: '', rating: '' });
+    const [evaluationForm, setEvaluationForm] = useState({ status: 'Passed', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
 
     // Edit Round State
     const [editingRoundId, setEditingRoundId] = useState(null);
@@ -47,6 +47,8 @@ const CandidateDetails = () => {
     const [selectedInterviewer, setSelectedInterviewer] = useState('');
     const [roles, setRoles] = useState([]);
     const [selectedRoleForRound, setSelectedRoleForRound] = useState('');
+
+
 
     useEffect(() => {
         const initializeData = async () => {
@@ -206,6 +208,7 @@ const CandidateDetails = () => {
             const payload = {
                 status: evaluationForm.status,
                 feedback: evaluationForm.feedback,
+                skillRatings: evaluationForm.skillRatings,
                 ...(evaluationForm.status === 'Passed' && evaluationForm.rating ? { rating: evaluationForm.rating } : {})
             };
             await api.patch(`/ta/candidates/${candidateId}/rounds/${roundId}/evaluate`, payload);
@@ -247,6 +250,8 @@ const CandidateDetails = () => {
             setInternalRemarkLoading(false);
         }
     };
+
+
 
     const getStatusBadgeColor = useCallback((status) => {
         switch (status) {
@@ -853,6 +858,20 @@ const CandidateDetails = () => {
                                                                             )}
                                                                         </div>
                                                                         <p className="text-sm text-slate-700 whitespace-pre-wrap">{round.feedback}</p>
+                                                                        
+                                                                        {round.skillRatings && round.skillRatings.length > 0 && (
+                                                                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                                {round.skillRatings.map((sr, idx) => (
+                                                                                    <div key={idx} className="flex items-center justify-between text-[11px] bg-white/60 px-2.5 py-1.5 rounded-lg border border-slate-200/50 shadow-sm">
+                                                                                        <div className="flex items-center gap-1.5">
+                                                                                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                                                                            <span className="text-slate-600 font-semibold">{sr.skill}</span>
+                                                                                        </div>
+                                                                                        <span className="font-black text-blue-700">{sr.rating}/10</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
 
                                                                         {round.evaluatedBy && (
                                                                             <div className="mt-3 pt-3 border-t border-slate-200 text-xs text-slate-500 flex justify-between items-center">
@@ -872,7 +891,12 @@ const CandidateDetails = () => {
                                                                     <button
                                                                         onClick={() => {
                                                                             setEvaluatingRoundId(round._id);
-                                                                            setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
+                                                                            setEvaluationForm({ 
+                                                                                rating: '',
+                                                                                skillRatings: candidate.skillRatings || [],
+                                                                                showAssessment: false,
+                                                                                manualSkillName: ''
+                                                                            });
                                                                         }}
                                                                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
                                                                     >
@@ -886,7 +910,10 @@ const CandidateDetails = () => {
                                                                             setEvaluationForm({
                                                                                 status: round.status,
                                                                                 feedback: round.feedback || '',
-                                                                                rating: round.rating || ''
+                                                                                rating: round.rating || '',
+                                                                                skillRatings: round.skillRatings && round.skillRatings.length > 0 
+                                                                                    ? round.skillRatings 
+                                                                                    : (candidate.skillRatings || [])
                                                                             });
                                                                         }}
                                                                         className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors"
@@ -994,22 +1021,134 @@ const CandidateDetails = () => {
 
                                                                         {/* Rating dropdown — shown only when Pass is selected */}
                                                                         {evaluationForm.status === 'Passed' && (
-                                                                            <div>
-                                                                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                                                                    Performance Rating
-                                                                                    <span className="ml-1 text-xs text-slate-400 font-normal">(Optional, 1–10)</span>
-                                                                                </label>
-                                                                                <select
-                                                                                    value={evaluationForm.rating}
-                                                                                    onChange={(e) => setEvaluationForm({ ...evaluationForm, rating: e.target.value })}
-                                                                                    className="w-40 px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-white"
-                                                                                >
-                                                                                    <option value="">-- Select Rating --</option>
-                                                                                    {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(n => (
-                                                                                        <option key={n} value={n}>{n} / 10{n === 10 ? ' — Outstanding' : n >= 8 ? ' — Excellent' : n >= 6 ? ' — Good' : n >= 4 ? ' — Average' : ' — Poor'}</option>
-                                                                                    ))}
-                                                                                </select>
-                                                                            </div>
+                                                                            <>
+                                                                                {/* Skill Ratings inside Evaluation */}
+                                                                                <div className="mb-4">
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setEvaluationForm(prev => ({ ...prev, showAssessment: !prev.showAssessment }))}
+                                                                                        className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${
+                                                                                            evaluationForm.showAssessment 
+                                                                                                ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
+                                                                                                : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
+                                                                                        }`}
+                                                                                    >
+                                                                                        <span className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                                                                                            {evaluationForm.showAssessment ? <CheckCircle size={16} /> : <Plus size={16} />} 
+                                                                                            Comprehensive Skill Assessment
+                                                                                        </span>
+                                                                                        <span className="text-[10px] opacity-80">
+                                                                                            {evaluationForm.showAssessment ? 'Click to Close' : 'Click to Open & Rate'}
+                                                                                        </span>
+                                                                                    </button>
+
+                                                                                    {evaluationForm.showAssessment && (
+                                                                                        <div className="mt-2 bg-white/80 p-4 rounded-xl border border-blue-100 shadow-inner animate-in fade-in slide-in-from-top-1 duration-200">
+                                                                                            {/* Manual Skill Addition Row */}
+                                                                                            <div className="flex items-center gap-2 mb-4 p-2 bg-blue-50/50 rounded-lg border border-blue-100/50">
+                                                                                                <input 
+                                                                                                    type="text"
+                                                                                                    placeholder="Add expert skill (e.g. System Design)..."
+                                                                                                    value={evaluationForm.manualSkillName}
+                                                                                                    onChange={(e) => setEvaluationForm(prev => ({ ...prev, manualSkillName: e.target.value }))}
+                                                                                                    className="flex-1 px-3 py-1.5 text-xs border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                                                                                />
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => {
+                                                                                                        if (!evaluationForm.manualSkillName.trim()) return;
+                                                                                                        const newSkill = {
+                                                                                                            skill: evaluationForm.manualSkillName.trim(),
+                                                                                                            rating: 0,
+                                                                                                            category: 'Additional'
+                                                                                                        };
+                                                                                                        setEvaluationForm(prev => ({
+                                                                                                            ...prev,
+                                                                                                            skillRatings: [...prev.skillRatings, newSkill],
+                                                                                                            manualSkillName: ''
+                                                                                                        }));
+                                                                                                    }}
+                                                                                                    className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-bold hover:bg-blue-700 transition-colors"
+                                                                                                >
+                                                                                                    Add Skill
+                                                                                                </button>
+                                                                                            </div>
+
+                                                                                            <div className="space-y-4">
+                                                                                                {evaluationForm.skillRatings && evaluationForm.skillRatings.length > 0 ? (
+                                                                                                    evaluationForm.skillRatings.map((sr, idx) => (
+                                                                                                        <div key={idx} className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 hover:bg-white rounded-lg transition-colors border-b border-slate-50 last:border-0 pb-3 sm:pb-2">
+                                                                                                            <div className="flex items-center gap-2">
+                                                                                                                <span className="text-sm font-semibold text-slate-700">{sr.skill}</span>
+                                                                                                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase ${
+                                                                                                                    sr.category === 'Must-Have' ? 'bg-red-50 text-red-500' :
+                                                                                                                    sr.category === 'Nice-To-Have' ? 'bg-blue-50 text-blue-500' :
+                                                                                                                    'bg-slate-100 text-slate-500'
+                                                                                                                }`}>
+                                                                                                                    {sr.category}
+                                                                                                                </span>
+                                                                                                            </div>
+                                                                                                            <div className="flex items-center gap-3">
+                                                                                                                <div className="flex items-center gap-1">
+                                                                                                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((star) => (
+                                                                                                                        <button
+                                                                                                                            key={star}
+                                                                                                                            type="button"
+                                                                                                                            onClick={() => {
+                                                                                                                                const newSkills = [...evaluationForm.skillRatings];
+                                                                                                                                newSkills[idx] = { ...newSkills[idx], rating: star };
+                                                                                                                                setEvaluationForm({ ...evaluationForm, skillRatings: newSkills });
+                                                                                                                            }}
+                                                                                                                            className={`w-7 h-7 rounded flex items-center justify-center text-[10px] font-bold transition-all ${
+                                                                                                                                star <= sr.rating 
+                                                                                                                                    ? 'bg-blue-600 text-white shadow-sm scale-110 z-10' 
+                                                                                                                                    : 'bg-white text-slate-400 border border-slate-200 hover:border-blue-400 hover:text-blue-600'
+                                                                                                                            }`}
+                                                                                                                        >
+                                                                                                                            {star}
+                                                                                                                        </button>
+                                                                                                                    ))}
+                                                                                                                    <span className="ml-2 text-xs font-black text-blue-700 w-8">{sr.rating}/10</span>
+                                                                                                                </div>
+                                                                                                                <button
+                                                                                                                    type="button"
+                                                                                                                    onClick={() => {
+                                                                                                                        const newSkills = evaluationForm.skillRatings.filter((_, i) => i !== idx);
+                                                                                                                        setEvaluationForm({ ...evaluationForm, skillRatings: newSkills });
+                                                                                                                    }}
+                                                                                                                    className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-all"
+                                                                                                                    title="Remove skill from this assessment"
+                                                                                                                >
+                                                                                                                    <Trash2 size={14} />
+                                                                                                                </button>
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                    ))
+                                                                                                ) : (
+                                                                                                    <p className="text-center text-xs text-slate-400 py-4 italic">No skills defined for this candidate yet. Add one above.</p>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+
+                                                                                <div>
+                                                                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                                                                        Performance Rating
+                                                                                        <span className="ml-1 text-xs text-slate-400 font-normal">(Optional, 1–10)</span>
+                                                                                    </label>
+                                                                                    <select
+                                                                                        value={evaluationForm.rating}
+                                                                                        onChange={(e) => setEvaluationForm({ ...evaluationForm, rating: e.target.value })}
+                                                                                        className="w-40 px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-white"
+                                                                                    >
+                                                                                        <option value="">-- Select Rating --</option>
+                                                                                        {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(n => (
+                                                                                            <option key={n} value={n}>{n} / 10{n === 10 ? ' — Outstanding' : n >= 8 ? ' — Excellent' : n >= 6 ? ' — Good' : n >= 4 ? ' — Average' : ' — Poor'}</option>
+                                                                                        ))}
+                                                                                    </select>
+                                                                                </div>
+                                                                            </>
                                                                         )}
 
                                                                         <div>
@@ -1025,9 +1164,9 @@ const CandidateDetails = () => {
                                                                         <div className="flex justify-end gap-2 pt-2">
                                                                             <button
                                                                                 onClick={() => {
-                                                                                    setEvaluatingRoundId(null);
-                                                                                    setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
-                                                                                }}
+                                                                                     setEvaluatingRoundId(null);
+                                                                                     setEvaluationForm({ status: 'Passed', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
+                                                                                 }}
                                                                                 className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
                                                                             >
                                                                                 Cancel
@@ -1054,6 +1193,8 @@ const CandidateDetails = () => {
                             )}
                         </div>
                     </div>
+
+
 
                     {/* Internal Remark Card */}
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">

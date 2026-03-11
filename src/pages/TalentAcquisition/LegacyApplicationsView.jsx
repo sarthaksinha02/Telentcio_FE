@@ -25,14 +25,13 @@ const decisionColor = (d) => {
     }
 };
 
-const OpeningSection = ({ opening, openingNum, hiringRequestId, onTransfer }) => {
+const OpeningSection = ({ opening, openingNum, hiringRequestId, onTransfer, users }) => {
     const [expanded, setExpanded] = useState(openingNum === 1); // most recent expanded by default
     const [activePhase, setActivePhase] = useState(1);
     const [activeMenu, setActiveMenu] = useState(null);
     const [menuPosition, setMenuPosition] = useState({});
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [users, setUsers] = useState([]);
 
     // Filtering State
     const [filterPreference, setFilterPreference] = useState('All');
@@ -44,17 +43,6 @@ const OpeningSection = ({ opening, openingNum, hiringRequestId, onTransfer }) =>
     const [filterPulledBy, setFilterPulledBy] = useState('All');
     const [filterTransferred, setFilterTransferred] = useState('All');
 
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                const res = await api.get('/ta/users');
-                setUsers(res.data || []);
-            } catch (e) {
-                console.error('Failed to fetch users', e);
-            }
-        };
-        fetchUsers();
-    }, []);
 
     const toggleMenu = (e, candidateId) => {
         e.stopPropagation();
@@ -445,7 +433,42 @@ const FilterSelect = ({ label, val, onChange, options }) => (
 
 const LegacyApplicationsView = ({ hiringRequestId }) => {
     const [openings, setOpenings] = useState([]);
+    const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    const fetchUsers = useCallback(async () => {
+        try {
+            const res = await api.get('/admin/users');
+            let fetchedUsers = [];
+            if (res.data?.success) {
+                fetchedUsers = res.data.data || [];
+            } else if (Array.isArray(res.data)) {
+                fetchedUsers = res.data;
+            }
+
+            const filteredUsers = fetchedUsers.filter(u => {
+                const roleNames = u.roles?.map(r => r.name) || [];
+                if (roleNames.includes('Admin')) return true;
+
+                let hasTaCreate = false;
+                if (u.roles && Array.isArray(u.roles)) {
+                    u.roles.forEach(role => {
+                        if (role.permissions && Array.isArray(role.permissions)) {
+                            const keys = role.permissions.map(p => typeof p === 'string' ? p : p.key);
+                            if (keys.includes('ta.create') || keys.includes('*')) {
+                                hasTaCreate = true;
+                            }
+                        }
+                    });
+                }
+                return hasTaCreate;
+            });
+
+            setUsers(filteredUsers);
+        } catch (error) {
+            console.error('Failed to fetch users', error);
+        }
+    }, []);
 
     const fetchLegacy = useCallback(async () => {
         try {
@@ -460,7 +483,10 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
         }
     }, [hiringRequestId]);
 
-    useEffect(() => { fetchLegacy(); }, [fetchLegacy]);
+    useEffect(() => { 
+        fetchLegacy(); 
+        fetchUsers();
+    }, [fetchLegacy, fetchUsers]);
 
     const [selectedOpenings, setSelectedOpenings] = useState([]);
     const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -624,6 +650,7 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
                     openingNum={openings.length - idx} // newest = highest number
                     hiringRequestId={hiringRequestId}
                     onTransfer={handleTransfer}
+                    users={users}
                 />
             ))}
         </div>

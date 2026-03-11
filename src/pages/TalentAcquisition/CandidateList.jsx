@@ -152,14 +152,9 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
         return {
             total: basePhase1Candidates.length,
             interested: basePhase1Candidates.filter(c => c.status === 'Interested').length,
-            inInterviews: basePhase1Candidates.filter(c => {
-                const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
-                if (rounds.length === 0) return false;
-                if (c.decision && c.decision !== 'None') return false;
-                const hasFailed = rounds.some(r => r.status === 'Failed');
-                if (hasFailed) return false;
-                return true;
-            }).length,
+            interviewScheduled: basePhase1Candidates.filter(c => 
+                (c.interviewRounds || []).some(r => (r.phase || 1) === 1 && (r.status === 'Scheduled' || r.status === 'Pending'))
+            ).length,
             shortlisted: basePhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
             rejected: basePhase1Candidates.filter(c => c.decision === 'Rejected').length,
             onHold: basePhase1Candidates.filter(c => c.decision === 'On Hold').length,
@@ -222,12 +217,9 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
             totalScreened: phase2Filtered.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
             selected: phase2Filtered.filter(c => c.phase2Decision === 'Selected').length,
             rejected: phase2Filtered.filter(c => c.phase2Decision === 'Rejected').length,
-            interviewScheduled: phase2Filtered.filter(c => {
-                const rounds = c.interviewRounds ? c.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
-                if (rounds.length === 0) return false;
-                if (c.phase2Decision && c.phase2Decision !== 'None') return false;
-                return !rounds.some(r => r.status === 'Failed');
-            }).length
+            interviewScheduled: phase2Filtered.filter(c => 
+                (c.interviewRounds || []).some(r => (r.phase || 1) === 2 && (r.status === 'Scheduled' || r.status === 'Pending'))
+            ).length
         };
     }, [phase2Filtered]);
 
@@ -674,7 +666,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
 
             {/* Pipeline Summary Boxes */}
             {activePhase === 1 ? (
-                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                <div className={`grid grid-cols-2 ${!isLegacyView && metrics.transferred > 0 ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4`}>
                     <div
                         onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
@@ -694,11 +686,11 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     </div>
 
                     <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('None'); setFilterInterviewStatus('In_Process'); setFilterTransferred('All'); }}
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Pending'); setFilterTransferred('All'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.inInterviews}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">In Interviews</span>
+                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.interviewScheduled}</span>
+                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Interview Scheduled</span>
                         <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
@@ -721,7 +713,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
                     </div>
 
-                    {!isLegacyView && (
+                    {!isLegacyView && metrics.transferred > 0 && (
                         <div
                             onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('Transferred'); }}
                             className="bg-slate-50 border border-slate-200 border-b-4 border-b-blue-600 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-100 transition-colors cursor-pointer active:scale-[0.98]"
@@ -753,7 +745,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     </div>
 
                     <div
-                        onClick={() => { setFilterDecision('None'); setFilterInterviewStatus('In_Process'); }}
+                        onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('Pending'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
                         <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.interviewScheduled}</span>
@@ -928,7 +920,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         ))}
                     </select>
                 </div>
-                {!isLegacyView && (
+                {!isLegacyView && candidates.some(c => c.isTransferred) && (
                     <div>
                         <label className="block text-xs font-semibold text-slate-500 mb-1">Origin</label>
                         <select
