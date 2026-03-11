@@ -52,6 +52,10 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date 
         }
     };
 
+
+
+
+
     return (
         <div className="zoho-card">
             {/* Header */}
