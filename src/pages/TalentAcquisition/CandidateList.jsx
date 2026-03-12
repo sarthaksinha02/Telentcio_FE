@@ -91,8 +91,22 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
 
     // Base filter applies global filters (Preference, Experience, Rating, PulledBy) but NOT Status/Decision/InterviewStatus
     // This allows the cards to show correct overall metrics even when a specific card (which sets Status/Decision) is clicked.
-    const basePhase1Candidates = useMemo(() => {
+    // 1. Structural population: Only structural filters (Pulled By, Transferred, Legacy)
+    const structuralPhase1Candidates = useMemo(() => {
         return candidates.filter(candidate => {
+            const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
+            const matchTransferred = filterTransferred === 'All'
+                ? true
+                : filterTransferred === 'Transferred'
+                    ? candidate.isTransferred
+                    : !candidate.isTransferred;
+            return matchPulledBy && matchTransferred;
+        });
+    }, [candidates, filterPulledBy, filterTransferred]);
+
+    // 2. Base for Dynamic Cards: Structural + (Rating, Exp, Preference)
+    const basePhase1Candidates = useMemo(() => {
+        return structuralPhase1Candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
 
@@ -108,185 +122,174 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     matchRating = avgRating >= minRequired;
                 }
             }
-
-            const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
-            const matchTransferred = filterTransferred === 'All'
-                ? true
-                : filterTransferred === 'Transferred'
-                    ? candidate.isTransferred
-                    : !candidate.isTransferred;
-
-            return matchPreference && matchExperience && matchRating && matchPulledBy && matchTransferred;
+            return matchPreference && matchExperience && matchRating;
         });
-    }, [candidates, filterPreference, filterExperience, filterRating, filterPulledBy, filterTransferred]);
+    }, [structuralPhase1Candidates, filterPreference, filterExperience, filterRating]);
 
-    // Computed filtered candidates (Phase 1 — Shortlisted/Hired also appear here AND in Phase 2)
+    // 3. Final Filtered list for the table: Base + (Status, Decision, InterviewStatus)
     const filteredCandidates = useMemo(() => {
         return basePhase1Candidates.filter(candidate => {
             const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
             const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
 
-            // Interview filtering logic
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
-                const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
 
                 matchInterviewStatus = false;
-
                 if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
                 else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0;
                 else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
                 else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
                 else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && (!candidate.decision || candidate.decision === 'None');
             }
-
             return matchStatus && matchDecision && matchInterviewStatus;
         });
     }, [basePhase1Candidates, filterStatus, filterDecision, filterInterviewStatus]);
 
-    // Compute Metrics for Summary Boxes (Phase 1 — computed from basePhase1Candidates)
+    // Compute Metrics for Summary Boxes (Phase 1 — computed from structuralPhase1Candidates for stability)
     const metrics = useMemo(() => {
         const counts = {
-            total: basePhase1Candidates.length,
-            interested: basePhase1Candidates.filter(c => c.status === 'Interested').length,
-            interviewScheduled: basePhase1Candidates.filter(c => 
+            total: structuralPhase1Candidates.length,
+            interested: structuralPhase1Candidates.filter(c => c.status === 'Interested').length,
+            interviewScheduled: structuralPhase1Candidates.filter(c => 
                 (c.interviewRounds || []).some(r => (r.phase || 1) === 1)
             ).length,
-            shortlisted: basePhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
-            rejected: basePhase1Candidates.filter(c => c.decision === 'Rejected').length,
-            onHold: basePhase1Candidates.filter(c => c.decision === 'On Hold').length,
-            transferred: basePhase1Candidates.filter(c => c.isTransferred).length,
-            notInterested: basePhase1Candidates.filter(c => c.status === 'Not Interested').length,
-            notRelevant: basePhase1Candidates.filter(c => c.status === 'Not Relevant').length,
-            notPicking: basePhase1Candidates.filter(c => c.status === 'Not Picking').length,
+            shortlisted: structuralPhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
+            rejected: structuralPhase1Candidates.filter(c => c.decision === 'Rejected').length,
+            onHold: structuralPhase1Candidates.filter(c => c.decision === 'On Hold').length,
+            transferred: structuralPhase1Candidates.filter(c => c.isTransferred).length,
         };
         return counts;
-    }, [basePhase1Candidates]);
+    }, [structuralPhase1Candidates]);
 
     // --- Phase 2: shortlisted candidates + their metrics ---
-    const phase2Candidates = useMemo(() => {
-        return candidates.filter(c => c.decision === 'Shortlisted'); // Only Phase 1 Shortlisted enter Phase 2.
-    }, [candidates]);
+    // Structural Phase 2 population
+    const structuralPhase2Candidates = useMemo(() => {
+        return candidates.filter(c => {
+            const isShortlisted = c.decision === 'Shortlisted';
+            const matchPulledBy = filterPulledBy === 'All' || c.profilePulledBy === filterPulledBy;
+            const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
+            return isShortlisted && matchPulledBy && matchTransferred;
+        });
+    }, [candidates, filterPulledBy, filterTransferred]);
 
-    const phase2Filtered = useMemo(() => {
-        return phase2Candidates.filter(candidate => {
+    // Base for Phase 2 dynamic cards
+    const basePhase2Candidates = useMemo(() => {
+        return structuralPhase2Candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
-            const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
+            const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
+            let matchRating = true;
+            if (filterRating !== 'All') {
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
+                const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                if (ratedRounds.length === 0) { matchRating = false; } else {
+                    const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                    matchRating = avgRating >= Number(filterRating);
+                }
+            }
+            return matchPreference && matchExperience && matchRating;
+        });
+    }, [structuralPhase2Candidates, filterPreference, filterExperience, filterRating]);
+
+    // Final Phase 2 list
+    const phase2Filtered = useMemo(() => {
+        return basePhase2Candidates.filter(candidate => {
             const matchDecision = filterDecision === 'All' ||
                 (filterDecision === 'Shortlisted_Selected'
                     ? (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected')
                     : (candidate.phase2Decision || 'None') === filterDecision);
-            const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
                 const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
-
                 matchInterviewStatus = false;
-
                 if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
                 else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
                 else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
                 else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
                 else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && (!candidate.phase2Decision || candidate.phase2Decision === 'None');
             }
+            return matchDecision && matchInterviewStatus;
+        });
+    }, [basePhase2Candidates, filterDecision, filterInterviewStatus]);
+
+    const phase2Metrics = useMemo(() => {
+        return {
+            totalShortlisted: structuralPhase2Candidates.length,
+            totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
+            selected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Selected').length,
+            rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected').length,
+            interviewScheduled: structuralPhase2Candidates.filter(c =>
+                (c.interviewRounds || []).some(r => (r.phase || 1) === 2 && (r.status === 'Scheduled' || r.status === 'Pending'))
+            ).length
+        };
+    }, [structuralPhase2Candidates]);
+
+    // Structural Phase 3 population
+    const structuralPhase3Candidates = useMemo(() => {
+        return candidates.filter(c => {
+            const isSelected = c.phase2Decision === 'Selected';
+            const matchPulledBy = filterPulledBy === 'All' || c.profilePulledBy === filterPulledBy;
+            const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
+            return isSelected && matchPulledBy && matchTransferred;
+        });
+    }, [candidates, filterPulledBy, filterTransferred]);
+
+    // Base for Phase 3 dynamic cards
+    const basePhase3Candidates = useMemo(() => {
+        return structuralPhase3Candidates.filter(candidate => {
+            const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
+            const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
             let matchRating = true;
             if (filterRating !== 'All') {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 3) : [];
                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                 if (ratedRounds.length === 0) { matchRating = false; } else {
                     const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
                     matchRating = avgRating >= Number(filterRating);
                 }
             }
-            const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
-            const matchTransferred = filterTransferred === 'All'
-                ? true
-                : filterTransferred === 'Transferred'
-                    ? candidate.isTransferred
-                    : !candidate.isTransferred;
-            return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy && matchTransferred;
+            return matchPreference && matchExperience && matchRating;
         });
-    }, [phase2Candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterTransferred]);
-
-    const phase2Metrics = useMemo(() => {
-        // Use phase2Filtered so all active filters are reflected in the cards
-        return {
-            totalShortlisted: phase2Filtered.length,
-            totalScreened: phase2Filtered.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
-            selected: phase2Filtered.filter(c => c.phase2Decision === 'Selected').length,
-            rejected: phase2Filtered.filter(c => c.phase2Decision === 'Rejected').length,
-            interviewScheduled: phase2Filtered.filter(c =>
-                (c.interviewRounds || []).some(r => (r.phase || 1) === 2 && (r.status === 'Scheduled' || r.status === 'Pending'))
-            ).length
-        };
-    }, [phase2Filtered]);
-
-    // --- Phase 3: Offer & Onboarding ---
-    const phase3Candidates = useMemo(() => {
-        return candidates.filter(c => c.phase2Decision === 'Selected'); // "Selected" in Phase 2 moves them to Phase 3. They also remain in Phase 2.
-    }, [candidates]);
+    }, [structuralPhase3Candidates, filterPreference, filterExperience, filterRating]);
 
     const phase3Filtered = useMemo(() => {
-        return phase3Candidates.filter(candidate => {
-            const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
-            const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
+        return basePhase3Candidates.filter(candidate => {
             const matchDecision = filterDecision === 'All' ||
                 (filterDecision === 'No Show_Offer Declined'
                     ? (candidate.phase3Decision === 'No Show' || candidate.phase3Decision === 'Offer Declined')
                     : (candidate.phase3Decision || 'None') === filterDecision);
-            const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
 
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 3) : [];
-                const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
                 const hasFailed = rounds.some(r => r.status === 'Failed');
                 const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
-
                 matchInterviewStatus = false;
-
                 if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-                else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
+                else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0;
                 else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
                 else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
                 else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && !['No Show', 'Offer Declined'].includes(candidate.phase3Decision);
             }
-
-            let matchRating = true;
-            if (filterRating !== 'All') {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 3) : [];
-                const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                if (ratedRounds.length === 0) { matchRating = false; } else {
-                    const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                    matchRating = avgRating >= Number(filterRating);
-                }
-            }
-            const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
-            const matchTransferred = filterTransferred === 'All'
-                ? true
-                : filterTransferred === 'Transferred'
-                    ? candidate.isTransferred
-                    : !candidate.isTransferred;
-            return matchPreference && matchStatus && matchDecision && matchExperience && matchInterviewStatus && matchRating && matchPulledBy && matchTransferred;
+            return matchDecision && matchInterviewStatus;
         });
-    }, [phase3Candidates, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterTransferred]);
+    }, [basePhase3Candidates, filterDecision, filterInterviewStatus]);
 
     const phase3Metrics = useMemo(() => {
-        // Use phase3Filtered so all active filters are reflected in the cards
         return {
-            total: phase3Filtered.length,
-            offerSent: phase3Filtered.filter(c => c.phase3Decision === 'Offer Sent').length,
-            offerAccepted: phase3Filtered.filter(c => c.phase3Decision === 'Offer Accepted').length,
-            joined: phase3Filtered.filter(c => c.phase3Decision === 'Joined').length,
-            noShow: phase3Filtered.filter(c => c.phase3Decision === 'No Show' || c.phase3Decision === 'Offer Declined').length
+            total: structuralPhase3Candidates.length,
+            offerSent: structuralPhase3Candidates.filter(c => c.phase3Decision === 'Offer Sent').length,
+            offerAccepted: structuralPhase3Candidates.filter(c => c.phase3Decision === 'Offer Accepted').length,
+            joined: structuralPhase3Candidates.filter(c => c.phase3Decision === 'Joined').length,
+            noShow: structuralPhase3Candidates.filter(c => c.phase3Decision === 'No Show' || c.phase3Decision === 'Offer Declined').length
         };
-    }, [phase3Filtered]);
+    }, [structuralPhase3Candidates]);
 
     const itemsPerPage = 15;
     const activeList = activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered;
@@ -520,7 +523,11 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
             case 'Selected': return 'text-purple-600 font-bold';
             case 'Shortlisted': return 'text-emerald-600 font-bold';
             case 'Phase 3 Offer Stage': return 'text-purple-600 font-bold';
+            case 'Offer Sent': return 'text-blue-600 font-bold';
+            case 'Offer Accepted': return 'text-amber-600 font-bold';
             case 'Joined': return 'text-emerald-600 font-bold';
+            case 'No Show':
+            case 'Offer Declined': return 'text-rose-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
             case 'On Hold': return 'text-amber-600 font-bold';
             default: return 'text-slate-600';
@@ -744,7 +751,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     dynamicCards.push({
                         label: filterPreference,
                         value: prefCount,
-                        icon: UserCheck, // Using UserCheck or similar
+                        icon: UserCheck,
                         color: 'indigo',
                         onClick: () => { }
                     });
@@ -822,8 +829,6 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                 }
 
                 const allCards = [...funnelCards, ...dynamicCards];
-
-                // Determine grid columns
                 const gridCols = `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
 
                 return (
@@ -856,102 +861,250 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     </div>
                 );
             })()
-            : activePhase === 2 ? (
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                    <div
-                        onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.totalShortlisted}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Profile Sent</span>
-                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
+            : activePhase === 2 ? (() => {
+                const funnelCards = [
+                    {
+                        id: 'total',
+                        label: 'Total Profile Sent',
+                        value: phase2Metrics.totalShortlisted,
+                        icon: Users,
+                        color: 'purple',
+                        isActive: filterDecision === 'All' && filterInterviewStatus === 'All' && filterStatus === 'All',
+                        onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterStatus('All'); }
+                    },
+                    {
+                        id: 'shortlisted',
+                        label: 'Shortlisted',
+                        value: phase2Metrics.totalScreened,
+                        icon: UserCheck,
+                        color: 'sky',
+                        isActive: filterDecision === 'Shortlisted_Selected',
+                        onClick: () => { setFilterDecision('Shortlisted_Selected'); setFilterStatus('All'); }
+                    },
+                    {
+                        id: 'interviewScheduled',
+                        label: 'Interview Scheduled',
+                        value: phase2Metrics.interviewScheduled,
+                        icon: Clock,
+                        color: 'amber',
+                        isActive: filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled',
+                        onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('Pending'); }
+                    },
+                    {
+                        id: 'selected',
+                        label: 'Selected',
+                        value: phase2Metrics.selected,
+                        icon: CheckCircle,
+                        color: 'emerald',
+                        isActive: filterDecision === 'Selected',
+                        onClick: () => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }
+                    },
+                    {
+                        id: 'rejected',
+                        label: 'Rejected',
+                        value: phase2Metrics.rejected,
+                        icon: ThumbsDown,
+                        color: 'rose',
+                        isActive: filterDecision === 'Rejected',
+                        onClick: () => { setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }
+                    }
+                ];
 
-                    <div
-                        onClick={() => { setFilterDecision('Shortlisted_Selected'); setFilterStatus('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.totalScreened}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Shortlisted</span>
-                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
+                const dynamicCards = [];
 
-                    <div
-                        onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('Pending'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.interviewScheduled}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Interview Scheduled</span>
-                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
+                if (filterPreference !== 'All') {
+                    const prefCount = basePhase2Candidates.filter(c => c.preference === filterPreference).length;
+                    dynamicCards.push({
+                        label: filterPreference,
+                        value: prefCount,
+                        icon: UserCheck,
+                        color: 'indigo',
+                        onClick: () => { }
+                    });
+                }
 
-                    <div
-                        onClick={() => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.selected}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Selected</span>
-                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
+                if (filterRating !== 'All') {
+                    const ratedCount = basePhase2Candidates.filter(c => {
+                        const rounds = c.interviewRounds || [];
+                        const ratedRounds = rounds.filter(r => (r.phase || 1) === 2 && r.rating && r.rating > 0);
+                        if (ratedRounds.length === 0) return false;
+                        const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                        return avgRating >= Number(filterRating);
+                    }).length;
+                    dynamicCards.push({
+                        label: `${filterRating}+ Rating`,
+                        value: ratedCount,
+                        icon: ThumbsUp,
+                        color: 'amber',
+                        onClick: () => { }
+                    });
+                }
 
-                    <div
-                        onClick={() => { setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase2Metrics.rejected}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Rejected</span>
-                        <ThumbsDown className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
+                if (filterExperience) {
+                    const expCount = basePhase2Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
+                    dynamicCards.push({
+                        label: `${filterExperience}+ Yrs Exp`,
+                        value: expCount,
+                        icon: Briefcase,
+                        color: 'blue',
+                        onClick: () => { }
+                    });
+                }
 
-                </div>
-            ) : (
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                    <div
-                        onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase3Metrics.total}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Candidates</span>
-                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
+                const allCards = [...funnelCards, ...dynamicCards];
+                const gridCols = `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
 
-                    <div
-                        onClick={() => { setFilterDecision('Offer Sent'); setFilterStatus('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase3Metrics.offerSent}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Offer Sent</span>
-                        <FileText className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
+                return (
+                    <div className={`grid ${gridCols} gap-4`}>
+                        {allCards.map((card, idx) => {
+                            const Icon = card.icon;
+                            const colorMap = {
+                                purple: 'border-b-purple-500 text-purple-600',
+                                sky: 'border-b-sky-500 text-sky-600',
+                                amber: 'border-b-amber-500 text-amber-600',
+                                emerald: 'border-b-emerald-500 text-emerald-600',
+                                rose: 'border-b-rose-500 text-rose-600',
+                                indigo: 'border-b-indigo-500 text-indigo-600',
+                                blue: 'border-b-blue-500 text-blue-600'
+                            };
 
-                    <div
-                        onClick={() => { setFilterDecision('Offer Accepted'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase3Metrics.offerAccepted}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Offer Accepted</span>
-                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
+                            return (
+                                <div
+                                    key={idx}
+                                    onClick={card.onClick}
+                                    className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
+                                >
+                                    <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
+                                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
+                                    <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                </div>
+                            );
+                        })}
                     </div>
+                );
+            })()
+            : (() => {
+                const funnelCards = [
+                    {
+                        id: 'total',
+                        label: 'Total Candidates',
+                        value: phase3Metrics.total,
+                        icon: Users,
+                        color: 'purple',
+                        isActive: filterDecision === 'All' && filterStatus === 'All',
+                        onClick: () => { setFilterDecision('All'); setFilterStatus('All'); }
+                    },
+                    {
+                        id: 'offerSent',
+                        label: 'Offer Sent',
+                        value: phase3Metrics.offerSent,
+                        icon: FileText,
+                        color: 'sky',
+                        isActive: filterDecision === 'Offer Sent',
+                        onClick: () => { setFilterDecision('Offer Sent'); setFilterStatus('All'); }
+                    },
+                    {
+                        id: 'offerAccepted',
+                        label: 'Offer Accepted',
+                        value: phase3Metrics.offerAccepted,
+                        icon: ThumbsUp,
+                        color: 'amber',
+                        isActive: filterDecision === 'Offer Accepted',
+                        onClick: () => { setFilterDecision('Offer Accepted'); setFilterInterviewStatus('All'); }
+                    },
+                    {
+                        id: 'joined',
+                        label: 'Joined',
+                        value: phase3Metrics.joined,
+                        icon: CheckCircle,
+                        color: 'emerald',
+                        isActive: filterDecision === 'Joined',
+                        onClick: () => { setFilterDecision('Joined'); setFilterInterviewStatus('All'); }
+                    },
+                    {
+                        id: 'noShow',
+                        label: 'No Show / Declined',
+                        value: phase3Metrics.noShow,
+                        icon: XCircle,
+                        color: 'rose',
+                        isActive: filterDecision === 'No Show_Offer Declined',
+                        onClick: () => { setFilterDecision('No Show_Offer Declined'); setFilterInterviewStatus('All'); }
+                    }
+                ];
 
-                    <div
-                        onClick={() => { setFilterDecision('Joined'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-emerald-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase3Metrics.joined}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Joined</span>
-                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-emerald-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
+                const dynamicCards = [];
 
-                    <div
-                        onClick={() => { setFilterDecision('No Show_Offer Declined'); setFilterInterviewStatus('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-rose-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{phase3Metrics.noShow}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">No Show / Declined</span>
-                        <XCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-rose-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
+                if (filterPreference !== 'All') {
+                    const prefCount = basePhase3Candidates.filter(c => c.preference === filterPreference).length;
+                    dynamicCards.push({
+                        label: filterPreference,
+                        value: prefCount,
+                        icon: UserCheck,
+                        color: 'indigo',
+                        onClick: () => { }
+                    });
+                }
+
+                if (filterRating !== 'All') {
+                    const ratedCount = basePhase3Candidates.filter(c => {
+                        const rounds = c.interviewRounds || [];
+                        const ratedRounds = rounds.filter(r => (r.phase || 1) === 3 && r.rating && r.rating > 0);
+                        if (ratedRounds.length === 0) return false;
+                        const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                        return avgRating >= Number(filterRating);
+                    }).length;
+                    dynamicCards.push({
+                        label: `${filterRating}+ Rating`,
+                        value: ratedCount,
+                        icon: ThumbsUp,
+                        color: 'amber',
+                        onClick: () => { }
+                    });
+                }
+
+                if (filterExperience) {
+                    const expCount = basePhase3Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
+                    dynamicCards.push({
+                        label: `${filterExperience}+ Yrs Exp`,
+                        value: expCount,
+                        icon: Briefcase,
+                        color: 'blue',
+                        onClick: () => { }
+                    });
+                }
+
+                const allCards = [...funnelCards, ...dynamicCards];
+                const gridCols = `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
+
+                return (
+                    <div className={`grid ${gridCols} gap-4`}>
+                        {allCards.map((card, idx) => {
+                            const Icon = card.icon;
+                            const colorMap = {
+                                purple: 'border-b-purple-500 text-purple-600',
+                                sky: 'border-b-sky-500 text-sky-600',
+                                amber: 'border-b-amber-500 text-amber-600',
+                                emerald: 'border-b-emerald-500 text-emerald-600',
+                                rose: 'border-b-rose-500 text-rose-600',
+                                indigo: 'border-b-indigo-500 text-indigo-600',
+                                blue: 'border-b-blue-500 text-blue-600'
+                            };
+
+                            return (
+                                <div
+                                    key={idx}
+                                    onClick={card.onClick}
+                                    className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
+                                >
+                                    <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
+                                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
+                                    <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                </div>
+                            );
+                        })}
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {/* Filters */}
             <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-end">
@@ -970,20 +1123,22 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         <option value="Very Poor">Very Poor</option>
                     </select>
                 </div>
-                <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
-                    <select
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        <option value="All">All Statuses</option>
-                        <option value="Interested">Interested</option>
-                        <option value="Not Interested">Not Interested</option>
-                        <option value="Not Relevant">Not Relevant</option>
-                        <option value="Not Picking">Not Picking</option>
-                    </select>
-                </div>
+                {activePhase === 1 && (
+                    <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
+                        <select
+                            value={filterStatus}
+                            onChange={(e) => setFilterStatus(e.target.value)}
+                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="All">All Statuses</option>
+                            <option value="Interested">Interested</option>
+                            <option value="Not Interested">Not Interested</option>
+                            <option value="Not Relevant">Not Relevant</option>
+                            <option value="Not Picking">Not Picking</option>
+                        </select>
+                    </div>
+                )}
                 <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-1">Decision</label>
                     <select
@@ -992,12 +1147,31 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                     >
                         <option value="All">All Decisions</option>
-                        {activePhase === 2 && <option value="Selected">Selected</option>}
-                        <option value="Shortlisted">Shortlisted</option>
-                        {activePhase === 3 && <option value="Hired">Hired</option>}
-                        <option value="Rejected">Rejected</option>
-                        <option value="On Hold">On Hold</option>
-                        <option value="None">None</option>
+                        {activePhase === 1 && (
+                            <>
+                                <option value="Shortlisted">Shortlisted</option>
+                                <option value="Rejected">Rejected</option>
+                                <option value="On Hold">On Hold</option>
+                                <option value="None">None</option>
+                            </>
+                        )}
+                        {activePhase === 2 && (
+                            <>
+                                <option value="Selected">Selected</option>
+                                <option value="Shortlisted">Shortlisted (Screened)</option>
+                                <option value="Rejected">Rejected</option>
+                                <option value="On Hold">On Hold</option>
+                            </>
+                        )}
+                        {activePhase === 3 && (
+                            <>
+                                <option value="Offer Sent">Offer Sent</option>
+                                <option value="Offer Accepted">Offer Accepted</option>
+                                <option value="Joined">Joined</option>
+                                <option value="No Show">No Show</option>
+                                <option value="Offer Declined">Offer Declined</option>
+                            </>
+                        )}
                     </select>
                 </div>
                 <div>
@@ -1078,11 +1252,12 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
                     />
                 </div>
-                {(filterPreference !== 'All' || filterStatus !== 'Interested' || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
+                {(filterPreference !== 'All' || (activePhase === 1 && filterStatus !== 'Interested') || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
                     <button
                         onClick={() => {
                             setFilterPreference('All');
-                            setFilterStatus('Interested');
+                            if (activePhase === 1) setFilterStatus('Interested');
+                            else setFilterStatus('All');
                             setFilterDecision('All');
                             setFilterExperience('');
                             setFilterInterviewStatus('All');
