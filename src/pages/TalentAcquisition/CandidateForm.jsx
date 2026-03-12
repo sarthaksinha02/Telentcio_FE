@@ -906,7 +906,6 @@ const CandidateForm = () => {
                                         disabled={isViewMode}
                                     >
                                         <option value="Interested">Interested</option>
-                                        <option value="Pre-Screened">Pre-Screened</option>
                                         <option value="In Interview">In Interview</option>
                                         <option value="Not Interested">Not Interested</option>
                                         <option value="Not Relevant">Not Relevant</option>
