@@ -149,7 +149,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
 
     // Compute Metrics for Summary Boxes (Phase 1 — computed from basePhase1Candidates)
     const metrics = useMemo(() => {
-        return {
+        const counts = {
             total: basePhase1Candidates.length,
             interested: basePhase1Candidates.filter(c => c.status === 'Interested').length,
             interviewScheduled: basePhase1Candidates.filter(c => 
@@ -158,8 +158,12 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
             shortlisted: basePhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
             rejected: basePhase1Candidates.filter(c => c.decision === 'Rejected').length,
             onHold: basePhase1Candidates.filter(c => c.decision === 'On Hold').length,
-            transferred: basePhase1Candidates.filter(c => c.isTransferred).length
+            transferred: basePhase1Candidates.filter(c => c.isTransferred).length,
+            notInterested: basePhase1Candidates.filter(c => c.status === 'Not Interested').length,
+            notRelevant: basePhase1Candidates.filter(c => c.status === 'Not Relevant').length,
+            notPicking: basePhase1Candidates.filter(c => c.status === 'Not Picking').length,
         };
+        return counts;
     }, [basePhase1Candidates]);
 
     // --- Phase 2: shortlisted candidates + their metrics ---
@@ -662,69 +666,197 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         </button>
                     )}
                 </div>
-            </div>
+            </div>            {/* Pipeline Summary Boxes */}
+            {activePhase === 1 ? (() => {
+                const funnelCards = [
+                    {
+                        id: 'total',
+                        label: 'Total Sourced',
+                        value: metrics.total,
+                        icon: Users,
+                        color: 'purple',
+                        isActive: filterStatus === 'All' && filterDecision === 'All' && filterInterviewStatus === 'All' && filterTransferred === 'All',
+                        onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                    },
+                    {
+                        id: 'interested',
+                        label: 'Interested',
+                        value: metrics.interested,
+                        icon: CheckCircle,
+                        color: 'green',
+                        isActive: filterStatus === 'Interested',
+                        onClick: () => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                    },
+                    {
+                        id: 'interviewScheduled',
+                        label: 'Interview Scheduled',
+                        value: metrics.interviewScheduled,
+                        icon: UserCheck,
+                        color: 'amber',
+                        isActive: filterInterviewStatus === 'Scheduled',
+                        onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); setFilterTransferred('All'); }
+                    },
+                    {
+                        id: 'shortlisted',
+                        label: 'Shortlisted',
+                        value: metrics.shortlisted,
+                        icon: ThumbsUp,
+                        color: 'sky',
+                        isActive: filterDecision === 'Shortlisted',
+                        onClick: () => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                    },
+                    {
+                        id: 'onHold',
+                        label: 'On Hold',
+                        value: metrics.onHold,
+                        icon: Clock,
+                        color: 'slate',
+                        isActive: filterDecision === 'On Hold',
+                        onClick: () => { setFilterStatus('All'); setFilterDecision('On Hold'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                    }
+                ];
 
-            {/* Pipeline Summary Boxes */}
-            {activePhase === 1 ? (
-                <div className={`grid grid-cols-2 ${!isLegacyView && metrics.transferred > 0 ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4`}>
-                    <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-purple-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.total}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Total Sourced</span>
-                        <Users className="absolute -right-2 top-1/2 -translate-y-1/2 text-purple-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
+                const dynamicCards = [];
+
+                if (filterStatus !== 'All' && filterStatus !== 'Interested') {
+                    const statusCount = basePhase1Candidates.filter(c => c.status === filterStatus).length;
+                    dynamicCards.push({
+                        label: filterStatus,
+                        value: statusCount,
+                        icon: ThumbsDown,
+                        color: 'rose',
+                        onClick: () => { }
+                    });
+                }
+
+                if (filterDecision === 'Rejected') {
+                    dynamicCards.push({
+                        label: 'Rejected',
+                        value: metrics.rejected,
+                        icon: XCircle,
+                        color: 'rose',
+                        onClick: () => { }
+                    });
+                }
+
+                if (filterPreference !== 'All') {
+                    const prefCount = basePhase1Candidates.filter(c => c.preference === filterPreference).length;
+                    dynamicCards.push({
+                        label: filterPreference,
+                        value: prefCount,
+                        icon: UserCheck, // Using UserCheck or similar
+                        color: 'indigo',
+                        onClick: () => { }
+                    });
+                }
+
+                if (filterRating !== 'All') {
+                    const ratedCount = basePhase1Candidates.filter(c => {
+                        const rounds = c.interviewRounds || [];
+                        const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                        if (ratedRounds.length === 0) return false;
+                        const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                        return avgRating >= Number(filterRating);
+                    }).length;
+                    dynamicCards.push({
+                        label: `${filterRating}+ Rating`,
+                        value: ratedCount,
+                        icon: ThumbsUp,
+                        color: 'amber',
+                        onClick: () => { }
+                    });
+                }
+
+                if (filterInterviewStatus !== 'All' && filterInterviewStatus !== 'Scheduled') {
+                    const interviewCount = basePhase1Candidates.filter(candidate => {
+                        const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
+                        const hasFailed = rounds.some(r => r.status === 'Failed');
+                        const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
+
+                        if (filterInterviewStatus === 'None') return rounds.length === 0;
+                        if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') return rounds.length > 0;
+                        if (filterInterviewStatus === 'Passed') return allPassed;
+                        if (filterInterviewStatus === 'Failed') return hasFailed;
+                        if (filterInterviewStatus === 'In_Process') return rounds.length > 0 && !hasFailed && (!candidate.decision || candidate.decision === 'None');
+                        return false;
+                    }).length;
+                    dynamicCards.push({
+                        label: filterInterviewStatus.replace('_', ' '),
+                        value: interviewCount,
+                        icon: Clock,
+                        color: 'amber',
+                        onClick: () => { }
+                    });
+                }
+
+                if (filterExperience) {
+                    const expCount = basePhase1Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
+                    dynamicCards.push({
+                        label: `${filterExperience}+ Yrs Exp`,
+                        value: expCount,
+                        icon: Briefcase,
+                        color: 'blue',
+                        onClick: () => { }
+                    });
+                }
+
+                if (filterPulledBy !== 'All') {
+                    const pulledCount = basePhase1Candidates.filter(c => c.profilePulledBy === filterPulledBy).length;
+                    dynamicCards.push({
+                        label: `By: ${filterPulledBy.split(' ')[0]}`,
+                        value: pulledCount,
+                        icon: Users,
+                        color: 'indigo',
+                        onClick: () => { }
+                    });
+                }
+
+                if (filterTransferred === 'Transferred') {
+                    dynamicCards.push({
+                        label: 'Transferred',
+                        value: metrics.transferred,
+                        icon: Download,
+                        color: 'blue',
+                        onClick: () => { }
+                    });
+                }
+
+                const allCards = [...funnelCards, ...dynamicCards];
+
+                // Determine grid columns
+                const gridCols = `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
+
+                return (
+                    <div className={`grid ${gridCols} gap-4`}>
+                        {allCards.map((card, idx) => {
+                            const Icon = card.icon;
+                            const colorMap = {
+                                purple: 'border-b-purple-500 text-purple-600',
+                                green: 'border-b-green-500 text-green-600',
+                                amber: 'border-b-amber-500 text-amber-600',
+                                sky: 'border-b-sky-500 text-sky-600',
+                                slate: 'border-b-slate-500 text-slate-600',
+                                rose: 'border-b-rose-500 text-rose-600',
+                                indigo: 'border-b-indigo-500 text-indigo-600',
+                                blue: 'border-b-blue-500 text-blue-600'
+                            };
+
+                            return (
+                                <div
+                                    key={idx}
+                                    onClick={card.onClick}
+                                    className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
+                                >
+                                    <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
+                                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
+                                    <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                </div>
+                            );
+                        })}
                     </div>
-
-                    <div
-                        onClick={() => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-green-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.interested}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Interested</span>
-                        <CheckCircle className="absolute -right-2 top-1/2 -translate-y-1/2 text-green-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
-
-                    <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); setFilterTransferred('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.interviewScheduled}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Interview Scheduled</span>
-                        <UserCheck className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
-
-                    <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-sky-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.shortlisted}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Shortlisted</span>
-                        <ThumbsUp className="absolute -right-2 top-1/2 -translate-y-1/2 text-sky-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
-
-
-                    <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('On Hold'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }}
-                        className="bg-white border border-slate-200 border-b-4 border-b-slate-400 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
-                    >
-                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.onHold}</span>
-                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">On Hold</span>
-                        <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                    </div>
-
-                    {!isLegacyView && metrics.transferred > 0 && (
-                        <div
-                            onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('Transferred'); }}
-                            className="bg-slate-50 border border-slate-200 border-b-4 border-b-blue-600 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-100 transition-colors cursor-pointer active:scale-[0.98]"
-                        >
-                            <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.transferred}</span>
-                            <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">Transferred</span>
-                            <Briefcase className="absolute -right-2 top-1/2 -translate-y-1/2 text-blue-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
-                        </div>
-                    )}
-                </div>
-            ) : activePhase === 2 ? (
+                );
+            })()
+            : activePhase === 2 ? (
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                     <div
                         onClick={() => { setFilterDecision('All'); setFilterInterviewStatus('All'); }}
