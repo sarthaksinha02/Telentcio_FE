@@ -137,7 +137,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                 matchInterviewStatus = false;
 
                 if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-                else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
+                else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0;
                 else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
                 else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
                 else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && (!candidate.decision || candidate.decision === 'None');
@@ -153,7 +153,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
             total: basePhase1Candidates.length,
             interested: basePhase1Candidates.filter(c => c.status === 'Interested').length,
             interviewScheduled: basePhase1Candidates.filter(c => 
-                (c.interviewRounds || []).some(r => (r.phase || 1) === 1 && (r.status === 'Scheduled' || r.status === 'Pending'))
+                (c.interviewRounds || []).some(r => (r.phase || 1) === 1)
             ).length,
             shortlisted: basePhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
             rejected: basePhase1Candidates.filter(c => c.decision === 'Rejected').length,
@@ -217,7 +217,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
             totalScreened: phase2Filtered.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
             selected: phase2Filtered.filter(c => c.phase2Decision === 'Selected').length,
             rejected: phase2Filtered.filter(c => c.phase2Decision === 'Rejected').length,
-            interviewScheduled: phase2Filtered.filter(c => 
+            interviewScheduled: phase2Filtered.filter(c =>
                 (c.interviewRounds || []).some(r => (r.phase || 1) === 2 && (r.status === 'Scheduled' || r.status === 'Pending'))
             ).length
         };
@@ -686,7 +686,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     </div>
 
                     <div
-                        onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Pending'); setFilterTransferred('All'); }}
+                        onClick={() => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); setFilterTransferred('All'); }}
                         className="bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98]"
                     >
                         <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{metrics.interviewScheduled}</span>
@@ -878,6 +878,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         <option value="All">All Interviews</option>
                         <option value="None">None Scheduled</option>
                         <option value="In_Process">In Interviews (Active)</option>
+                        <option value="Scheduled">Has Interviews (All)</option>
                         <option value="Pending">In Progress / Pending</option>
                         <option value="Passed">All Passed</option>
                         <option value="Failed">Failed</option>

@@ -859,15 +859,15 @@ const CandidateDetails = () => {
                                                                         </div>
                                                                         <p className="text-sm text-slate-700 whitespace-pre-wrap">{round.feedback}</p>
                                                                         
-                                                                        {round.skillRatings && round.skillRatings.length > 0 && (
+                                                                        {round.skillRatings && round.skillRatings.some(sr => sr.rating > 0) && (
                                                                             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                                                 {round.skillRatings.map((sr, idx) => (
                                                                                     <div key={idx} className="flex items-center justify-between text-[11px] bg-white/60 px-2.5 py-1.5 rounded-lg border border-slate-200/50 shadow-sm">
                                                                                         <div className="flex items-center gap-1.5">
-                                                                                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                                                                                            <span className="text-slate-600 font-semibold">{sr.skill}</span>
+                                                                                            <span className={`w-1.5 h-1.5 rounded-full ${sr.rating > 0 ? 'bg-blue-400' : 'bg-slate-300'}`}></span>
+                                                                                            <span className={`text-slate-600 font-semibold ${sr.rating === 0 ? 'opacity-50' : ''}`}>{sr.skill}</span>
                                                                                         </div>
-                                                                                        <span className="font-black text-blue-700">{sr.rating}/10</span>
+                                                                                        <span className={`${sr.rating > 0 ? 'font-black text-blue-700' : 'font-medium text-slate-400'}`}>{sr.rating}/10</span>
                                                                                     </div>
                                                                                 ))}
                                                                             </div>
@@ -893,7 +893,7 @@ const CandidateDetails = () => {
                                                                             setEvaluatingRoundId(round._id);
                                                                             setEvaluationForm({ 
                                                                                 rating: '',
-                                                                                skillRatings: candidate.skillRatings || [],
+                                                                                skillRatings: (candidate.skillRatings || []).map(sr => ({ ...sr, rating: 0 })),
                                                                                 showAssessment: false,
                                                                                 manualSkillName: ''
                                                                             });

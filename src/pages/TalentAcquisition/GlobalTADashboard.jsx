@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-    ArrowLeft, TrendingUp, Users, UserCheck, PieChart as PieIcon, 
-    BarChart3, RefreshCw, Briefcase, Filter, Calendar, 
+import {
+    ArrowLeft, TrendingUp, Users, UserCheck, PieChart as PieIcon,
+    BarChart3, RefreshCw, Briefcase, Filter, Calendar,
     Search, CheckSquare, Clock, AlertCircle, Inbox,
     ChevronDown, Download, ExternalLink, Award, PlayCircle
 } from 'lucide-react';
@@ -106,9 +106,9 @@ const GlobalTADashboard = () => {
         );
     }
 
-    const { 
-        topMetrics, pipelineDistribution, recruitmentFunnel, 
-        departmentAnalysis, clientAnalysis, recruiterPerformance, 
+    const {
+        topMetrics, pipelineDistribution, recruitmentFunnel,
+        departmentAnalysis, clientAnalysis, recruiterPerformance,
         positionPerformance, timeMetrics, sourceAnalysis, monthlyTrend,
         filterOptions // New: dynamic options for dropdowns
     } = data || {};
@@ -142,11 +142,10 @@ const GlobalTADashboard = () => {
                                     <button
                                         key={p}
                                         onClick={() => setFilters(prev => ({ ...prev, phase: p }))}
-                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
-                                            filters.phase === p 
-                                            ? 'bg-white text-indigo-600 shadow-sm' 
-                                            : 'text-slate-500 hover:text-slate-700'
-                                        }`}
+                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${filters.phase === p
+                                                ? 'bg-white text-indigo-600 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700'
+                                            }`}
                                     >
                                         {p === 'all' ? 'Global' : `Phase ${p}`}
                                     </button>
@@ -176,7 +175,7 @@ const GlobalTADashboard = () => {
                             <div className="relative">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Client</label>
                                 <div className="relative">
-                                    <select 
+                                    <select
                                         name="client" value={filters.client} onChange={handleFilterChange}
                                         className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
                                     >
@@ -191,7 +190,7 @@ const GlobalTADashboard = () => {
                             <div className="relative">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Department</label>
                                 <div className="relative">
-                                    <select 
+                                    <select
                                         name="department" value={filters.department} onChange={handleFilterChange}
                                         className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
                                     >
@@ -206,7 +205,7 @@ const GlobalTADashboard = () => {
                             <div className="relative">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Position</label>
                                 <div className="relative">
-                                    <select 
+                                    <select
                                         name="position" value={filters.position} onChange={handleFilterChange}
                                         className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
                                     >
@@ -221,7 +220,7 @@ const GlobalTADashboard = () => {
                             <div className="relative">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Recruiter</label>
                                 <div className="relative">
-                                    <select 
+                                    <select
                                         name="recruiter" value={filters.recruiter} onChange={handleFilterChange}
                                         className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
                                     >
@@ -236,14 +235,14 @@ const GlobalTADashboard = () => {
                             <div className="relative col-span-2 lg:col-span-1 grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">From</label>
-                                    <input 
+                                    <input
                                         type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange}
                                         className="w-full px-2 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all"
                                     />
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">To</label>
-                                    <input 
+                                    <input
                                         type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange}
                                         className="w-full px-2 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all"
                                     />
@@ -264,26 +263,26 @@ const GlobalTADashboard = () => {
 
 
             <div className="max-w-[1600px] mx-auto px-6 py-8 space-y-8">
-                
+
                 {/* 1. TOP METRICS CARDS */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
                     <KpiCard label="Total Requisitions" val={topMetrics?.totalReqs} icon={<Briefcase />} color="indigo" />
                     <KpiCard label="Positions Open" val={topMetrics?.totalOpenPositions} icon={<TrendingUp />} color="emerald" />
-                    <KpiCard 
-                        label={filters.phase === '1' ? "Total Sourced" : filters.phase === '2' ? "Pool from Ph 1" : filters.phase === '3' ? "Pool from Ph 2" : "Total Sourced"} 
-                        val={topMetrics?.totalSourced} 
-                        icon={<Users />} 
-                        color="blue" 
+                    <KpiCard
+                        label={filters.phase === '1' ? "Total Sourced" : filters.phase === '2' ? "Pool from Ph 1" : filters.phase === '3' ? "Pool from Ph 2" : "Total Sourced"}
+                        val={topMetrics?.totalSourced}
+                        icon={<Users />}
+                        color="blue"
                     />
                     <KpiCard label="Interviews Scheduled" val={topMetrics?.interviewsScheduled} icon={<Calendar />} color="purple" />
                     <KpiCard label="Offers Released" val={topMetrics?.offersReleased} icon={<Award />} color="amber" />
                     <KpiCard label="Total Joined" val={topMetrics?.totalJoined} icon={<UserCheck />} color="pink" />
                     <KpiCard label="Offer Acceptance Rate" val={`${topMetrics?.offerAcceptanceRate}%`} icon={<CheckSquare />} color="cyan" />
-                    <KpiCard 
-                        label={filters.phase === 'all' ? "Joining Conv. Rate" : "Progression Rate"} 
-                        val={`${topMetrics?.conversionRate || topMetrics?.joiningConversionRate}%`} 
-                        icon={<TrendingUp />} 
-                        color="orange" 
+                    <KpiCard
+                        label={filters.phase === 'all' ? "Joining Conv. Rate" : "Progression Rate"}
+                        val={`${topMetrics?.conversionRate || topMetrics?.joiningConversionRate}%`}
+                        icon={<TrendingUp />}
+                        color="orange"
                     />
                     <KpiCard label="Avg Time to Hire" val={`${topMetrics?.avgTimeToHire} Days`} icon={<Clock />} color="slate" />
                     <KpiCard label="Avg Time to Fill" val={`${topMetrics?.avgTimeToFill} Days`} icon={<Calendar />} color="red" />
@@ -368,8 +367,8 @@ const GlobalTADashboard = () => {
                                 <ComposedChart data={monthlyTrend}>
                                     <defs>
                                         <linearGradient id="colorSourced" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
-                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1} />
+                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -496,11 +495,11 @@ const GlobalTADashboard = () => {
                             <div className="p-3 bg-white/10 w-fit rounded-2xl mb-6">
                                 <TrendingUp size={24} />
                             </div>
-                            <h3 className="text-2xl font-black mb-4 tracking-tight leading-tight">Joining Efficiency<br/>Metric</h3>
+                            <h3 className="text-2xl font-black mb-4 tracking-tight leading-tight">Joining Efficiency<br />Metric</h3>
                             <p className="text-indigo-100 text-sm font-medium leading-relaxed mb-8 opacity-80">
                                 Sourced to Joined conversion ratio highlights the ROI of your recruitment sourcing machinery.
                             </p>
-                            
+
                             <div className="space-y-6">
                                 <div className="flex items-end gap-3">
                                     <span className="text-6xl font-black leading-none">{topMetrics?.totalSourced}</span>
@@ -508,8 +507,8 @@ const GlobalTADashboard = () => {
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <div className="flex-grow h-3 bg-white/10 rounded-full overflow-hidden">
-                                        <div 
-                                            className="h-full bg-indigo-300 shadow-[0_0_20px_rgba(165,180,252,0.5)] transition-all duration-1000" 
+                                        <div
+                                            className="h-full bg-indigo-300 shadow-[0_0_20px_rgba(165,180,252,0.5)] transition-all duration-1000"
                                             style={{ width: `${topMetrics?.joiningConversionRate}%` }}
                                         ></div>
                                     </div>
