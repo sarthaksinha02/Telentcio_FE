@@ -49,7 +49,8 @@ const GlobalTADashboard = () => {
         recruiter: '',
         startDate: '',
         endDate: '',
-        phase: 'all'
+        phase: 'all',
+        requisitionId: ''
     });
 
     const fetchAnalytics = useCallback(async () => {
@@ -83,7 +84,7 @@ const GlobalTADashboard = () => {
     };
 
     const resetFilters = () => {
-        setFilters({ client: '', department: '', position: '', recruiter: '', startDate: '', endDate: '', phase: 'all' });
+        setFilters({ client: '', department: '', position: '', recruiter: '', startDate: '', endDate: '', phase: 'all', requisitionId: '' });
     };
 
     if (loading && !data) {
@@ -171,7 +172,7 @@ const GlobalTADashboard = () => {
 
                     {/* Dynamic Filter Bar */}
                     {showFilters && (
-                        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 animate-in slide-in-from-top-2 duration-300">
+                        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4 animate-in slide-in-from-top-2 duration-300">
                             <div className="relative">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Client</label>
                                 <div className="relative">
@@ -228,6 +229,25 @@ const GlobalTADashboard = () => {
                                         {filterOptions?.recruiters?.map(r => <option key={r} value={r}>{r}</option>)}
                                     </select>
                                     <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                                </div>
+                            </div>
+
+                            <div className="relative">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Req / Version</label>
+                                <div className="relative">
+                                    <select
+                                        name="requisitionId" value={filters.requisitionId} onChange={handleFilterChange}
+                                        className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
+                                    >
+                                        <option value="">All Versions</option>
+                                        {filterOptions?.requisitions?.map(r => (
+                                            <option key={r._id} value={r._id}>
+                                                {r.title} {r.client ? `(${r.client})` : ''} - {r.status === 'Closed' ? 'Legacy' : 'Active'} ({new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
                                 </div>
                             </div>
