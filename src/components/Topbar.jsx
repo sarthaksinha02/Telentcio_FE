@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { format, isToday, isTomorrow, isPast } from 'date-fns';
+import socket from '../api/socket';
+import toast from 'react-hot-toast';
+
 
 const Topbar = ({ toggleSidebar }) => {
     const { user } = useAuth();
@@ -18,11 +21,36 @@ const Topbar = ({ toggleSidebar }) => {
             fetchNotifications();
             fetchMyInterviews();
             
-            // Setup polling every 30 seconds
-            const interval = setInterval(() => {
-                fetchNotifications();
+            // Listen for real-time notifications
+            const handleSocketNotification = (newNotif) => {
+                setNotifications(prev => [newNotif, ...prev]);
+                // Optional: Show a small toast if the dropdown isn't open
+                if (!showDropdown) {
+                    toast.success(`New Notification: ${newNotif.title}`, {
+                        icon: '🔔',
+                        position: 'top-right'
+                    });
+                }
+            };
+
+            // Listen for interview updates
+            const handleInterviewUpdate = (data) => {
+                // Fetch the full list again to ensure everything is synced
+                // Alternatively, patch the local state if performance is a concern
                 fetchMyInterviews();
-            }, 30000);
+                
+                if (data.type === 'EVALUATED') {
+                    toast.success(`Interview for ${data.candidateName} has been evaluated`, {
+                        position: 'top-right'
+                    });
+                } else if (data.type !== 'UPDATE') {
+                    // This covers new assignments since Notification handles the specific toast if it's a new assignment
+                    // Just refresh the list
+                }
+            };
+
+            socket.on('notification', handleSocketNotification);
+            socket.on('interview_update', handleInterviewUpdate);
             
             // Listen for manual triggers from other components
             const handleRefresh = () => {
@@ -32,11 +60,13 @@ const Topbar = ({ toggleSidebar }) => {
             window.addEventListener('refreshNotifications', handleRefresh);
             
             return () => {
-                clearInterval(interval);
+                socket.off('notification', handleSocketNotification);
+                socket.off('interview_update', handleInterviewUpdate);
                 window.removeEventListener('refreshNotifications', handleRefresh);
             };
         }
-    }, [user]);
+    }, [user, showDropdown]);
+
 
     // Close dropdowns on outside click
     useEffect(() => {

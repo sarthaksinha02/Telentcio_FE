@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/axios';
+import { connectSocket, disconnectSocket } from '../api/socket';
+
 
 const AuthContext = createContext(null);
 
@@ -61,6 +63,9 @@ export const AuthProvider = ({ children }) => {
       }
 
       setLoading(false);
+      if (normalisedUser?._id) {
+        connectSocket(normalisedUser._id);
+      }
     };
 
     loadUser();
@@ -82,6 +87,11 @@ export const AuthProvider = ({ children }) => {
     setUser(normalisedUser);
     localStorage.setItem('token', newToken);
     localStorage.setItem('user', JSON.stringify(normalisedUser));
+    
+    // Connect socket on login
+    if (normalisedUser?._id) {
+        connectSocket(normalisedUser._id);
+    }
   };
 
   const register = async (data) => {
@@ -95,6 +105,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    disconnectSocket();
     setToken(null);
     setUser(null);
     localStorage.removeItem('token');

@@ -65,11 +65,13 @@ const Leaves = () => {
 
     const [balances, setBalances] = useState([]);
     const [requests, setRequests] = useState([]);
+    const [requestsPagination, setRequestsPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 });
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
 
     const [approvalRequests, setApprovalRequests] = useState([]);
     const [loadingApprovals, setLoadingApprovals] = useState(false);
+    const [approvalsLoaded, setApprovalsLoaded] = useState(false);
     const [processingId, setProcessingId] = useState(null);
     const [cancellingId, setCancellingId] = useState(null);
 
@@ -86,33 +88,45 @@ const Leaves = () => {
     const hasApprovalAccess = isAdminUser || isManager;
 
 
-    const fetchData = async () => {
+    const fetchData = async (page = 1) => {
         setLoading(true);
         try {
             const [balRes, reqRes] = await Promise.all([
                 api.get('/leaves/balance'),
-                api.get('/leaves/requests')
+                api.get(`/leaves/requests?page=${page}&limit=10`)
             ]);
             setBalances(balRes.data);
-            setRequests(reqRes.data);
+            setRequests(reqRes.data.data);
+            setRequestsPagination(reqRes.data.pagination);
         } catch { toast.error('Failed to load leave data'); }
         finally { setLoading(false); }
     };
 
-    const fetchApprovals = async () => {
-        if (!hasApprovalAccess) return;
+    const fetchOnlyRequests = async (page = 1) => {
+        setLoading(true);
+        try {
+            const reqRes = await api.get(`/leaves/requests?page=${page}&limit=10`);
+            setRequests(reqRes.data.data);
+            setRequestsPagination(reqRes.data.pagination);
+        } catch { toast.error('Failed to load leave history'); }
+        finally { setLoading(false); }
+    };
+
+    const fetchApprovals = async (force = false) => {
+        if (!hasApprovalAccess || (approvalsLoaded && !force)) return;
         setLoadingApprovals(true);
         try {
             const res = await api.get('/leaves/approvals');
             setApprovalRequests(res.data);
+            setApprovalsLoaded(true);
         } catch { toast.error('Failed to load approvals'); }
         finally { setLoadingApprovals(false); }
     };
 
     useEffect(() => {
-        fetchData();
-        if (hasApprovalAccess) fetchApprovals();
-    }, [hasApprovalAccess]);
+        fetchData(1);
+        // Do NOT call fetchApprovals on page load - lazy load it on tab click
+    }, [user?._id]);
 
     const handleChange = (e) => {
         const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
@@ -144,7 +158,7 @@ const Leaves = () => {
             setShowModal(false);
             setFormData({ leaveType: '', startDate: '', endDate: '', isHalfDay: false, halfDaySession: 'First Half', reason: '' });
             setProofFile(null);
-            fetchData();
+            fetchData(1);
         } catch (err) {
             toast.error(err.response?.data?.message || 'Application failed');
         } finally {
@@ -163,7 +177,7 @@ const Leaves = () => {
         try {
             await api.put(`/leaves/approve/${id}`, { status, rejectionReason });
             toast.success(`Request ${status}`);
-            fetchApprovals();
+            fetchApprovals(true); // Force refresh after action
         } catch (err) { toast.error(err.response?.data?.message || 'Action failed'); }
         finally { setProcessingId(null); }
     };
@@ -174,7 +188,7 @@ const Leaves = () => {
         try {
             await api.put(`/leaves/cancel/${id}`);
             toast.success('Leave cancelled');
-            fetchData();
+            fetchData(requestsPagination.page);
         } catch (err) { toast.error(err.response?.data?.message || 'Failed to cancel'); }
         finally { setCancellingId(null); }
     };
@@ -200,7 +214,10 @@ const Leaves = () => {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => { fetchData(); if (hasApprovalAccess) fetchApprovals(); }}
+                        onClick={() => {
+                            fetchData(1);
+                            if (activeTab === 'approvals') fetchApprovals(true);
+                        }}
                         className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                         title="Refresh"
                     >
@@ -226,7 +243,10 @@ const Leaves = () => {
                     ].map(tab => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
+                            onClick={() => {
+                                setActiveTab(tab.id);
+                                if (tab.id === 'approvals') fetchApprovals();
+                            }}
                             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
                                 ? 'border-[#1a73e8] text-[#1a73e8]'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -301,7 +321,7 @@ const Leaves = () => {
                                 <div className="flex items-center gap-2">
                                     <Layers size={16} className="text-gray-400" />
                                     <h2 className="text-sm font-bold text-gray-700">My Leave History</h2>
-                                    <span className="text-xs bg-gray-100 text-gray-500 font-semibold px-2 py-0.5 rounded-full">{requests.length}</span>
+                                    <span className="text-xs bg-gray-100 text-gray-500 font-semibold px-2 py-0.5 rounded-full">{requestsPagination.total}</span>
                                 </div>
                             </div>
 
@@ -312,6 +332,7 @@ const Leaves = () => {
                                     <p className="text-xs text-gray-300">Click "Apply Leave" to submit your first request</p>
                                 </div>
                             ) : (
+                                <>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm">
                                         <thead>
@@ -369,6 +390,28 @@ const Leaves = () => {
                                         </tbody>
                                     </table>
                                 </div>
+                                <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
+                                    <span className="text-xs text-gray-500 font-medium">
+                                        Showing page <span className="text-gray-900 font-bold">{requestsPagination.page}</span> of <span className="text-gray-900 font-bold">{requestsPagination.totalPages}</span>
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => fetchOnlyRequests(requestsPagination.page - 1)}
+                                            disabled={requestsPagination.page === 1}
+                                            className="px-3 py-1 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            Previous
+                                        </button>
+                                        <button
+                                            onClick={() => fetchOnlyRequests(requestsPagination.page + 1)}
+                                            disabled={requestsPagination.page === requestsPagination.totalPages}
+                                            className="px-3 py-1 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                </div>
+                                </>
                             )}
                         </div>
 
@@ -383,8 +426,11 @@ const Leaves = () => {
                                 <h2 className="text-sm font-bold text-gray-700">Pending Approvals</h2>
                                 <p className="text-xs text-gray-400 mt-0.5">Review and act on your team's leave requests</p>
                             </div>
-                            <button onClick={fetchApprovals} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors">
-                                <RefreshCw size={12} /> Refresh
+                             <button 
+                                onClick={() => fetchApprovals(true)} 
+                                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+                            >
+                                <RefreshCw size={12} className={loadingApprovals ? 'animate-spin' : ''} /> Refresh
                             </button>
                         </div>
 

@@ -4,7 +4,7 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
     ArrowLeft, User as UserIcon, Calendar, Clock, AlertCircle,
-    CheckCircle, MessageSquare, Send, Check
+    CheckCircle, MessageSquare, Send, Check, AlertTriangle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
@@ -74,14 +74,19 @@ const QueryDetails = () => {
         commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [query?.comments]);
 
-    const handleCloseQuery = async () => {
-        if (!window.confirm("Are you sure you want to close this query?")) return;
+    const handleStatusUpdate = async (newStatus) => {
+        let confirmMsg = `Are you sure you want to change status to ${newStatus}?`;
+        if (newStatus === 'Closed') confirmMsg = "Are you sure you want to close this query?";
+        if (newStatus === 'Escalated') confirmMsg = "Are you sure you want to escalate this query?";
+        
+        if (!window.confirm(confirmMsg)) return;
+        
         try {
-            await api.put(`/helpdesk/${id}/close`);
-            toast.success('Query closed successfully');
+            await api.put(`/helpdesk/${id}/close`, { status: newStatus });
+            toast.success(`Query marked as ${newStatus}`);
             fetchQueryDetails();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to close query');
+            toast.error(error.response?.data?.message || `Failed to update status to ${newStatus}`);
         }
     };
 
@@ -139,9 +144,10 @@ const QueryDetails = () => {
         return <CheckCircle size={16} className="text-blue-500" />;
     };
 
-    const isAdmin = user?.roles?.some(r => r.name === 'Admin' || r === 'Admin');
+    const isAdmin = user?.roles?.some(r => (r.name || r) === 'Admin' || r?.isSystem === true);
     const isAssignee = query.assignedTo?._id === user?._id || query.assignedTo === user?._id;
-    const canClose = (isAdmin || isAssignee) && query.status !== 'Closed';
+    const isRaiser = query.raisedBy?._id === user?._id || query.raisedBy === user?._id;
+    
     const isClosed = query.status === 'Closed';
 
     return (
@@ -165,18 +171,47 @@ const QueryDetails = () => {
                                 {query.status.replace('_', ' ')}
                             </span>
                         </div>
-                        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">{query.subject}</h1>
+                        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                            {query.status === 'Escalated' && <AlertTriangle className="text-red-500 fill-red-50" size={24} />}
+                            {query.subject}
+                        </h1>
                     </div>
 
-                    {canClose && (
-                        <button
-                            onClick={handleCloseQuery}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 w-full md:w-auto hover:-translate-y-0.5"
-                        >
-                            <Check size={18} />
-                            Mark as Closed
-                        </button>
-                    )}
+                    <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                        {!isClosed && (isAdmin || isAssignee) && query.status === 'New' && (
+                            <button
+                                onClick={() => handleStatusUpdate('In Progress')}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                            >
+                                Start Progress
+                            </button>
+                        )}
+                        {!isClosed && (isAdmin || isAssignee) && (query.status === 'In Progress' || query.status === 'Escalated') && (
+                            <button
+                                onClick={() => handleStatusUpdate('Pending')}
+                                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                            >
+                                Mark Pending
+                            </button>
+                        )}
+                        {!isClosed && (isAdmin || isAssignee || isRaiser) && query.status !== 'Escalated' && (
+                            <button
+                                onClick={() => handleStatusUpdate('Escalated')}
+                                className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-rose-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                            >
+                                Escalate
+                            </button>
+                        )}
+                        {!isClosed && (isAdmin || isAssignee || isRaiser) && (
+                            <button
+                                onClick={() => handleStatusUpdate('Closed')}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                            >
+                                <Check size={18} />
+                                Close Query
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

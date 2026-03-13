@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { LifeBuoy, Plus, Clock, CheckCircle, AlertCircle, MessageSquare, X } from 'lucide-react';
+import { LifeBuoy, Plus, Clock, CheckCircle, AlertCircle, MessageSquare, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
@@ -73,6 +73,14 @@ const QueryFormModal = ({ isOpen, onClose, onSuccess }) => {
                                 <option key={qt._id} value={qt._id}>{qt.name}</option>
                             ))}
                         </select>
+                        {formData.queryTypeId && (
+                            <div className="mt-2 p-2 bg-indigo-50 border border-indigo-100 rounded-lg animate-in fade-in duration-300">
+                                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">Assigned Responsible Person</p>
+                                <p className="text-sm font-semibold text-indigo-700">
+                                    {queryTypes.find(qt => qt._id === formData.queryTypeId)?.assignedPerson?.firstName} {queryTypes.find(qt => qt._id === formData.queryTypeId)?.assignedPerson?.lastName}
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     <div>
@@ -139,8 +147,11 @@ const HelpDesk = () => {
     const [activeTab, setActiveTab] = useState('my-queries');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showAllQueries, setShowAllQueries] = useState(false);
+    
+    const [filters, setFilters] = useState({ status: '', priority: '' });
 
-    const isAdmin = user?.roles?.some(r => r.name === 'Admin' || r === 'Admin' || r?.isSystem === true);
+    const isAdmin = user?.roles?.some(r => (r.name || r) === 'Admin' || r?.isSystem === true);
+    const isResolverRole = user?.roles?.some(r => ['HR', 'Supervisor', 'Admin'].includes(r.name || r));
 
     // Track which tabs have already been fetched to avoid redundant API calls
     const loadedTabs = React.useRef(new Set());
@@ -178,10 +189,22 @@ const HelpDesk = () => {
         fetchTabData(activeTab, true);
     };
 
-    // Fetch data whenever the active tab changes
+    // Initial fetch on mount
     useEffect(() => {
-        fetchTabData(activeTab);
-    }, [activeTab]);
+        fetchTabData('my-queries');
+        // Only attempt to fetch assigned queries if user has a resolver role
+        if (isResolverRole) {
+            fetchTabData('assigned');
+        }
+    }, [isResolverRole]);
+
+    // Fetch data whenever the active tab changes (for tabs not fetched on mount)
+    useEffect(() => {
+        const alreadyFetched = activeTab === 'my-queries' || (activeTab === 'assigned' && isResolverRole);
+        if (!alreadyFetched) {
+            fetchTabData(activeTab);
+        }
+    }, [activeTab, isResolverRole]);
 
     const getStatusBadge = (status) => {
         const lowerS = status?.toLowerCase() || '';
@@ -189,6 +212,7 @@ const HelpDesk = () => {
 
         if (lowerS === 'new') style = 'bg-amber-100 text-amber-700 border border-amber-200';
         else if (lowerS === 'in progress') style = 'bg-blue-100 text-blue-700 border border-blue-200';
+        else if (lowerS === 'pending') style = 'bg-purple-100 text-purple-700 border border-purple-200';
         else if (lowerS === 'escalated') style = 'bg-red-100 text-red-700 border border-red-200 animate-pulse';
         else if (lowerS === 'closed') style = 'bg-emerald-100 text-emerald-700 border border-emerald-200';
 
@@ -226,7 +250,10 @@ const HelpDesk = () => {
                         <div key={query._id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
                             <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-semibold text-slate-800 text-sm truncate">{query.subject}</div>
+                                    <div className="font-semibold text-slate-800 text-sm truncate flex items-center gap-1">
+                                        {query.status === 'Escalated' && <AlertTriangle size={14} className="text-red-500 fill-red-50" />}
+                                        {query.subject}
+                                    </div>
                                     <div className="text-xs text-indigo-500 font-medium mt-0.5">{query.queryId}</div>
                                 </div>
                                 {getStatusBadge(query.status)}
@@ -290,7 +317,10 @@ const HelpDesk = () => {
                                     <tr key={query._id} className="hover:bg-slate-50 transition border-b border-slate-50">
                                         <td className="px-6 py-4 font-medium text-indigo-600">{query.queryId}</td>
                                         <td className="px-6 py-4">
-                                            <div className="font-semibold text-slate-800">{query.subject}</div>
+                                            <div className="font-semibold text-slate-800 flex items-center gap-1.5 cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => navigate(`/helpdesk/${query._id}`)}>
+                                                {query.status === 'Escalated' && <AlertTriangle size={14} className="text-red-500 fill-red-50" />}
+                                                {query.subject}
+                                            </div>
                                             <div className="text-xs text-slate-500 mt-1 flex items-center">
                                                 <MessageSquare size={12} className="mr-1" /> {query.comments?.length || 0} comments
                                             </div>
@@ -378,7 +408,7 @@ const HelpDesk = () => {
                         >
                             My Queries
                         </button>
-                        {(assignedQueries.length > 0 || isAdmin) && (
+                        {(isResolverRole || assignedQueries.length > 0) && (
                             <button
                                 onClick={() => setActiveTab('assigned')}
                                 className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'assigned' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
@@ -400,6 +430,7 @@ const HelpDesk = () => {
                                     className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'escalated' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                                 >
                                     <span className="flex items-center">
+                                        <AlertTriangle size={14} className="mr-1.5 text-red-500" />
                                         Escalated
                                         {escalatedQueries.length > 0 && (
                                             <span className="ml-2 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full animate-pulse">
@@ -422,9 +453,35 @@ const HelpDesk = () => {
                 {/* Content */}
                 {activeTab === 'my-queries' && renderTable(queries, false)}
                 {activeTab === 'assigned' && (
-                    <div>
-                        {isAdmin && (
-                            <div className="flex justify-end mb-3">
+                    <div className="space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <select 
+                                    value={filters.status}
+                                    onChange={(e) => setFilters({...filters, status: e.target.value})}
+                                    className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="">All Statuses</option>
+                                    <option value="New">New</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Escalated">Escalated</option>
+                                    <option value="Closed">Closed</option>
+                                </select>
+                                <select 
+                                    value={filters.priority}
+                                    onChange={(e) => setFilters({...filters, priority: e.target.value})}
+                                    className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="">All Priorities</option>
+                                    <option value="Urgent">Urgent</option>
+                                    <option value="High">High</option>
+                                    <option value="Medium">Medium</option>
+                                    <option value="Low">Low</option>
+                                </select>
+                            </div>
+
+                            {isAdmin && (
                                 <div className="bg-slate-200/50 p-1 rounded-lg inline-flex items-center">
                                     <button
                                         onClick={() => setShowAllQueries(false)}
@@ -439,9 +496,13 @@ const HelpDesk = () => {
                                         All Queries
                                     </button>
                                 </div>
-                            </div>
-                        )}
-                        {renderTable(showAllQueries ? allQueries : assignedQueries, true)}
+                            )}
+                        </div>
+                        {renderTable((showAllQueries ? allQueries : assignedQueries).filter(q => {
+                            if (filters.status && q.status !== filters.status) return false;
+                            if (filters.priority && q.priority !== filters.priority) return false;
+                            return true;
+                        }), true)}
                     </div>
                 )}
                 {activeTab === 'escalated' && renderTable(escalatedQueries, true)}
