@@ -15,12 +15,12 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // Tenant Identification
+    // Tenant Identification (Strictly URL-based)
     const hostname = window.location.hostname;
     const urlParams = new URLSearchParams(window.location.search);
-    let tenantQuery = urlParams.get('tenant');
+    let currentTenant = urlParams.get('tenant');
     
-    // Automatically detect subdomain
+    // Detect subdomain
     let detectedSubdomain = '';
     const parts = hostname.split('.');
     
@@ -29,18 +29,24 @@ api.interceptors.request.use(
         detectedSubdomain = parts[0];
       }
     } else if (parts.length > 2) {
-      detectedSubdomain = parts[0];
+      // Ignore subdomains of cloud providers
+      const cloudProviders = ['render.com', 'onrender.com', 'vercel.app', 'herokuapp.com'];
+      if (!cloudProviders.some(p => hostname.endsWith(p))) {
+        detectedSubdomain = parts[0];
+      }
     }
 
-    if (tenantQuery) {
-      localStorage.setItem('tenant', tenantQuery);
-    } else if (detectedSubdomain) {
-      localStorage.setItem('tenant', detectedSubdomain);
-    }
-    
-    const savedTenant = localStorage.getItem('tenant');
-    if (savedTenant) {
-      config.headers['x-tenant-id'] = savedTenant;
+    // Determine target tenant: URL param > Subdomain
+    const targetTenant = currentTenant || detectedSubdomain;
+
+    if (targetTenant) {
+      // Ensure localStorage is in sync with current URL context
+      localStorage.setItem('tenant', targetTenant.toLowerCase());
+      config.headers['x-tenant-id'] = targetTenant.toLowerCase();
+    } else {
+      // Main domain / localhost - No tenant context
+      localStorage.removeItem('tenant');
+      delete config.headers['x-tenant-id'];
     }
 
     return config;
@@ -55,10 +61,11 @@ api.interceptors.response.use(
     // If we receive a 401, clear local storage.
     // However, if the request was to the login endpoint, DO NOT hard refresh.
     // Let the component catch the error and show the toast.
-    if (error.response && error.response.status === 401) {
+    if (error.response && (error.response.status === 401 || (error.response.status === 403 && error.response.data.code === 'TENANT_MISMATCH'))) {
       if (!error.config.url.includes('/auth/login')) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        localStorage.removeItem('tenant');
         window.location.href = '/login';
       }
     }

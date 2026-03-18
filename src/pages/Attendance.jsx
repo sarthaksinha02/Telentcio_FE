@@ -64,6 +64,19 @@ const Attendance = () => {
     const [regularizationRequests, setRegularizationRequests] = useState([]);
     const [processingRegId, setProcessingRegId] = useState(null);
 
+    // Robust Check for Admin (matching SystemRoute.jsx)
+    const isAdmin = user?.roles?.some(r => (typeof r === 'string' ? r : r?.name) === 'Admin') 
+        || user?.permissions?.includes('*') 
+        || user?.permissions?.includes('all') 
+        || user?.permissions?.includes('admin')
+        || user?.permissions?.includes('attendance.view_all')
+        || user?.role === 'Admin';
+    
+    // Robust Check for Manager
+    const isManager = user?.roles?.some(r => (typeof r === 'string' ? r : r?.name) === 'Manager')
+        || (user?.directReports && user.directReports.length > 0)
+        || user?.role === 'Manager';
+
     const fetchApprovals = async () => {
         // Removed for move to Timesheet page
     };
@@ -80,37 +93,51 @@ const Attendance = () => {
     }, [activeTab]);
 
     // Fetch Users List for Dropdown (Admin/Manager)
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                if (user?.roles?.includes('Admin') || user?.role === 'Admin' || user?.permissions?.includes('attendance.view_all')) {
-                    const res = await api.get('/admin/users');
-                    setUsersList(res.data);
-                } else if (user?.roles?.includes('Manager') || (user?.directReports && user.directReports.length > 0)) {
-                    // If backend doesn't have /admin/users/team, we use directReports
-                    try {
-                        const res = await api.get('/admin/users/team');
-                        setUsersList(res.data);
-                    } catch (e) {
-                        setUsersList(user.directReports || []);
-                    }
-                }
-            } catch (error) {
-                console.error("Failed to fetch users list", error);
-            }
-        };
+    const [loadingUsers, setLoadingUsers] = useState(false);
+    const [usersLoaded, setUsersLoaded] = useState(false);
 
-        if (user && (user.roles?.includes('Admin') || user.role === 'Admin' || user.roles?.includes('Manager') || user.directReports?.length > 0)) {
-            fetchUsers();
+    // Manual Fetch for Users (Lazy Load)
+    const fetchUsers = async () => {
+        if (usersLoaded || loadingUsers) return;
+        setLoadingUsers(true);
+        try {
+            if (isAdmin) {
+                const res = await api.get('/admin/users');
+                setUsersList(res.data);
+                setUsersLoaded(true);
+            } else if (isManager) {
+                try {
+                    const res = await api.get('/admin/users/team');
+                    setUsersList(res.data);
+                    setUsersLoaded(true);
+                } catch (e) {
+                    setUsersList(user.directReports || []);
+                    setUsersLoaded(true);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to fetch users list", error);
+        } finally {
+            setLoadingUsers(false);
         }
-    }, [user]);
+    };
+
+    // ONLY fetch if some condition is met (e.g. from a click)
+    // We removed the automatic useEffect for fetchUsers
 
     // Fetch target user details when selectedUserId changes
     useEffect(() => {
-        if (!selectedUserId) return;
+        if (!selectedUserId || !user?._id) return;
         
-        if (selectedUserId === user?._id) {
+        if (selectedUserId === user._id) {
             setViewUser(user);
+            return;
+        }
+
+        // Check if user is already in usersList to avoid redundant API call
+        const foundLocally = usersList.find(u => u._id === selectedUserId);
+        if (foundLocally && foundLocally.firstName && foundLocally.email) {
+            setViewUser(foundLocally);
             return;
         }
 
@@ -120,14 +147,12 @@ const Attendance = () => {
                 setViewUser(res.data);
             } catch (error) {
                 console.error("Failed to fetch target user details", error);
-                // Fallback to finding in usersList if already there
-                const found = usersList.find(u => u._id === selectedUserId);
-                if (found) setViewUser(found);
+                if (foundLocally) setViewUser(foundLocally);
             }
         };
 
         fetchTargetUser();
-    }, [selectedUserId, usersList, user]);
+    }, [selectedUserId, usersList, user?._id]); // Use user._id instead of user object
 
     const fetchRegularizations = async () => {
         try {
@@ -1410,6 +1435,61 @@ const Attendance = () => {
                                     <Briefcase size={32} className="mx-auto text-slate-300" />
                                     <h4 className="font-medium text-slate-600">Your Tasks</h4>
                                     <p className="text-xs text-slate-400">Clock in to view and manage your assigned tasks.</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Team Members Selection (Admins/Managers) */}
+                        {(isAdmin || isManager) && (
+                            <div className="zoho-card p-5">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Team Members</h4>
+                                    {!usersLoaded && !loadingUsers && (
+                                        <button 
+                                            onClick={fetchUsers}
+                                            className="text-[10px] text-blue-600 font-bold hover:underline"
+                                        >
+                                            Show All
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
+                                    {/* Self */}
+                                    <button
+                                        onClick={() => setSelectedUserId(user._id)}
+                                        className={`w-full flex items-center gap-3 p-2.5 rounded-lg transition-all text-left ${selectedUserId === user._id ? 'bg-blue-50 border border-blue-100 text-blue-700' : 'hover:bg-slate-50 border border-transparent text-slate-600'}`}
+                                    >
+                                        <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-[10px] font-bold">ME</div>
+                                        <div className="flex-1 overflow-hidden">
+                                            <p className="text-xs font-bold truncate">My Attendance</p>
+                                            <p className="text-[10px] opacity-70 truncate">{user.email}</p>
+                                        </div>
+                                    </button>
+
+                                    {loadingUsers && (
+                                        <div className="flex items-center justify-center py-4">
+                                            <Loader2 size={16} className="animate-spin text-blue-500" />
+                                        </div>
+                                    )}
+
+                                    {usersLoaded && usersList.length > 0 && <div className="h-px bg-slate-100 my-2"></div>}
+                                    
+                                    {/* List */}
+                                    {usersList.filter(u => u._id !== user._id).map((u) => (
+                                        <button
+                                            key={u._id}
+                                            onClick={() => setSelectedUserId(u._id)}
+                                            className={`w-full flex items-center gap-3 p-2.5 rounded-lg transition-all text-left ${selectedUserId === u._id ? 'bg-blue-50 border border-blue-100 text-blue-700' : 'hover:bg-slate-50 border border-transparent text-slate-600'}`}
+                                        >
+                                            <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 text-[10px] font-bold">
+                                                {u.firstName?.[0]}{u.lastName?.[0]}
+                                            </div>
+                                            <div className="flex-1 overflow-hidden">
+                                                <p className="text-xs font-bold truncate">{u.firstName} {u.lastName}</p>
+                                                <p className="text-[10px] opacity-70 truncate">{u.email}</p>
+                                            </div>
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
                         )}

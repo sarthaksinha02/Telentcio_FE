@@ -134,7 +134,9 @@ const Leaves = () => {
     };
 
     useEffect(() => {
-        fetchData(1);
+        if (user?._id) {
+            fetchData(1);
+        }
         // Do NOT call fetchApprovals on page load - lazy load it on tab click
     }, [user?._id]);
 

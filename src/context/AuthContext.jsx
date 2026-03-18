@@ -65,11 +65,12 @@ export const AuthProvider = ({ children }) => {
         }
       } catch (err) {
         console.error('Profile Load Error:', err);
-        if (err.response?.status === 401 || err.response?.status === 404) {
+        if (err.response?.status === 401 || err.response?.status === 403 || err.response?.status === 404) {
           setToken(null);
           setUser(null);
           localStorage.removeItem('token');
           localStorage.removeItem('user');
+          localStorage.removeItem('tenant');
         }
       } finally {
         setLoading(false);
