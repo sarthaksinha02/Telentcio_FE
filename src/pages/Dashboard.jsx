@@ -55,11 +55,11 @@ const LocationLink = ({ location }) => {
             href={`https://maps.google.com/?q=${location.lat},${location.lng}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-full text-[11px] font-black uppercase tracking-tight hover:bg-blue-100 transition-all border border-blue-100 shadow-sm group"
-            title="View Location on Map"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-full text-[11px] font-black uppercase tracking-tight hover:bg-blue-100 transition-all border border-blue-100 shadow-sm group max-w-full overflow-hidden"
+            title={cityName}
         >
-            <MapPin size={10} className="group-hover:scale-110 transition-transform" />
-            {cityName}
+            <MapPin size={10} className="shrink-0 group-hover:scale-110 transition-transform" />
+            <span className="truncate">{cityName}</span>
         </a>
     );
 };
@@ -288,7 +288,7 @@ const Dashboard = () => {
                                         <div className="flex-1 min-w-0 pr-4">Employee</div>
                                         <div className="w-20 shrink-0 flex-none text-left pl-2">Time In</div>
                                         <div className="w-24 shrink-0 flex-none text-left">Type</div>
-                                        {showLocation && <div className="w-24 shrink-0 flex-none text-right pr-2">Location</div>}
+                                        {showLocation && <div className="w-32 shrink-0 flex-none text-right pr-2">Location</div>}
                                     </div>
                                     <div className="divide-y divide-slate-100 bg-white">
                                         {loading ? (
@@ -297,7 +297,7 @@ const Dashboard = () => {
                                                     <div className="flex-1 pr-4"><Skeleton className="h-10 w-full max-w-[180px]" /></div>
                                                     <div className="w-20 pl-2"><Skeleton className="h-6 w-14" /></div>
                                                     <div className="w-24"><Skeleton className="h-6 w-16" /></div>
-                                                    {showLocation && <div className="w-24 pr-2"><Skeleton className="h-6 w-12 ml-auto" /></div>}
+                                                    {showLocation && <div className="w-32 pr-2"><Skeleton className="h-6 w-20 ml-auto" /></div>}
                                                 </div>
                                             ))
                                         ) : recentActivity.filter(r => r.status === 'PRESENT').length > 0 ? (
@@ -323,7 +323,7 @@ const Dashboard = () => {
                                                         </span>
                                                     </div>
                                                     {showLocation && (
-                                                        <div className="w-24 shrink-0 flex-none text-right pr-2">
+                                                        <div className="w-32 shrink-0 flex-none text-right pr-2 overflow-hidden">
                                                             <LocationLink location={record.location} />
                                                         </div>
                                                     )}
