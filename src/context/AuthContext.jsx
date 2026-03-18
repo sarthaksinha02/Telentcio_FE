@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/axios';
 import { connectSocket, disconnectSocket } from '../api/socket';
-
+import InvalidWorkspace from '../pages/InvalidWorkspace';
 
 const AuthContext = createContext(null);
 
@@ -10,19 +10,31 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
+  const [invalidWorkspace, setInvalidWorkspace] = useState(false);
+
   useEffect(() => {
-    const loadUser = async () => {
+    const loadUserAndVerifyWorkspace = async () => {
+      // 1. Verify workspace first
+      try {
+        await api.get('/auth/verify-workspace');
+      } catch (err) {
+        if (err.response?.status === 404 || err.response?.status === 403) {
+           setInvalidWorkspace(true);
+           setLoading(false);
+           return;
+        }
+      }
+
       if (!token) {
         setLoading(false);
         return;
       }
 
-      // 1. Try localStorage first — written on login/register so it's always fresh
+      // 2. Try localStorage for initial state (avoids flicker)
       const storedUser = localStorage.getItem('user');
       if (storedUser) {
         try {
           const parsed = JSON.parse(storedUser);
-          // Normalise roles to flat string array
           const normalisedUser = {
             ...parsed,
             roles: parsed.roleNames || (Array.isArray(parsed.roles)
@@ -30,16 +42,12 @@ export const AuthProvider = ({ children }) => {
               : [])
           };
           setUser(normalisedUser);
-          setLoading(false);
-          return; // ← no API call needed
-        } catch {
-          // JSON parse failed — fall through to API
+        } catch (e) {
           localStorage.removeItem('user');
         }
       }
 
-      // 2. Fallback: no cached user but we have a token → fetch once
-      // (edge case: user cleared localStorage but kept token)
+      // 3. ALWAYS fetch fresh profile from server to get latest company configuration (modules, styles, etc.)
       try {
         const response = await api.get('/auth/profile');
         const freshUser = response.data;
@@ -51,28 +59,33 @@ export const AuthProvider = ({ children }) => {
         };
         setUser(normalisedUser);
         localStorage.setItem('user', JSON.stringify(normalisedUser));
+
+        if (normalisedUser?._id) {
+          connectSocket(normalisedUser._id);
+        }
       } catch (err) {
-        if (err.response?.status === 401) {
-          // Token invalid/expired — force re-login
+        console.error('Profile Load Error:', err);
+        if (err.response?.status === 401 || err.response?.status === 404) {
           setToken(null);
           setUser(null);
           localStorage.removeItem('token');
           localStorage.removeItem('user');
         }
-        // Network error — user stays null, loading clears
-      }
-
-      setLoading(false);
-      if (normalisedUser?._id) {
-        connectSocket(normalisedUser._id);
+      } finally {
+        setLoading(false);
       }
     };
 
-    loadUser();
+    loadUserAndVerifyWorkspace();
   }, [token]);
 
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
+    
+    if (response.data.passwordResetRequired) {
+      return response.data;
+    }
+
     const { token: newToken, ...userData } = response.data;
 
     // Normalise roles before storing
@@ -87,11 +100,13 @@ export const AuthProvider = ({ children }) => {
     setUser(normalisedUser);
     localStorage.setItem('token', newToken);
     localStorage.setItem('user', JSON.stringify(normalisedUser));
-    
+
     // Connect socket on login
     if (normalisedUser?._id) {
-        connectSocket(normalisedUser._id);
+      connectSocket(normalisedUser._id);
     }
+
+    return response.data;
   };
 
   const register = async (data) => {
@@ -129,8 +144,16 @@ export const AuthProvider = ({ children }) => {
     );
   }
 
+  if (invalidWorkspace) {
+    return <InvalidWorkspace />;
+  }
+
+  const hasModule = (moduleName) => {
+    return user?.company?.enabledModules?.includes(moduleName) || false;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, hasModule, loading }}>
       {children}
     </AuthContext.Provider>
   );

@@ -3,7 +3,8 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
     Calendar, Plus, RefreshCw, User, CheckCircle, XCircle,
-    Check, X, Infinity, ChevronDown, Clock, AlertCircle, Layers
+    Check, X, Infinity, ChevronDown, Clock, AlertCircle, Layers,
+    Eye, FileText
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Button from '../components/Button';
@@ -72,13 +73,20 @@ const Leaves = () => {
     const [approvalRequests, setApprovalRequests] = useState([]);
     const [loadingApprovals, setLoadingApprovals] = useState(false);
     const [approvalsLoaded, setApprovalsLoaded] = useState(false);
+    const [approvalStatusFilter, setApprovalStatusFilter] = useState('Pending');
     const [processingId, setProcessingId] = useState(null);
     const [cancellingId, setCancellingId] = useState(null);
-
     const [formData, setFormData] = useState({
         leaveType: '', startDate: '', endDate: '',
         isHalfDay: false, halfDaySession: 'First Half', reason: ''
     });
+    const [expandedRows, setExpandedRows] = useState([]);
+
+    const toggleRowExpansion = (id) => {
+        setExpandedRows(prev => 
+            prev.includes(id) ? prev.filter(rowId => rowId !== id) : [...prev, id]
+        );
+    };
 
     const [proofFile, setProofFile] = useState(null);
 
@@ -112,13 +120,15 @@ const Leaves = () => {
         finally { setLoading(false); }
     };
 
-    const fetchApprovals = async (force = false) => {
-        if (!hasApprovalAccess || (approvalsLoaded && !force)) return;
+    const fetchApprovals = async (force = false, status = approvalStatusFilter) => {
+        if (!hasApprovalAccess || (approvalsLoaded && !force && status === approvalStatusFilter)) return;
         setLoadingApprovals(true);
         try {
-            const res = await api.get('/leaves/approvals');
+            const url = status === 'All' ? '/leaves/approvals?status=All' : `/leaves/approvals?status=${status}`;
+            const res = await api.get(url);
             setApprovalRequests(res.data);
             setApprovalsLoaded(true);
+            setApprovalStatusFilter(status);
         } catch { toast.error('Failed to load approvals'); }
         finally { setLoadingApprovals(false); }
     };
@@ -365,8 +375,16 @@ const Leaves = () => {
                                                         <span className="font-semibold">{req.daysCount}</span>
                                                         <span className="text-gray-400 text-xs ml-1">{req.isHalfDay ? '(½)' : 'd'}</span>
                                                     </td>
-                                                    <td className="px-4 py-3.5 text-gray-500 max-w-[180px]">
-                                                        <span className="truncate block" title={req.reason}>{req.reason}</span>
+                                                    <td className="px-4 py-3.5 text-gray-500 w-[200px] min-w-[200px] max-w-[200px]">
+                                                        {expandedRows.includes(req._id) ? (
+                                                            <div className="bg-gray-50/80 p-2.5 rounded-lg border border-gray-100 text-[11px] leading-relaxed text-gray-700 whitespace-pre-wrap break-words animate-fade-in">
+                                                                {req.reason}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-xs truncate" title={req.reason}>
+                                                                {req.reason.length > 60 ? `${req.reason.substring(0, 60)}...` : req.reason}
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">
                                                         {format(new Date(req.createdAt), 'dd MMM yyyy')}
@@ -375,15 +393,24 @@ const Leaves = () => {
                                                         <StatusBadge status={req.status} />
                                                     </td>
                                                     <td className="px-4 py-3.5 text-right">
-                                                        {req.status === 'Pending' && (
-                                                            <button
-                                                                onClick={() => handleCancel(req._id)}
-                                                                disabled={cancellingId === req._id}
-                                                                className="opacity-0 group-hover:opacity-100 text-xs text-red-500 hover:text-red-700 font-semibold transition-all disabled:opacity-40"
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            {req.status === 'Pending' && (
+                                                                <button
+                                                                    onClick={() => handleCancel(req._id)}
+                                                                    disabled={cancellingId === req._id}
+                                                                    className="opacity-0 group-hover:opacity-100 text-xs text-red-500 hover:text-red-700 font-semibold transition-all disabled:opacity-40"
+                                                                >
+                                                                    {cancellingId === req._id ? 'Cancelling…' : 'Cancel'}
+                                                                </button>
+                                                            )}
+                                                            <button 
+                                                                onClick={() => toggleRowExpansion(req._id)}
+                                                                className={`p-1 rounded transition-colors ${expandedRows.includes(req._id) ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50'}`}
+                                                                title="Toggle Reason"
                                                             >
-                                                                {cancellingId === req._id ? 'Cancelling…' : 'Cancel'}
+                                                                <Eye size={14} />
                                                             </button>
-                                                        )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -423,15 +450,31 @@ const Leaves = () => {
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h2 className="text-sm font-bold text-gray-700">Pending Approvals</h2>
-                                <p className="text-xs text-gray-400 mt-0.5">Review and act on your team's leave requests</p>
+                                <h2 className="text-sm font-bold text-gray-700">Team Requests & History</h2>
+                                <p className="text-xs text-gray-400 mt-0.5">Review and track leave requests across your team</p>
                             </div>
-                             <button 
-                                onClick={() => fetchApprovals(true)} 
-                                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
-                            >
-                                <RefreshCw size={12} className={loadingApprovals ? 'animate-spin' : ''} /> Refresh
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center p-1 bg-gray-100 rounded-lg">
+                                    {['Pending', 'Approved', 'Rejected', 'All'].map(s => (
+                                        <button
+                                            key={s}
+                                            onClick={() => fetchApprovals(true, s)}
+                                            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${approvalStatusFilter === s
+                                                ? 'bg-white text-blue-600 shadow-sm'
+                                                : 'text-gray-400 hover:text-gray-600'
+                                                }`}
+                                        >
+                                            {s}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button 
+                                    onClick={() => fetchApprovals(true)} 
+                                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+                                >
+                                    <RefreshCw size={12} className={loadingApprovals ? 'animate-spin' : ''} /> Refresh
+                                </button>
+                            </div>
                         </div>
 
                         {loadingApprovals ? (
@@ -454,6 +497,7 @@ const Leaves = () => {
                                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Duration</th>
                                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Days</th>
                                             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Reason</th>
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
                                             <th className="text-right px-6 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Action</th>
                                         </tr>
                                     </thead>
@@ -487,25 +531,47 @@ const Leaves = () => {
                                                     </span>
                                                     {req.isHalfDay && <span className="text-xs text-gray-400 block">(Half day)</span>}
                                                 </td>
-                                                <td className="px-4 py-4 text-gray-500 text-xs max-w-[200px]">
-                                                    <span className="truncate block" title={req.reason}>"{req.reason}"</span>
+                                                <td className="px-4 py-4 text-gray-500 w-[180px] min-w-[180px] max-w-[180px]">
+                                                    {expandedRows.includes(req._id) ? (
+                                                        <div className="bg-blue-50/50 p-2.5 rounded-lg border border-blue-100/30 text-[11px] leading-relaxed text-gray-600 whitespace-pre-wrap break-words animate-fade-in shadow-inner">
+                                                            {req.reason}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-[11px] truncate" title={req.reason}>
+                                                            {req.reason.length > 60 ? `${req.reason.substring(0, 60)}...` : req.reason}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-4">
+                                                    <StatusBadge status={req.status} />
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center justify-end gap-2">
                                                         <button
-                                                            onClick={() => handleAction(req._id, 'Rejected')}
-                                                            disabled={processingId === req._id}
-                                                            className="flex items-center gap-1 text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                                            onClick={() => toggleRowExpansion(req._id)}
+                                                            className={`p-1 rounded transition-colors ${expandedRows.includes(req._id) ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50'}`}
+                                                            title="Toggle Reason"
                                                         >
-                                                            <X size={13} /> Reject
+                                                            <Eye size={16} />
                                                         </button>
-                                                        <button
-                                                            onClick={() => handleAction(req._id, 'Approved')}
-                                                            disabled={processingId === req._id}
-                                                            className="flex items-center gap-1 text-xs font-semibold text-white bg-[#1a73e8] hover:bg-[#1557b0] px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
-                                                        >
-                                                            <Check size={13} /> Approve
-                                                        </button>
+                                                        {req.status === 'Pending' && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => handleAction(req._id, 'Rejected')}
+                                                                    disabled={processingId === req._id}
+                                                                    className="flex items-center gap-1 text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                                                >
+                                                                    <X size={13} /> Reject
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleAction(req._id, 'Approved')}
+                                                                    disabled={processingId === req._id}
+                                                                    className="flex items-center gap-1 text-xs font-semibold text-white bg-[#1a73e8] hover:bg-[#1557b0] px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
+                                                                >
+                                                                    <Check size={13} /> Approve
+                                                                </button>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -683,6 +749,7 @@ const Leaves = () => {
                     </div>
                 </div>
             )}
+
         </div>
     );
 };

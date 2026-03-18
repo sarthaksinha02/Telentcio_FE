@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 import { User, Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EmployeeDossier from './EmployeeDossier';
 
 const Profile = () => {
+    const { user } = useAuth();
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
 
+    const hasDossierModule = user?.company?.enabledModules?.includes('employeeDossier');
 
     const [uploading, setUploading] = useState(false);
 

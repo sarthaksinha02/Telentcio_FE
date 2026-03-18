@@ -1,24 +1,28 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers, Loader2, LogOut } from 'lucide-react';
+import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers, Loader2, LogOut, CheckCircle, XCircle, Info, X } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay } from 'date-fns';
+import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay, subDays, startOfDay } from 'date-fns';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
 
 const Attendance = () => {
-    const { user } = useAuth();
+    const { user, hasModule } = useAuth();
+    const location = useLocation();
     const [status, setStatus] = useState(null);
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [holidays, setHolidays] = useState([]);
+    const [approvedLeaves, setApprovedLeaves] = useState([]);
     const [usersList, setUsersList] = useState(user?.directReports || []);
     const [selectedUserId, setSelectedUserId] = useState(user?._id);
+    const [viewUser, setViewUser] = useState(user); // Hold complete profile of user being viewed
 
     // Task Integration
     const [assignedTasks, setAssignedTasks] = useState([]);
@@ -26,12 +30,39 @@ const Attendance = () => {
     const [showLogModal, setShowLogModal] = useState(false);
     const [logForm, setLogForm] = useState({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
     const [loggingTaskId, setLoggingTaskId] = useState(null);
-    const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks'
+    const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks', 'regularize'
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get('tab');
+        if (tab && ['history', 'tasks', 'regularize'].includes(tab)) {
+            setActiveTab(tab);
+        }
+        
+        const qUserId = params.get('userId');
+        if (qUserId) {
+            setSelectedUserId(qUserId);
+        } else {
+            setSelectedUserId(user?._id);
+        }
+    }, [location, user]);
     const [expandedLogTaskId, setExpandedLogTaskId] = useState(null);
     const [editingLogId, setEditingLogId] = useState(null);
 
     // Location Error State
     const [loadingLocation, setLoadingLocation] = useState(false);
+
+    // Regularization State
+    const [showRegModal, setShowRegModal] = useState(false);
+    const [regDate, setRegDate] = useState(null);
+    const [regForm, setRegForm] = useState({
+        type: 'BOTH',
+        checkIn: '',
+        checkOut: '',
+        reason: ''
+    });
+    const [regularizationRequests, setRegularizationRequests] = useState([]);
+    const [processingRegId, setProcessingRegId] = useState(null);
 
     const fetchApprovals = async () => {
         // Removed for move to Timesheet page
@@ -41,6 +72,176 @@ const Attendance = () => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
     }, []);
+
+    useEffect(() => {
+        if (activeTab === 'regularize') {
+            fetchRegularizations();
+        }
+    }, [activeTab]);
+
+    // Fetch Users List for Dropdown (Admin/Manager)
+    useEffect(() => {
+        const fetchUsers = async () => {
+            try {
+                if (user?.roles?.includes('Admin') || user?.role === 'Admin' || user?.permissions?.includes('attendance.view_all')) {
+                    const res = await api.get('/admin/users');
+                    setUsersList(res.data);
+                } else if (user?.roles?.includes('Manager') || (user?.directReports && user.directReports.length > 0)) {
+                    // If backend doesn't have /admin/users/team, we use directReports
+                    try {
+                        const res = await api.get('/admin/users/team');
+                        setUsersList(res.data);
+                    } catch (e) {
+                        setUsersList(user.directReports || []);
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to fetch users list", error);
+            }
+        };
+
+        if (user && (user.roles?.includes('Admin') || user.role === 'Admin' || user.roles?.includes('Manager') || user.directReports?.length > 0)) {
+            fetchUsers();
+        }
+    }, [user]);
+
+    // Fetch target user details when selectedUserId changes
+    useEffect(() => {
+        if (!selectedUserId) return;
+        
+        if (selectedUserId === user?._id) {
+            setViewUser(user);
+            return;
+        }
+
+        const fetchTargetUser = async () => {
+            try {
+                const res = await api.get(`/admin/users/${selectedUserId}`);
+                setViewUser(res.data);
+            } catch (error) {
+                console.error("Failed to fetch target user details", error);
+                // Fallback to finding in usersList if already there
+                const found = usersList.find(u => u._id === selectedUserId);
+                if (found) setViewUser(found);
+            }
+        };
+
+        fetchTargetUser();
+    }, [selectedUserId, usersList, user]);
+
+    const fetchRegularizations = async () => {
+        try {
+            const res = await api.get('/attendance/regularizations');
+            setRegularizationRequests(res.data);
+        } catch (error) {
+            console.error('Error fetching regularizations', error);
+        }
+    };
+
+    const handleRegularize = (day, record) => {
+        const targetDate = startOfDay(new Date(day));
+        const today = startOfDay(new Date());
+
+        const weeklyOffs = user?.company?.settings?.attendance?.weeklyOff || ['Saturday', 'Sunday'];
+        const holidayDates = (holidays || []).map(h => format(new Date(h.date), 'yyyy-MM-dd'));
+
+        // 1. Check if it's a future date
+        if (targetDate > today) {
+            toast.error('Cannot regularize for future dates.');
+            return;
+        }
+
+        // 2. Check if it's a Weekly Off or Holiday
+        const dayOfWeekName = format(targetDate, 'EEEE');
+        const dateStr = format(targetDate, 'yyyy-MM-dd');
+        if (weeklyOffs.includes(dayOfWeekName)) {
+            toast.error(`Attendance regularization is not available for your weekly off day (${dayOfWeekName}).`);
+            return;
+        }
+        if (holidayDates.includes(dateStr)) {
+            toast.error('Attendance regularization is not available for holidays.');
+            return;
+        }
+
+        // 3. Calculate 4 working days ago
+        let workingDaysCount = 0;
+        let checkDate = new Date(today);
+        let maxLookback = 30; // Safety break
+
+        while (workingDaysCount < 4 && maxLookback > 0) {
+            checkDate = subDays(checkDate, 1);
+            const dName = format(checkDate, 'EEEE');
+            const dStr = format(checkDate, 'yyyy-MM-dd');
+            
+            const isWeeklyOff = weeklyOffs.includes(dName);
+            const isHoliday = holidayDates.includes(dStr);
+
+            if (!isWeeklyOff && !isHoliday) {
+                workingDaysCount++;
+            }
+            maxLookback--;
+        }
+
+        const fourWorkingDaysAgo = startOfDay(checkDate);
+
+        if (targetDate < fourWorkingDaysAgo) {
+            toast.error('Attendance regularization is only allowed for the last 4 working days.');
+            return;
+        }
+
+        setRegDate(day);
+        setRegForm({
+            type: 'BOTH',
+            checkIn: record?.clockIn ? new Date(record.clockIn).toISOString().slice(11, 16) : '09:00',
+            checkOut: record?.clockOut ? new Date(record.clockOut).toISOString().slice(11, 16) : '18:00',
+            reason: ''
+        });
+        setShowRegModal(true);
+    };
+
+    const submitRegularization = async (e) => {
+        e.preventDefault();
+        try {
+            const reqDate = new Date(regDate);
+            const [inH, inM] = regForm.checkIn.split(':');
+            const [outH, outM] = regForm.checkOut.split(':');
+
+            const requestedClockIn = new Date(reqDate);
+            requestedClockIn.setHours(parseInt(inH), parseInt(inM), 0);
+
+            const requestedClockOut = new Date(reqDate);
+            requestedClockOut.setHours(parseInt(outH), parseInt(outM), 0);
+
+            await api.post('/attendance/regularize', {
+                date: regDate,
+                type: regForm.type,
+                requestedClockIn,
+                requestedClockOut,
+                reason: regForm.reason
+            });
+
+            toast.success('Regularization request submitted');
+            setShowRegModal(false);
+            fetchRegularizations();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error submitting request');
+        }
+    };
+
+    const processRegularization = async (id, status, rejectionReason = '') => {
+        setProcessingRegId(id);
+        try {
+            await api.patch(`/attendance/regularize/${id}`, { status, rejectionReason });
+            toast.success(`Request ${status.toLowerCase()}ed`);
+            fetchRegularizations();
+            const now = new Date();
+            fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error processing request');
+        } finally {
+            setProcessingRegId(null);
+        }
+    };
 
     const fetchTodayStatus = async () => {
         try {
@@ -74,13 +275,21 @@ const Attendance = () => {
     const fetchMonthHistory = async (year, month) => {
         try {
             const userId = selectedUserId || user._id;
-            // Fetch attendance history and holidays for the same month in parallel
-            const [historyRes, holidaysRes] = await Promise.all([
-                api.get(`/attendance/history?year=${year}&month=${month}&userId=${userId}`),
-                api.get(`/holidays?year=${year}&month=${month}`)
+            // Fetch attendance history, holidays, and leaves for the same month in parallel
+            const fetchHistoryProm = api.get(`/attendance/history?year=${year}&month=${month}&userId=${userId}`);
+            const fetchHolidaysProm = api.get(`/holidays?year=${year}&month=${month}`);
+            const fetchLeavesProm = hasModule('leaves') 
+                ? api.get(`/leaves/requests?status=Approved&limit=0&userId=${userId}`)
+                : Promise.resolve({ data: { data: [] } });
+
+            const [historyRes, holidaysRes, leavesRes] = await Promise.all([
+                fetchHistoryProm,
+                fetchHolidaysProm,
+                fetchLeavesProm
             ]);
             setHistory(historyRes.data);
             setHolidays(holidaysRes.data);
+            setApprovedLeaves(leavesRes.data.data || []);
         } catch (error) {
             console.error('Error fetching month data', error);
             toast.error('Could not load calendar data');
@@ -150,7 +359,8 @@ const Attendance = () => {
             const statusStr = payload.status ? `${payload.status.status}|${payload.status.clockInIST}|${payload.status.clockOutIST}` : 'none';
             const logsStr = (payload.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',');
             const historyStr = (payload.history || []).length;
-            return `${statusStr}::${logsStr}::H${historyStr}`;
+            const leavesStr = (payload.approvedLeaves || []).length;
+            return `${statusStr}::${logsStr}::H${historyStr}::L${leavesStr}`;
         };
 
         const applyData = (payload) => {
@@ -158,6 +368,7 @@ const Attendance = () => {
             if (payload.recentLogs) setRecentLogs(payload.recentLogs);
             if (payload.history) setHistory(payload.history);
             if (payload.holidays) setHolidays(payload.holidays);
+            if (payload.approvedLeaves) setApprovedLeaves(payload.approvedLeaves);
         };
 
         // 1. Try Cache First (Instant UI)
@@ -168,19 +379,31 @@ const Attendance = () => {
         }
 
         // 2. Fetch Fresh Data (Background)
+        const fetchStatus = safe(api.get('/attendance/today', { signal }).then(r => r.data));
+        const fetchLogs = hasModule('projectManagement')
+            ? safe(api.get('/projects/worklogs?limit=4', { signal }).then(r => r.data))
+            : Promise.resolve([]);
+        const fetchHistory = safe(api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${user._id}`, { signal }).then(r => r.data));
+        const fetchHolidays = safe(api.get(`/holidays?year=${now.getFullYear()}`, { signal }).then(r => r.data));
+        const fetchLeaves = hasModule('leaves')
+            ? safe(api.get(`/leaves/requests?status=Approved&limit=0&userId=${user._id}`, { signal }).then(r => r.data))
+            : Promise.resolve({ data: [] });
+
         Promise.all([
-            safe(api.get('/attendance/today', { signal }).then(r => r.data)),
-            safe(api.get('/projects/worklogs?limit=4', { signal }).then(r => r.data)),
-            safe(api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${user._id}`, { signal }).then(r => r.data)),
-            safe(api.get(`/holidays?year=${now.getFullYear()}&month=${now.getMonth() + 1}`, { signal }).then(r => r.data))
-        ]).then(([statusData, logsData, historyData, holidaysData]) => {
+            fetchStatus,
+            fetchLogs,
+            fetchHistory,
+            fetchHolidays,
+            fetchLeaves
+        ]).then(([statusData, logsData, historyData, holidaysData, leavesData]) => {
             if (signal.aborted) return;
 
             const freshData = {
                 status: statusData,
                 recentLogs: logsData || [],
                 history: historyData || [],
-                holidays: holidaysData || []
+                holidays: holidaysData || [],
+                approvedLeaves: leavesData?.data || []
             };
 
             const freshFingerprint = buildFingerprint(freshData);
@@ -218,7 +441,7 @@ const Attendance = () => {
     // Fetch Tasks only when the 'tasks' tab is clicked
     const tasksFetchedRef = useRef(false);
     useEffect(() => {
-        if (activeTab === 'tasks' && user?._id && !tasksFetchedRef.current) {
+        if (activeTab === 'tasks' && user?._id && hasModule('projectManagement') && !tasksFetchedRef.current) {
             tasksFetchedRef.current = true;
             api.get(`/projects/tasks?assignees=${user._id}`)
                 .then(r => {
@@ -229,6 +452,13 @@ const Attendance = () => {
                     console.error('tasks fetch error', e);
                     tasksFetchedRef.current = false; // allow retry on fail
                 });
+        }
+    }, [activeTab, user?._id]);
+    
+    // Fetch Regularizations only when that tab is clicked
+    useEffect(() => {
+        if (activeTab === 'regularize' && user?._id) {
+            fetchRegularizations();
         }
     }, [activeTab, user?._id]);
 
@@ -243,6 +473,9 @@ const Attendance = () => {
     };
 
     const handleClockIn = async () => {
+        const attSettings = user?.company?.settings?.attendance || {};
+        const isLocationRequired = attSettings.requireLocationCheckIn || attSettings.locationCheck;
+
         const executeClockIn = async (locationData = null) => {
             setLoadingLocation(true);
             try {
@@ -259,6 +492,30 @@ const Attendance = () => {
             }
         };
 
+        if (!isLocationRequired) {
+            // If location is not strictly required, try to get it best-effort but don't block
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        executeClockIn({
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                            accuracy: position.coords.accuracy
+                        });
+                    },
+                    (error) => {
+                        console.log('Location access denied or failed, proceeding with default clock-in');
+                        executeClockIn();
+                    },
+                    { timeout: 5000 }
+                );
+            } else {
+                executeClockIn();
+            }
+            return;
+        }
+
+        // Strictly required flow
         if (!navigator.geolocation) {
             toast.error('Geolocation is not supported by your browser. Please use a modern browser.');
             return;
@@ -269,7 +526,7 @@ const Attendance = () => {
             (position) => {
                 const isCached = (Date.now() - position.timestamp) > 60000;
                 if (!position.coords.accuracy || position.coords.accuracy > 300 || isCached) {
-                    toast.error('Please Enable location');
+                    toast.error('Please Enable location for accurate verification');
                     setLoadingLocation(false);
                     return;
                 }
@@ -285,7 +542,7 @@ const Attendance = () => {
                 });
             },
             (error) => {
-                toast.error('Please Enable location');
+                toast.error('Please Enable location to proceed with clock-in (Required by your company).');
                 setLoadingLocation(false);
             },
             {
@@ -297,6 +554,9 @@ const Attendance = () => {
     };
 
     const handleClockOut = async () => {
+        const attSettings = user?.company?.settings?.attendance || {};
+        const isLocationRequired = attSettings.requireLocationCheckOut || attSettings.locationCheck;
+
         const executeClockOut = async (locationData = null) => {
             setLoadingLocation(true);
             try {
@@ -313,41 +573,93 @@ const Attendance = () => {
             }
         };
 
-        if (!navigator.geolocation) {
-            toast.error('Geolocation is not supported by your browser. Please use a modern browser.');
-            return;
-        }
+        toast((t) => (
+            <div className={`
+                ${t.visible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}
+                transition-all duration-300 pointer-events-auto
+                bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 p-5 min-w-[320px]
+            `}>
+                <div className="flex items-center gap-4 mb-5">
+                    <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shadow-inner">
+                        <LogOut size={24} />
+                    </div>
+                    <div>
+                        <h3 className="text-base font-extrabold text-slate-900 tracking-tight">Confirm Checkout?</h3>
+                        <p className="text-xs text-slate-500 font-medium">Are you sure you want to end your session?</p>
+                    </div>
+                </div>
 
-        setLoadingLocation(true);
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const isCached = (Date.now() - position.timestamp) > 60000;
-                if (!position.coords.accuracy || position.coords.accuracy > 300 || isCached) {
-                    toast.error('Please Enable location');
-                    setLoadingLocation(false);
-                    return;
-                }
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => toast.dismiss(t.id)}
+                        className="flex-1 py-2.5 px-4 text-xs font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all active:scale-95 border border-slate-100"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={async () => {
+                            toast.dismiss(t.id);
+                            
+                            if (!isLocationRequired) {
+                                if (navigator.geolocation) {
+                                    navigator.geolocation.getCurrentPosition(
+                                        (position) => executeClockOut({
+                                            lat: position.coords.latitude,
+                                            lng: position.coords.longitude,
+                                            accuracy: position.coords.accuracy
+                                        }),
+                                        () => executeClockOut(),
+                                        { timeout: 5000 }
+                                    );
+                                } else {
+                                    executeClockOut();
+                                }
+                                return;
+                            }
 
-                executeClockOut({
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                    accuracy: position.coords.accuracy
-                }).catch(err => {
-                    console.error("Unhandled error during clock out:", err);
-                    toast.error("An unexpected error occurred during clock out.");
-                    setLoadingLocation(false);
-                });
-            },
-            (error) => {
-                toast.error('Please Enable location');
-                setLoadingLocation(false);
-            },
-            {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 0
-            }
-        );
+                            if (!navigator.geolocation) {
+                                toast.error('Geolocation is not supported by your browser.');
+                                return;
+                            }
+
+                            setLoadingLocation(true);
+                            navigator.geolocation.getCurrentPosition(
+                                (position) => {
+                                    const isCached = (Date.now() - position.timestamp) > 60000;
+                                    if (!position.coords.accuracy || position.coords.accuracy > 300 || isCached) {
+                                        toast.error('Please Enable location for accurate verification');
+                                        setLoadingLocation(false);
+                                        return;
+                                    }
+
+                                    executeClockOut({
+                                        lat: position.coords.latitude,
+                                        lng: position.coords.longitude,
+                                        accuracy: position.coords.accuracy
+                                    }).catch(err => {
+                                        console.error("Unhandled error during clock out:", err);
+                                        toast.error("An unexpected error occurred during clock out.");
+                                        setLoadingLocation(false);
+                                    });
+                                },
+                                (error) => {
+                                    toast.error('Please Enable location to proceed with checkout (Required by your company).');
+                                    setLoadingLocation(false);
+                                },
+                                {
+                                    enableHighAccuracy: true,
+                                    timeout: 10000,
+                                    maximumAge: 0
+                                }
+                            );
+                        }}
+                        className="flex-1 py-2.5 px-4 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 rounded-xl transition-all active:scale-95"
+                    >
+                        Confirm
+                    </button>
+                </div>
+            </div>
+        ), { duration: 10000, position: 'top-center', style: { padding: 0, background: 'transparent', boxShadow: 'none', border: 'none' } });
     };
 
     const toggleLogForm = (taskId, existingLog = null) => {
@@ -464,14 +776,167 @@ const Attendance = () => {
         return `${hours}h ${minutes}m ${seconds}s`;
     };
 
+
+    const handleExportMonthlyTimesheet = async () => {
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Monthly Timesheet');
+
+        // Determine user to export
+        const exportUser = viewUser || user;
+
+        const referenceDate = history.length > 0 ? new Date(history[0].date) : new Date();
+        const start = startOfMonth(referenceDate);
+        const end = endOfMonth(referenceDate);
+        const days = eachDayOfInterval({ start, end });
+        const standardHours = user?.company?.settings?.attendance?.workingHours || 8;
+
+        // --- STYLING ---
+        const blueHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; 
+        const tableHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+        const weekendFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+        const borderStyle = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+        // 1. TOP HEADER
+        sheet.mergeCells('A1:E1');
+        const topHeader = sheet.getCell('A1');
+        topHeader.value = 'Monthly timesheet';
+        topHeader.fill = blueHeaderFill;
+        topHeader.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF366092' } };
+
+        // 2. EMPLOYEE & SUPERVISOR INFO
+        sheet.getRow(2).height = 20;
+        sheet.getCell('A2').value = 'EMPLOYEE:';
+        sheet.getCell('A2').font = { bold: true, size: 10 };
+        sheet.mergeCells('B2:C2');
+        const empCell = sheet.getCell('B2');
+        empCell.value = `${exportUser.firstName} ${exportUser.lastName || ''}`;
+        empCell.font = { name: 'Calibri', size: 10 };
+        empCell.border = { bottom: { style: 'dotted' } };
+
+        sheet.getCell('D2').value = 'START OF MONTH';
+        sheet.getCell('D2').font = { bold: true, size: 10 };
+        const startMonthCell = sheet.getCell('E2');
+        startMonthCell.value = format(start, 'd/MM/yyyy');
+        startMonthCell.font = { name: 'Calibri', size: 10, bold: true };
+        startMonthCell.alignment = { horizontal: 'right' };
+        startMonthCell.border = { bottom: { style: 'dotted' } };
+
+        sheet.getRow(3).height = 20;
+        sheet.getCell('A3').value = 'SUPERVISOR:';
+        sheet.getCell('A3').font = { bold: true, size: 10 };
+        sheet.mergeCells('B3:C3');
+        const mgrs = exportUser.reportingManagers || [];
+        const supCell = sheet.getCell('B3');
+        supCell.value = mgrs.length > 0 ? mgrs.map(m => `${m.firstName} ${m.lastName}`).join(', ') : 'N/A';
+        supCell.font = { name: 'Calibri', size: 10 };
+        supCell.border = { bottom: { style: 'dotted' } };
+
+        sheet.getCell('D3').value = 'REGULAR HRS';
+        sheet.getCell('D3').font = { bold: true, size: 10 };
+        const hrsCell = sheet.getCell('E3');
+        hrsCell.value = parseFloat(standardHours).toFixed(2);
+        hrsCell.font = { name: 'Calibri', size: 10, bold: true };
+        hrsCell.alignment = { horizontal: 'right' };
+        hrsCell.border = { bottom: { style: 'dotted' } };
+
+        // 3. TABLE HEADER (Now starts at row 5 after a blank row 4)
+        sheet.getRow(4).height = 15; // Blank Row
+
+        sheet.getRow(5).height = 20;
+        sheet.mergeCells('B5:C5'); // Merge B and C for Attendance header
+        const hDate = sheet.getCell('A5');
+        const hAtt = sheet.getCell('B5');
+        hDate.value = 'DATE';
+        hAtt.value = 'Attendance';
+        [hDate, hAtt].forEach(c => {
+            c.fill = tableHeaderFill;
+            c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            c.alignment = { horizontal: 'center' };
+            c.border = borderStyle;
+        });
+
+        // 4. DATA ROWS (Now starts at row 6)
+        let currentRow = 6;
+        days.forEach(day => {
+            const dateStr = format(day, 'yyyy-MM-dd');
+            const record = history.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+            const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
+            const dayName = format(day, 'EEEE');
+            const isWeekendDay = weeklyOffDays.includes(dayName);
+            const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+
+            const row = sheet.getRow(currentRow);
+            const cDate = row.getCell(1);
+            sheet.mergeCells(`B${currentRow}:C${currentRow}`); // Merge B and C for Status
+            const cStatus = row.getCell(2);
+
+            cDate.value = format(day, 'EEE, d MMM');
+            
+            const leave = approvedLeaves.find(l => {
+                const lStart = new Date(l.startDate);
+                const lEnd = new Date(l.endDate);
+                lStart.setHours(0,0,0,0);
+                lEnd.setHours(23,59,59,999);
+                return day >= lStart && day <= lEnd;
+            });
+
+            let status = '';
+            if (leave) {
+                status = 'Leave';
+            } else if (holiday) {
+                status = holiday.name;
+            } else if (isWeekendDay) {
+                status = 'Weekend';
+            } else if (record) {
+                status = 'P';
+            } else if (day <= new Date()) {
+                status = 'Absent';
+            }
+
+            cStatus.value = status;
+
+            // Styling
+            [cDate, cStatus].forEach(c => {
+                c.border = borderStyle;
+                c.font = { name: 'Calibri', size: 10 };
+                c.alignment = { horizontal: 'center' };
+                if (isWeekendDay) c.fill = weekendFill;
+            });
+
+            currentRow++;
+        });
+
+        // 5. FOOTER (Aligned with columns D and E)
+        sheet.getRow(currentRow).height = 25;
+        const footerLabel = sheet.getCell(`D${currentRow}`);
+        footerLabel.value = 'Total Days';
+        footerLabel.font = { bold: true };
+        footerLabel.alignment = { horizontal: 'right', vertical: 'middle' };
+
+        const footerValue = sheet.getCell(`E${currentRow}`);
+        footerValue.value = days.length;
+        footerValue.font = { bold: true };
+        footerValue.alignment = { horizontal: 'right', vertical: 'middle' };
+        footerValue.border = { bottom: { style: 'double', color: { argb: 'FF4F81BD' } } };
+
+        // Column Widths
+        sheet.getColumn(1).width = 25; // A
+        sheet.getColumn(2).width = 15; // B (part of merged B/C for name, but C is narrower)
+        sheet.getColumn(3).width = 15; // C
+        sheet.getColumn(4).width = 20; // D (Labels like START OF MONTH)
+        sheet.getColumn(5).width = 15; // E (Values)
+
+        // Save
+        const buffer = await workbook.xlsx.writeBuffer();
+        saveAs(new Blob([buffer]), `Monthly_Timesheet_${format(start, 'MMMM_yyyy')}_${exportUser.firstName}.xlsx`);
+    };
+
     const handleExportAttendance = async () => {
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet('Attendance Report');
 
         // Determine user to export
-        const exportUser = (usersList.length > 0 && selectedUserId)
-            ? usersList.find(u => u._id === selectedUserId) || user
-            : user;
+        const exportUser = viewUser || user;
 
         // 1. Header Info (Rows 1-4)
         const titleStyle = { font: { bold: true, size: 12 }, alignment: { vertical: 'middle', horizontal: 'left' } };
@@ -511,7 +976,9 @@ const Attendance = () => {
         days.forEach(day => {
             const dateStr = format(day, 'yyyy-MM-dd');
             const record = history.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-            const isSunday = day.getDay() === 0; // Only Sunday is weekoff
+            const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
+            const dayName = format(day, 'EEEE');
+            const isWeeklyOff = weeklyOffDays.includes(dayName);
             const isFuture = day > new Date();
 
             let status = 'Absent';
@@ -523,19 +990,30 @@ const Attendance = () => {
 
             const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
 
+            const leave = approvedLeaves.find(l => {
+                const lStart = new Date(l.startDate);
+                const lEnd = new Date(l.endDate);
+                lStart.setHours(0,0,0,0);
+                lEnd.setHours(23,59,59,999);
+                return day >= lStart && day <= lEnd;
+            });
+
             if (joiningDate && day < joiningDate) {
                 status = 'Not Applicable';
                 rowColor = 'FFFFFFFF'; // White
             } else if (isFuture) {
                 status = '-';
                 rowColor = 'FFFFFFFF'; // White
+            } else if (leave) {
+                status = `Leave (${leave.leaveType})`;
+                rowColor = 'FFE1BEE7'; // Light Purple/Indigo
             } else if (holiday) {
                 status = holiday.name;
                 rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB'; // Light Orange for Optional, Light Teal for Regular
             } else if (record) {
                 status = 'Present';
                 rowColor = 'FFEBF1DE'; // Green
-            } else if (isSunday) {
+            } else if (isWeeklyOff) {
                 status = 'Weekoff';
                 rowColor = 'FFF2F2F2'; // Gray
             }
@@ -756,7 +1234,9 @@ const Attendance = () => {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800">Attendance</h1>
-                        <p className="text-sm text-slate-500">Track and manage your work hours</p>
+                        <p className="text-sm text-slate-500">
+                            {selectedUserId === user?._id ? 'Track and manage your work hours' : `Viewing ${viewUser?.firstName || ''} ${viewUser?.lastName || ''}'s attendance`}
+                        </p>
                     </div>
                     <div className="flex items-center space-x-6">
                         <div className="text-right hidden sm:block">
@@ -770,14 +1250,27 @@ const Attendance = () => {
 
                         {/* Export Button - Permission Check */
                             (user?.roles?.includes('Admin') || user?.roles?.includes('Manager') || user?.role === 'Admin' || usersList.length > 0 || user?.permissions?.includes('attendance.export')) && (
-                                <Button
-                                    onClick={handleExportAttendance}
-                                    variants="outline"
-                                    className="p-2 border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300"
-                                    title="Download Personal Report"
-                                >
-                                    <Download size={20} />
-                                </Button>
+                                <div className="flex items-center space-x-2">
+                                    {(user?.company?.settings?.attendance?.exportFormat === 'Monthly Timesheet') ? (
+                                        <Button
+                                            onClick={handleExportMonthlyTimesheet}
+                                            variants="outline"
+                                            className="p-2 border-slate-200 text-slate-600 hover:text-emerald-600 hover:border-emerald-300"
+                                            title="Download Monthly Timesheet"
+                                        >
+                                            <Calendar size={20} />
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            onClick={handleExportAttendance}
+                                            variants="outline"
+                                            className="p-2 border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300"
+                                            title="Download Personal Report"
+                                        >
+                                            <Download size={20} />
+                                        </Button>
+                                    )}
+                                </div>
                             )}
                     </div>
                 </div>
@@ -874,42 +1367,44 @@ const Attendance = () => {
                             </div>
                         </div>
 
-                        <div className="zoho-card p-5 mt-6">
-                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Recent Activity</h4>
-                            {recentLogs.length > 0 ? (
-                                <div className="space-y-4">
-                                    {recentLogs.map(log => (
-                                        <div key={log._id} className="flex gap-3 text-sm border-b border-slate-50 pb-3 last:border-0 last:pb-0">
-                                            <div className="mt-1">
-                                                <CheckSquare size={14} className="text-blue-500" />
-                                            </div>
-                                            <div>
-                                                <div className="font-medium text-slate-700">
-                                                    {log.task?.name || 'Unknown Task'}
+                        {hasModule('projectManagement') && (
+                            <div className="zoho-card p-5 mt-6">
+                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Recent Activity</h4>
+                                {recentLogs.length > 0 ? (
+                                    <div className="space-y-4">
+                                        {recentLogs.map(log => (
+                                            <div key={log._id} className="flex gap-3 text-sm border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                                                <div className="mt-1">
+                                                    <CheckSquare size={14} className="text-blue-500" />
                                                 </div>
-                                                <div className="text-xs text-slate-500 mt-0.5">
-                                                    {log.hours} hrs • {new Date(log.date).toLocaleDateString()}
-                                                </div>
-                                                {log.description && (
-                                                    <div className="text-xs text-slate-400 mt-1 italic">
-                                                        "{log.description}"
+                                                <div>
+                                                    <div className="font-medium text-slate-700">
+                                                        {log.task?.name || 'Unknown Task'}
                                                     </div>
-                                                )}
+                                                    <div className="text-xs text-slate-500 mt-0.5">
+                                                        {log.hours} hrs • {new Date(log.date).toLocaleDateString()}
+                                                    </div>
+                                                    {log.description && (
+                                                        <div className="text-xs text-slate-400 mt-1 italic">
+                                                            "{log.description}"
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
+                                        ))}
+                                        <div className="pt-2 text-center">
+                                            <a href="/timesheet" className="text-xs text-blue-600 hover:underline">View All in Timesheet</a>
                                         </div>
-                                    ))}
-                                    <div className="pt-2 text-center">
-                                        <a href="/timesheet" className="text-xs text-blue-600 hover:underline">View All in Timesheet</a>
                                     </div>
-                                </div>
-                            ) : (
-                                <div className="text-center text-xs text-slate-400 py-2">
-                                    No work logged recently.
-                                </div>
-                            )}
-                        </div>
+                                ) : (
+                                    <div className="text-center text-xs text-slate-400 py-2">
+                                        No work logged recently.
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
-                        {!isClockedIn && (
+                        {!isClockedIn && hasModule('projectManagement') && (
                             <div className="zoho-card p-5 opacity-75 mt-6">
                                 <div className="text-center space-y-2">
                                     <Briefcase size={32} className="mx-auto text-slate-300" />
@@ -954,17 +1449,39 @@ const Attendance = () => {
                                 <Calendar size={16} /> Attendance History
                             </button>
                             <button
-                                onClick={() => setActiveTab('tasks')}
-                                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'tasks' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                onClick={() => setActiveTab('regularize')}
+                                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'regularize' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                             >
-                                <Briefcase size={16} /> Assigned to Me {assignedTasks.length > 0 && <span className="bg-slate-100 text-slate-600 text-xs py-0.5 px-2 rounded-full ml-1">{assignedTasks.length}</span>}
+                                <Clock size={16} /> Regularization Requests
                             </button>
+                            {hasModule('projectManagement') && (
+                                <button
+                                    onClick={() => setActiveTab('tasks')}
+                                    className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'tasks' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    <Briefcase size={16} /> Assigned to Me {assignedTasks.length > 0 && <span className="bg-slate-100 text-slate-600 text-xs py-0.5 px-2 rounded-full ml-1">{assignedTasks.length}</span>}
+                                </button>
+                            )}
                         </div>
 
                         {/* Scrollable Content Area */}
                         <div className="flex-1 bg-white rounded-b-lg shadow-sm border border-t-0 border-slate-200 p-6 overflow-y-auto custom-scrollbar relative">
                             {activeTab === 'history' ? (
-                                <AttendanceCalendar history={history} onMonthChange={fetchMonthHistory} user={user} holidays={holidays} />
+                                <AttendanceCalendar 
+                                    history={history} 
+                                    onMonthChange={fetchMonthHistory} 
+                                    user={user} 
+                                    holidays={holidays} 
+                                    approvedLeaves={approvedLeaves} 
+                                    onRegularize={handleRegularize}
+                                />
+                            ) : activeTab === 'regularize' ? (
+                                <RegularizationRequestsView 
+                                    requests={regularizationRequests} 
+                                    onProcess={processRegularization}
+                                    processingId={processingRegId}
+                                    currentUser={user}
+                                />
                             ) : (
                                 <AssignedTasksView
                                     assignedTasks={assignedTasks}
@@ -984,6 +1501,89 @@ const Attendance = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Regularization Modal */}
+            {showRegModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+                        <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800">Request Regularization</h3>
+                                <p className="text-xs text-slate-500 font-medium">{regDate ? format(new Date(regDate), 'MMMM dd, yyyy') : ''}</p>
+                            </div>
+                            <button onClick={() => setShowRegModal(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                                <X size={20} className="text-slate-500" />
+                            </button>
+                        </div>
+                        
+                        <form onSubmit={submitRegularization} className="p-6 space-y-5">
+                            <div>
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Regularize For</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {['IN', 'OUT', 'BOTH'].map(type => (
+                                        <button
+                                            key={type}
+                                            type="button"
+                                            onClick={() => setRegForm({ ...regForm, type })}
+                                            className={`py-2 text-xs font-semibold rounded-lg border transition-all ${regForm.type === type ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}
+                                        >
+                                            {type}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                {(regForm.type === 'IN' || regForm.type === 'BOTH') && (
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check In Time</label>
+                                        <input
+                                            type="time"
+                                            required
+                                            className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                                            value={regForm.checkIn}
+                                            onChange={(e) => setRegForm({ ...regForm, checkIn: e.target.value })}
+                                        />
+                                    </div>
+                                )}
+                                {(regForm.type === 'OUT' || regForm.type === 'BOTH') && (
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check Out Time</label>
+                                        <input
+                                            type="time"
+                                            required
+                                            className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                                            value={regForm.checkOut}
+                                            onChange={(e) => setRegForm({ ...regForm, checkOut: e.target.value })}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Reason for Regularization</label>
+                                <textarea
+                                    required
+                                    rows="3"
+                                    placeholder="Please provide a valid reason..."
+                                    className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none resize-none"
+                                    value={regForm.reason}
+                                    onChange={(e) => setRegForm({ ...regForm, reason: e.target.value })}
+                                ></textarea>
+                            </div>
+
+                            <div className="pt-2">
+                                <button
+                                    type="submit"
+                                    className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-[0.98] transition-all"
+                                >
+                                    Submit Request
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -1240,6 +1840,124 @@ const AssignedTasksView = ({
                                             {editingLogId ? 'Update' : 'Save'}
                                         </button>
                                     </form>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+const RegularizationRequestsView = ({ requests, onProcess, processingId, currentUser }) => {
+    const isAdmin = currentUser?.roles?.some(r => r.name === 'Admin' || r === 'Admin');
+
+    if (requests.length === 0) {
+        return (
+            <div className="text-center py-20 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                <div className="h-16 w-16 bg-white rounded-full shadow-sm flex items-center justify-center mx-auto mb-4">
+                    <Info size={32} className="text-slate-300" />
+                </div>
+                <h3 className="text-slate-800 font-bold">No Requests Found</h3>
+                <p className="text-slate-500 text-xs mt-1">Regularization requests will appear here once submitted.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center mb-2">
+                <h3 className="text-lg font-bold text-slate-800">Regularization Requests</h3>
+                <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-1 rounded-full uppercase tracking-wider">
+                    {requests.length} Total
+                </span>
+            </div>
+
+            <div className="grid gap-4">
+                {requests.map(req => {
+                    const isMyRequest = req.user?._id === currentUser?._id;
+                    // Manager check: identify if the current user is a reporting manager for the requester
+                    const isManagerOfUser = currentUser?.directReports?.some(r => 
+                        (typeof r === 'string' ? r === req.user?._id : (r._id === req.user?._id || r === req.user?._id))
+                    );
+                    const canProcess = !isMyRequest && (isAdmin || req.manager === currentUser?._id || req.manager?._id === currentUser?._id || isManagerOfUser) && req.status === 'PENDING';
+
+                    return (
+                        <div key={req._id} className={`bg-white border rounded-xl p-4 transition-all shadow-sm hover:shadow-md ${req.status === 'PENDING' ? 'border-amber-200 bg-amber-50/5' : 'border-slate-100'}`}>
+                            <div className="flex flex-col sm:flex-row justify-between gap-4">
+                                <div className="flex gap-4">
+                                    <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 ${req.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-600' : req.status === 'REJECTED' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
+                                        {req.status === 'APPROVED' ? <CheckCircle size={20} /> : req.status === 'REJECTED' ? <XCircle size={20} /> : <Clock size={20} />}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-bold text-slate-800">{req.user?.firstName} {req.user?.lastName}</span>
+                                            <span className="text-[10px] text-slate-400 font-mono">#{req.user?.employeeCode}</span>
+                                        </div>
+                                        <div className="text-xs text-slate-500 font-medium flex items-center gap-2 mt-0.5">
+                                            <span>{format(new Date(req.date), 'EEE, MMM dd')}</span>
+                                            <span className="h-1 w-1 bg-slate-300 rounded-full"></span>
+                                            <span className="text-blue-600 font-bold uppercase tracking-tighter">{req.type}</span>
+                                        </div>
+                                        <div className="mt-3 bg-white/50 border border-slate-100 rounded-lg p-2 flex gap-4 text-[10px] font-mono">
+                                            {(req.type === 'IN' || req.type === 'BOTH') && (
+                                                <div>
+                                                    <span className="text-slate-400 block mb-0.5">REQ IN</span>
+                                                    <span className="text-slate-700 font-bold">{new Date(req.requestedClockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                            )}
+                                            {(req.type === 'OUT' || req.type === 'BOTH') && (
+                                                <div>
+                                                    <span className="text-slate-400 block mb-0.5">REQ OUT</span>
+                                                    <span className="text-slate-700 font-bold">{new Date(req.requestedClockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col items-start sm:items-end justify-between gap-3">
+                                    <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${req.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : req.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                                        {req.status}
+                                    </div>
+                                    
+                                    {canProcess ? (
+                                        <div className="flex gap-2">
+                                            <button
+                                                disabled={processingId === req._id}
+                                                onClick={() => onProcess(req._id, 'REJECTED')}
+                                                className="px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-colors flex items-center gap-1.5"
+                                            >
+                                                <X size={14} /> Reject
+                                            </button>
+                                            <button
+                                                disabled={processingId === req._id}
+                                                onClick={() => onProcess(req._id, 'APPROVED')}
+                                                className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm rounded-lg transition-colors flex items-center gap-1.5"
+                                            >
+                                                {processingId === req._id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} Approve
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        req.status !== 'PENDING' && (
+                                            <div className="text-[10px] text-slate-400 italic flex items-center gap-1">
+                                                {req.status === 'APPROVED' ? 'Approved by' : 'Rejected by'} {req.manager?.firstName}
+                                            </div>
+                                        )
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <div className="mt-4 pt-4 border-t border-slate-50 flex items-start gap-2">
+                                <Info size={14} className="text-slate-300 mt-0.5 flex-shrink-0" />
+                                <div className="text-xs text-slate-600 italic leading-relaxed">
+                                    "{req.reason}"
+                                </div>
+                            </div>
+                            {req.rejectionReason && (
+                                <div className="mt-2 p-2 bg-red-50 text-red-600 text-[10px] rounded border border-red-100 italic">
+                                    Rejection: {req.rejectionReason}
                                 </div>
                             )}
                         </div>

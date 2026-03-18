@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
-import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Construction, Loader } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Construction, Loader, FileText, Paperclip } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
@@ -326,6 +326,41 @@ const HiringRequestDetails = () => {
                                     </div>
                                 </div>
                             </section>
+
+                            {/* Job Description Card */}
+                            {(request.jobDescription || request.jobDescriptionFile) && (
+                                <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300">
+                                    <div className="px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex justify-between items-center">
+                                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                            <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
+                                                <FileText size={14} />
+                                            </div>
+                                            Detailed Job Description
+                                        </h3>
+                                        {request.jobDescriptionFile && (
+                                            <a 
+                                                href={request.jobDescriptionFile} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-1.5 px-3 py-1 bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                                            >
+                                                <Paperclip size={12} /> View JD File
+                                            </a>
+                                        )}
+                                    </div>
+                                    <div className="p-5">
+                                        {request.jobDescription ? (
+                                            <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
+                                                {request.jobDescription}
+                                            </div>
+                                        ) : (
+                                            <div className="text-slate-400 italic text-sm py-4 text-center">
+                                                No text description provided. Please refer to the attached file.
+                                            </div>
+                                        )}
+                                    </div>
+                                </section>
+                            )}
 
                             {/* Approval History - Enhanced Timeline */}
                             {(isDynamic || request.approvals?.l1?.status !== 'Pending' || request.approvals?.final?.status !== 'Pending') && (

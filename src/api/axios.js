@@ -14,6 +14,35 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Tenant Identification
+    const hostname = window.location.hostname;
+    const urlParams = new URLSearchParams(window.location.search);
+    let tenantQuery = urlParams.get('tenant');
+    
+    // Automatically detect subdomain
+    let detectedSubdomain = '';
+    const parts = hostname.split('.');
+    
+    if (hostname.endsWith('localhost')) {
+      if (parts.length > 1 && parts[0] !== 'localhost') {
+        detectedSubdomain = parts[0];
+      }
+    } else if (parts.length > 2) {
+      detectedSubdomain = parts[0];
+    }
+
+    if (tenantQuery) {
+      localStorage.setItem('tenant', tenantQuery);
+    } else if (detectedSubdomain) {
+      localStorage.setItem('tenant', detectedSubdomain);
+    }
+    
+    const savedTenant = localStorage.getItem('tenant');
+    if (savedTenant) {
+      config.headers['x-tenant-id'] = savedTenant;
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

@@ -24,6 +24,9 @@ const Holidays = () => {
     const optionalHolidays = holidays.filter(h => h.isOptional).length;
 
     const isAdmin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
+    const canCreateHoliday = isAdmin || user?.permissions?.includes('holiday.create') || user?.hasAllPermissions;
+    const canEditHoliday = isAdmin || user?.permissions?.includes('holiday.edit') || user?.hasAllPermissions;
+    const canDeleteHoliday = isAdmin || user?.permissions?.includes('holiday.delete') || user?.hasAllPermissions;
 
     useEffect(() => {
         fetchHolidays();
@@ -91,7 +94,7 @@ const Holidays = () => {
                     <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Holiday Calendar</h1>
                     <p className="text-slate-500 mt-1">Manage annual holidays and optional leaves for your organization.</p>
                 </div>
-                {isAdmin && (
+                {canCreateHoliday && (
                     <button
                         onClick={() => handleOpenModal()}
                         className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all font-medium"
@@ -157,8 +160,8 @@ const Holidays = () => {
                                             <tr
                                                 key={holiday._id}
                                                 // Make row clickable for admins to edit
-                                                onClick={() => isAdmin && handleOpenModal(holiday)}
-                                                className={`hover:bg-slate-50/80 transition-colors group ${isAdmin ? 'cursor-pointer' : ''}`}
+                                                onClick={() => canEditHoliday && handleOpenModal(holiday)}
+                                                className={`hover:bg-slate-50/80 transition-colors group ${canEditHoliday ? 'cursor-pointer' : ''}`}
                                             >
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="flex items-center space-x-4">
@@ -275,7 +278,7 @@ const Holidays = () => {
 
                             <div className="pt-6 flex justify-between items-center border-t border-slate-100 mt-4">
                                 <div>
-                                    {editingHoliday && (
+                                    {editingHoliday && canDeleteHoliday && (
                                         <button
                                             type="button"
                                             onClick={() => {

@@ -116,7 +116,8 @@ const Users = () => {
             days.forEach(day => {
                 const dateStr = format(day, 'yyyy-MM-dd');
                 const record = history.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-                const isSunday = day.getDay() === 0;
+                const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
+                const isWeeklyOff = weeklyOffDays.includes(format(day, 'EEEE'));
                 const isFuture = day > new Date();
 
                 let status = 'Absent';
@@ -139,7 +140,7 @@ const Users = () => {
                 } else if (record) {
                     status = 'Present';
                     rowColor = 'FFEBF1DE';
-                } else if (isSunday) {
+                } else if (isWeeklyOff) {
                     status = 'Weekoff';
                     rowColor = 'FFF2F2F2';
                 }
@@ -289,7 +290,8 @@ const Users = () => {
                     const record = userLogs[dateStr];
                     const colKey = `day_${d}`;
 
-                    const isSunday = dateObj.getDay() === 0;
+                    const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
+                    const isWeeklyOff = weeklyOffDays.includes(dateObj.toLocaleDateString('en-US', { weekday: 'long' }));
                     const isFuture = dateObj > new Date();
                     const leaveType = userLeaves[dateStr];
                     const holidayName = holidayMap[dateStr];
@@ -321,8 +323,8 @@ const Users = () => {
                         statusShort = 'Present';
                         cellColor = 'FFEBF1DE'; // Light Green
                     }
-                    else if (isSunday) {
-                        statusShort = 'Sunday';
+                    else if (isWeeklyOff) {
+                        statusShort = 'Weekoff';
                         cellColor = 'FFF2F2F2'; // Light Grey
                     }
 
@@ -395,7 +397,8 @@ const Users = () => {
                             const record = userLogs[dateStr];
                             const leaveType = userLeaves[dateStr];
                             const holidayName = holidayMap[dateStr];
-                            const isSunday = dateObj.getDay() === 0;
+                            const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
+                            const isWeeklyOff = weeklyOffDays.includes(dateObj.toLocaleDateString('en-US', { weekday: 'long' }));
                             const isFuture = dateObj > new Date();
 
                             // -- Apply Same Logic for Coloring --
@@ -411,7 +414,7 @@ const Users = () => {
                             else if (leaveType) cellColor = 'FFFFE0B2';
                             else if (holidayName) cellColor = 'FFD1F2EB';
                             else if (record) cellColor = 'FFEBF1DE';
-                            else if (isSunday) cellColor = 'FFF2F2F2';
+                            else if (isWeeklyOff) cellColor = 'FFF2F2F2';
 
                             const colKey = `day_${d}`;
                             // This library might not support key-based cell access directly on 'row' object efficiently if strictly column indexed?
