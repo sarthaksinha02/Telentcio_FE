@@ -93,29 +93,37 @@ const Attendance = () => {
     }, [activeTab]);
 
     // Fetch Users List for Dropdown (Admin/Manager)
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                if (isAdmin) {
-                    const res = await api.get('/admin/users');
-                    setUsersList(res.data);
-                } else if (isManager) {
-                    try {
-                        const res = await api.get('/admin/users/team');
-                        setUsersList(res.data);
-                    } catch (e) {
-                        setUsersList(user.directReports || []);
-                    }
-                }
-            } catch (error) {
-                console.error("Failed to fetch users list", error);
-            }
-        };
+    const [loadingUsers, setLoadingUsers] = useState(false);
+    const [usersLoaded, setUsersLoaded] = useState(false);
 
-        if (user?._id) {
-            fetchUsers();
+    // Manual Fetch for Users (Lazy Load)
+    const fetchUsers = async () => {
+        if (usersLoaded || loadingUsers) return;
+        setLoadingUsers(true);
+        try {
+            if (isAdmin) {
+                const res = await api.get('/admin/users');
+                setUsersList(res.data);
+                setUsersLoaded(true);
+            } else if (isManager) {
+                try {
+                    const res = await api.get('/admin/users/team');
+                    setUsersList(res.data);
+                    setUsersLoaded(true);
+                } catch (e) {
+                    setUsersList(user.directReports || []);
+                    setUsersLoaded(true);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to fetch users list", error);
+        } finally {
+            setLoadingUsers(false);
         }
-    }, [user?._id]); 
+    };
+
+    // ONLY fetch if some condition is met (e.g. from a click)
+    // We removed the automatic useEffect for fetchUsers
 
     // Fetch target user details when selectedUserId changes
     useEffect(() => {
@@ -1432,9 +1440,19 @@ const Attendance = () => {
                         )}
 
                         {/* Team Members Selection (Admins/Managers) */}
-                        {(isAdmin || isManager) && (usersList.length > 0 || (user?.directReports && user.directReports.length > 0)) && (
+                        {(isAdmin || isManager) && (
                             <div className="zoho-card p-5">
-                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Team Members</h4>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Team Members</h4>
+                                    {!usersLoaded && !loadingUsers && (
+                                        <button 
+                                            onClick={fetchUsers}
+                                            className="text-[10px] text-blue-600 font-bold hover:underline"
+                                        >
+                                            Show All
+                                        </button>
+                                    )}
+                                </div>
                                 <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
                                     {/* Self */}
                                     <button
@@ -1447,7 +1465,15 @@ const Attendance = () => {
                                             <p className="text-[10px] opacity-70 truncate">{user.email}</p>
                                         </div>
                                     </button>
-                                    <div className="h-px bg-slate-100 my-2"></div>
+
+                                    {loadingUsers && (
+                                        <div className="flex items-center justify-center py-4">
+                                            <Loader2 size={16} className="animate-spin text-blue-500" />
+                                        </div>
+                                    )}
+
+                                    {usersLoaded && usersList.length > 0 && <div className="h-px bg-slate-100 my-2"></div>}
+                                    
                                     {/* List */}
                                     {usersList.filter(u => u._id !== user._id).map((u) => (
                                         <button
