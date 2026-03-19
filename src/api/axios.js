@@ -28,6 +28,9 @@ api.interceptors.request.use(
       if (parts.length > 1 && parts[0] !== 'localhost') {
         detectedSubdomain = parts[0];
       }
+    } else if (hostname.endsWith('vercel.app')) {
+      // Extract the project prefix (e.g., telentcio-demo)
+      detectedSubdomain = hostname.replace('.vercel.app', '');
     } else if (parts.length > 2) {
       // Ignore subdomains of cloud providers
       const cloudProviders = ['render.com', 'onrender.com', 'vercel.app', 'herokuapp.com'];
