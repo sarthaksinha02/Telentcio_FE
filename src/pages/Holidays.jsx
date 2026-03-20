@@ -32,13 +32,45 @@ const Holidays = () => {
         fetchHolidays();
     }, []);
 
-    const fetchHolidays = async () => {
+    const fetchHolidays = async (isBackground = false) => {
+        const CACHE_KEY = `holiday_data_${user?._id}_${new Date().getFullYear()}`;
+
+        // Helper: Generate fingerprint for change detection
+        const buildFingerprint = (data) => {
+            if (!Array.isArray(data)) return '';
+            return data.map(h => `${h._id}-${h.name}-${h.date}-${h.isOptional}`).join('|');
+        };
+
+        // 1. Initial Load from Cache
+        if (!isBackground) {
+            const cached = sessionStorage.getItem(CACHE_KEY);
+            if (cached) {
+                try {
+                    const parsed = JSON.parse(cached);
+                    setHolidays(parsed);
+                    setLoading(false);
+                } catch (e) {
+                    sessionStorage.removeItem(CACHE_KEY);
+                }
+            }
+        }
+
         try {
+            if (!isBackground && !sessionStorage.getItem(CACHE_KEY)) setLoading(true);
             const res = await api.get('/holidays');
-            setHolidays(res.data);
+            const freshData = res.data;
+
+            // 2. Check for changes via fingerprint
+            const oldFingerprint = buildFingerprint(JSON.parse(sessionStorage.getItem(CACHE_KEY) || '[]'));
+            const newFingerprint = buildFingerprint(freshData);
+
+            if (newFingerprint !== oldFingerprint) {
+                setHolidays(freshData);
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(freshData));
+            }
         } catch (error) {
             console.error(error);
-            toast.error("Failed to load holidays");
+            if (!isBackground) toast.error("Failed to load holidays");
         } finally {
             setLoading(false);
         }

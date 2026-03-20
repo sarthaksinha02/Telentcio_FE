@@ -156,28 +156,87 @@ const HelpDesk = () => {
     // Track which tabs have already been fetched to avoid redundant API calls
     const loadedTabs = React.useRef(new Set());
 
-    const fetchTabData = async (tab, force = false) => {
-        if (!force && loadedTabs.current.has(tab)) return; // already loaded, skip
+    const fetchTabData = async (tab, force = false, isBackground = false) => {
+        if (!force && !isBackground && loadedTabs.current.has(tab)) return; 
+        
+        const CACHE_KEY = `helpdesk_data_${user?._id}`;
+
+        // Helper: Generate fingerprint for change detection
+        const buildFingerprint = (data) => {
+            if (!Array.isArray(data)) return '';
+            return data.map(q => `${q._id}-${q.status}-${q.priority}-${q.comments?.length || 0}`).join('|');
+        };
+
+        // 1. Initial Load from Cache
+        if (!isBackground && !force) {
+            const cached = sessionStorage.getItem(CACHE_KEY);
+            if (cached) {
+                try {
+                    const parsed = JSON.parse(cached);
+                    if (tab === 'my-queries' && parsed.myQueries) setQueries(parsed.myQueries);
+                    if (tab === 'assigned') {
+                        if (parsed.assignedQueries) setAssignedQueries(parsed.assignedQueries);
+                        if (parsed.allQueries) setAllQueries(parsed.allQueries);
+                    }
+                    if (tab === 'escalated' && parsed.escalatedQueries) setEscalatedQueries(parsed.escalatedQueries);
+                    
+                    // If we have any data from cache for this tab, stop "hard" loading
+                    if (parsed[tab === 'my-queries' ? 'myQueries' : tab === 'assigned' ? 'assignedQueries' : 'escalatedQueries']) {
+                        setTabLoading(false);
+                    }
+                } catch (e) {
+                    sessionStorage.removeItem(CACHE_KEY);
+                }
+            }
+        }
+
         try {
-            setTabLoading(true);
+            if (!isBackground && !sessionStorage.getItem(CACHE_KEY)) setTabLoading(true);
+            
+            let freshData = null;
+            let freshAllData = null;
+
             if (tab === 'my-queries') {
                 const res = await api.get('/helpdesk/my-queries');
-                setQueries(res.data.data || res.data);
+                freshData = res.data.data || res.data;
             } else if (tab === 'assigned') {
                 const [assignedRes, allRes] = await Promise.all([
                     api.get('/helpdesk/assigned'),
-                    isAdmin ? api.get('/helpdesk/all') : Promise.resolve(null),
+                    isAdmin ? api.get('/helpdesk/all') : Promise.resolve({ data: { data: [] } }),
                 ]);
-                setAssignedQueries(assignedRes.data.data || assignedRes.data);
-                if (allRes) setAllQueries(allRes.data.data || allRes.data);
+                freshData = assignedRes.data.data || assignedRes.data;
+                freshAllData = allRes.data.data || allRes.data;
             } else if (tab === 'escalated' && isAdmin) {
                 const res = await api.get('/helpdesk/escalated');
-                setEscalatedQueries(res.data.data || res.data);
+                freshData = res.data.data || res.data;
             }
+
+            // 2. Update status and cache if changed
+            if (freshData) {
+                const cachedData = JSON.parse(sessionStorage.getItem(CACHE_KEY) || '{}');
+                const cacheField = tab === 'my-queries' ? 'myQueries' : tab === 'assigned' ? 'assignedQueries' : 'escalatedQueries';
+                
+                const oldFingerprint = buildFingerprint(cachedData[cacheField] || []);
+                const newFingerprint = buildFingerprint(freshData);
+
+                if (newFingerprint !== oldFingerprint || force) {
+                    if (tab === 'my-queries') setQueries(freshData);
+                    else if (tab === 'assigned') {
+                        setAssignedQueries(freshData);
+                        if (freshAllData) setAllQueries(freshAllData);
+                    } else if (tab === 'escalated') setEscalatedQueries(freshData);
+
+                    // Sync to sessionStorage
+                    cachedData[cacheField] = freshData;
+                    if (tab === 'assigned' && freshAllData) cachedData['allQueries'] = freshAllData;
+                    sessionStorage.setItem(CACHE_KEY, JSON.stringify(cachedData));
+                }
+            }
+
             loadedTabs.current.add(tab);
         } catch (error) {
             console.error(error);
-            toast.error('Failed to load helpdesk queries');
+            if (!isBackground) toast.error('Failed to load helpdesk queries');
         } finally {
             setTabLoading(false);
         }
