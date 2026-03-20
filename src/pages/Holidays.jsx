@@ -32,7 +32,7 @@ const Holidays = () => {
         fetchHolidays();
     }, []);
 
-    const fetchHolidays = async (isBackground = false) => {
+    const fetchHolidays = async (isBackground = false, force = false) => {
         const CACHE_KEY = `holiday_data_${user?._id}_${new Date().getFullYear()}`;
 
         // Helper: Generate fingerprint for change detection
@@ -42,7 +42,7 @@ const Holidays = () => {
         };
 
         // 1. Initial Load from Cache
-        if (!isBackground) {
+        if (!isBackground && !force) {
             const cached = sessionStorage.getItem(CACHE_KEY);
             if (cached) {
                 try {
@@ -56,7 +56,7 @@ const Holidays = () => {
         }
 
         try {
-            if (!isBackground && !sessionStorage.getItem(CACHE_KEY)) setLoading(true);
+            if (!isBackground && !force && !sessionStorage.getItem(CACHE_KEY)) setLoading(true);
             const res = await api.get('/holidays');
             const freshData = res.data;
 
@@ -64,7 +64,7 @@ const Holidays = () => {
             const oldFingerprint = buildFingerprint(JSON.parse(sessionStorage.getItem(CACHE_KEY) || '[]'));
             const newFingerprint = buildFingerprint(freshData);
 
-            if (newFingerprint !== oldFingerprint) {
+            if (newFingerprint !== oldFingerprint || force) {
                 setHolidays(freshData);
                 sessionStorage.setItem(CACHE_KEY, JSON.stringify(freshData));
             }
@@ -102,7 +102,7 @@ const Holidays = () => {
                 toast.success("Holiday added");
             }
             setIsModalOpen(false);
-            fetchHolidays();
+            fetchHolidays(false, true); // Force refresh cache
         } catch (error) {
             toast.error(error.response?.data?.message || "Operation failed");
         }
@@ -113,7 +113,7 @@ const Holidays = () => {
         try {
             await api.delete(`/holidays/${id}`);
             toast.success("Holiday deleted");
-            fetchHolidays();
+            fetchHolidays(false, true); // Force refresh cache
         } catch (error) {
             toast.error("Failed to delete holiday");
         }
