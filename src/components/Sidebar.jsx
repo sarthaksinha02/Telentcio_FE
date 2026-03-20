@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase, Settings, FileText, Check, X, ClipboardList, LifeBuoy, MessageSquare } from 'lucide-react';
+import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase, Settings, FileText, Check, X, ClipboardList, LifeBuoy, MessageSquare, UserPlus } from 'lucide-react';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
@@ -99,6 +99,12 @@ const Sidebar = ({ isOpen, onClose }) => {
             <Link to="/users" className={isActive('/users')} onClick={onClose}>
               <Users size={18} />
               <span>Employees</span>
+            </Link>
+          )}
+          {(user?.roles?.includes('Admin') || user?.permissions?.includes('user.read')) && (
+            <Link to="/onboarding" className={isActive('/onboarding')} onClick={onClose}>
+              <UserPlus size={18} />
+              <span>Onboarding</span>
             </Link>
           )}
 

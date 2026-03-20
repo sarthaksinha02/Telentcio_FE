@@ -39,6 +39,9 @@ import HelpDesk from './pages/HelpDesk';
 import QueryDetails from './pages/QueryDetails';
 import Discussions from './pages/Discussions';
 import GlobalTADashboard from './pages/TalentAcquisition/GlobalTADashboard';
+import Onboarding from './pages/Onboarding';
+import PreOnboardingLogin from './pages/PreOnboardingLogin';
+import PreOnboardingPortal from './pages/PreOnboardingPortal';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleRoute from './components/RoleRoute';
@@ -55,6 +58,8 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<OTPReset />} />
+            <Route path="/pre-onboarding/login" element={<PreOnboardingLogin />} />
+            <Route path="/pre-onboarding/portal" element={<PreOnboardingPortal />} />
 
 
             {/* Protected Routes */}
@@ -104,6 +109,9 @@ function App() {
 
                 {/* Discussion Routes */}
                 <Route path="/discussions" element={<Discussions />} />
+
+                {/* Onboarding */}
+                <Route path="/onboarding" element={<Onboarding />} />
 
                 {/* Project Management Routes */}
                 <Route element={<ModuleRoute moduleName="projectManagement" />}>
