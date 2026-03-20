@@ -43,7 +43,7 @@ api.interceptors.request.use(
     let targetTenant = currentTenant || detectedSubdomain;
 
     // Ignore main project domains as tenants
-    if (targetTenant && ['telentcio', 'telentcio-demo'].includes(targetTenant.toLowerCase())) {
+    if (targetTenant && ['telentcio', 'telentcio-demo', 'talentcio'].includes(targetTenant.toLowerCase())) {
         targetTenant = '';
     }
 
