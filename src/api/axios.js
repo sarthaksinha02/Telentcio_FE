@@ -40,7 +40,12 @@ api.interceptors.request.use(
     }
 
     // Determine target tenant: URL param > Subdomain
-    const targetTenant = currentTenant || detectedSubdomain;
+    let targetTenant = currentTenant || detectedSubdomain;
+
+    // Ignore main project domains as tenants
+    if (targetTenant && ['telentcio', 'telentcio-demo'].includes(targetTenant.toLowerCase())) {
+        targetTenant = '';
+    }
 
     if (targetTenant) {
       // Ensure localStorage is in sync with current URL context
