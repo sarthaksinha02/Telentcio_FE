@@ -96,18 +96,81 @@ const Leaves = () => {
     const hasApprovalAccess = isAdminUser || isManager;
 
 
-    const fetchData = async (page = 1) => {
-        setLoading(true);
+    const fetchData = async (page = 1, skipCache = false) => {
+        // Cache Key: Scoped by User and Date
+        const CACHE_KEY = `leaves_${user?._id}_${new Date().toISOString().slice(0, 10)}`;
+
+        const readCache = () => {
+            try {
+                const raw = sessionStorage.getItem(CACHE_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed?.data?.balances) {
+                    sessionStorage.removeItem(CACHE_KEY);
+                    return null;
+                }
+                return parsed;
+            } catch { return null; }
+        };
+
+        const writeCache = (data, fingerprint) => {
+            try {
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, fingerprint }));
+            } catch { /* Silently fail if storage full */ }
+        };
+
+        const buildFingerprint = (data) => {
+            if (!data) return '';
+            const balPart = data.balances?.map(b => `${b.leaveType}:${b.utilized}:${b.closingBalance}`).join('|') || '';
+            const reqPart = data.requests?.map(r => `${r._id}:${r.status}`).join('|') || '';
+            return `${balPart}#${reqPart}`;
+        };
+
+        const applyData = (data) => {
+            if (data.balances) setBalances(data.balances);
+            if (data.requests) setRequests(data.requests);
+            if (data.pagination) setRequestsPagination(data.pagination);
+        };
+
+        const cached = skipCache ? null : readCache();
+
+        // 1. Show cached data instantly if available
+        if (!skipCache && cached?.data && page === 1) {
+            applyData(cached.data);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
+
+        // 2. Fetch fresh data
         try {
             const [balRes, reqRes] = await Promise.all([
                 api.get('/leaves/balance'),
                 api.get(`/leaves/requests?page=${page}&limit=10`)
             ]);
-            setBalances(balRes.data);
-            setRequests(reqRes.data.data);
-            setRequestsPagination(reqRes.data.pagination);
-        } catch { toast.error('Failed to load leave data'); }
-        finally { setLoading(false); }
+
+            const payload = {
+                balances: balRes.data,
+                requests: reqRes.data.data,
+                pagination: reqRes.data.pagination
+            };
+
+            const freshFingerprint = buildFingerprint(payload);
+            const cachedFingerprint = cached?.fingerprint || (readCache()?.fingerprint || '');
+
+            if (freshFingerprint !== cachedFingerprint || page !== 1) {
+                applyData(payload);
+                if (page === 1) writeCache(payload, freshFingerprint);
+            } else {
+                // Refresh cache entry even if fingerprint same to keep it alive
+                writeCache(payload, freshFingerprint);
+            }
+        } catch (err) {
+            console.error('Failed to load leave data', err);
+            if (!cached?.data) toast.error('Failed to load leave data');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const fetchOnlyRequests = async (page = 1) => {
@@ -136,8 +199,11 @@ const Leaves = () => {
     useEffect(() => {
         if (user?._id) {
             fetchData(1);
+
+            // Add background polling for real-time leave status updates
+            const pollInterval = setInterval(() => fetchData(1, true), 30000);
+            return () => clearInterval(pollInterval);
         }
-        // Do NOT call fetchApprovals on page load - lazy load it on tab click
     }, [user?._id]);
 
     const handleChange = (e) => {

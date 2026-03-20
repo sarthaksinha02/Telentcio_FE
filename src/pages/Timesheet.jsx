@@ -342,18 +342,71 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const targetUserId = propUserId || queryParams.get('userId');
     const targetUserName = propUserName || queryParams.get('name');
 
-    const fetchData = async () => {
-        try {
-            const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
-            let formattedMonth;
-            if (cycle === 'Weekly') {
-                formattedMonth = format(viewDate, "yyyy-'W'II");
-            } else if (cycle === 'Daily') {
-                formattedMonth = format(viewDate, 'yyyy-MM-dd');
-            } else {
-                formattedMonth = format(viewDate, 'yyyy-MM');
-            }
+    const fetchData = async (skipCache = false) => {
+        const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+        let formattedMonth;
+        if (cycle === 'Weekly') {
+            formattedMonth = format(viewDate, "yyyy-'W'II");
+        } else if (cycle === 'Daily') {
+            formattedMonth = format(viewDate, 'yyyy-MM-dd');
+        } else {
+            formattedMonth = format(viewDate, 'yyyy-MM');
+        }
 
+        // Cache Key: Scoped by User, Period, and Cycle
+        const CACHE_KEY = `timesheet_${user?._id}_${targetUserId || 'self'}_${formattedMonth}_${cycle}`;
+
+        const readCache = () => {
+            try {
+                const raw = sessionStorage.getItem(CACHE_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed?.data?.timesheet) {
+                    sessionStorage.removeItem(CACHE_KEY);
+                    return null;
+                }
+                return parsed;
+            } catch { return null; }
+        };
+
+        const writeCache = (data, fingerprint) => {
+            try {
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, fingerprint }));
+            } catch { /* Ignore if storage full */ }
+        };
+
+        const buildFingerprint = (data) => {
+            if (!data) return '';
+            const tsPart = `${data.timesheet?._id}:${data.timesheet?.status}:${data.timesheet?.entries?.length || 0}`;
+            const logPart = data.attendanceLogs?.map(l => `${l._id}:${l.clockIn}:${l.clockOut}`).join('|') || '';
+            const holPart = data.holidays?.length || 0;
+            return `${tsPart}#${logPart}#${holPart}`;
+        };
+
+        const applyData = (data) => {
+            if (data.timesheet) {
+                setTimesheet(data.timesheet);
+                setAttendanceLogs(data.timesheet.attendanceLog || []);
+            }
+            if (data.projects) {
+                setProjects(data.projects);
+                setAvailableProjects(data.projects);
+            }
+            if (data.holidays) setHolidays(data.holidays);
+            // viewUser update is skipped for cache to avoid flickering if targetUserId changed
+        };
+
+        const cached = skipCache ? null : readCache();
+
+        // 1. Show cached data instantly
+        if (!skipCache && cached?.data) {
+            applyData(cached.data);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
+
+        try {
             const [tsRes, projRes, holRes] = await Promise.all([
                 targetUserId
                     ? api.get(`/timesheet/user/${targetUserId}?month=${formattedMonth}`)
@@ -361,27 +414,37 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 api.get('/timesheet/projects'),
                 api.get('/holidays')
             ]);
+
+            const payload = {
+                timesheet: tsRes.data,
+                attendanceLogs: tsRes.data.attendanceLog || [],
+                projects: projRes.data,
+                holidays: holRes.data || []
+            };
+
+            const freshFingerprint = buildFingerprint(payload);
+            const cachedFingerprint = cached?.fingerprint || (readCache()?.fingerprint || '');
+
+            if (freshFingerprint !== cachedFingerprint) {
+                applyData(payload);
+                writeCache(payload, freshFingerprint);
+            } else {
+                writeCache(payload, freshFingerprint);
+            }
+
+            // Always update users if in target mode
             if (targetUserId) {
-                // Fetch target user details for correct joining date/etc
                 try {
                     const userRes = await api.get(`/admin/users/${targetUserId}`);
                     setViewUser(userRes.data);
-                } catch (e) {
-                    console.error("Failed to fetch user details", e);
-                    // Fallback to basic info if needed or handling error
-                }
+                } catch (e) { console.error("Failed to fetch user details", e); }
             } else {
                 setViewUser(user);
             }
 
-            setTimesheet(tsRes.data);
-            setAttendanceLogs(tsRes.data.attendanceLog || []);
-            setProjects(projRes.data);
-            setAvailableProjects(projRes.data); // Store for dropdowns
-            setHolidays(holRes.data || []);
         } catch (error) {
-            console.error(error);
-            toast.error('Failed to load timesheet');
+            console.error('Timesheet fetch error', error);
+            if (!cached?.data) toast.error('Failed to load timesheet');
         } finally {
             setLoading(false);
         }
@@ -500,6 +563,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     useEffect(() => {
         fetchData();
+
+        // Background polling for real-time timesheet status/entry updates
+        const pollInterval = setInterval(() => fetchData(true), 30000);
+        return () => clearInterval(pollInterval);
     }, [viewDate, targetUserId]); // Re-fetch when month or user changes
 
     // Generate days for current view (Monthly)
