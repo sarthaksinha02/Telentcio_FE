@@ -21,22 +21,47 @@ const Projects = () => {
 
     const fetchData = async () => {
         try {
-            setLoading(true);
+            const cacheKey = `project_data_${user?._id}`;
+            const cachedData = sessionStorage.getItem(cacheKey);
+            
+            if (cachedData) {
+                const parsed = JSON.parse(cachedData);
+                setProjects(parsed.projects);
+                setClients(parsed.clients);
+                setLoading(false);
+            }
+
             // Fetch Projects (Main Data)
+            let projData = [];
             try {
                 const projRes = await api.get('/projects');
-                setProjects(projRes.data);
+                projData = projRes.data;
             } catch (err) {
                 console.error("Failed to load projects", err);
                 toast.error('Failed to load projects');
             }
 
             // Fetch Clients (For Dropdown - Optional)
+            let clientsData = [];
             try {
                 const clientRes = await api.get('/projects/clients');
-                setClients(clientRes.data);
+                clientsData = clientRes.data;
             } catch (err) {
                 console.warn("Failed to load clients for dropdown (likely no permission)", err);
+            }
+
+            // Fingerprint check
+            const newFingerprint = JSON.stringify({ p: projData.length, c: clientsData.length, lp: projData[0]?._id });
+            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+
+            if (newFingerprint !== oldFingerprint) {
+                setProjects(projData);
+                setClients(clientsData);
+                sessionStorage.setItem(cacheKey, JSON.stringify({ 
+                    projects: projData, 
+                    clients: clientsData, 
+                    fingerprint: newFingerprint 
+                }));
             }
 
         } catch (error) {
@@ -97,6 +122,7 @@ const Projects = () => {
                 await api.post('/projects', payload);
                 toast.success('Project Created');
             }
+            sessionStorage.removeItem(`project_data_${user?._id}`);
             setShowModal(false);
             setFormData({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
             setEditingId(null);
@@ -136,6 +162,7 @@ const Projects = () => {
         try {
             await api.put(`/projects/${project._id}`, { status: newStatus, isActive });
             toast.success(`Project marked as ${newStatus}`);
+            sessionStorage.removeItem(`project_data_${user?._id}`);
             await fetchData();
         } catch (error) {
             toast.error('Failed to update project status');
@@ -287,15 +314,16 @@ const Projects = () => {
                                                                             onClick={async () => {
                                                                                 if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
                                                                                     setActionLoading(project._id);
-                                                                                    try {
-                                                                                        await api.delete(`/projects/${project._id}`);
-                                                                                        toast.success('Project deleted');
-                                                                                        await fetchData();
-                                                                                    } catch (error) {
-                                                                                        toast.error('Failed to delete project');
-                                                                                    } finally {
-                                                                                        setActionLoading(null);
-                                                                                    }
+                                                                                     try {
+                                                                                         await api.delete(`/projects/${project._id}`);
+                                                                                         toast.success('Project deleted');
+                                                                                         sessionStorage.removeItem(`project_data_${user?._id}`);
+                                                                                         await fetchData();
+                                                                                     } catch (error) {
+                                                                                         toast.error('Failed to delete project');
+                                                                                     } finally {
+                                                                                         setActionLoading(null);
+                                                                                     }
                                                                                 }
                                                                                 setOpenMenuId(null);
                                                                             }}

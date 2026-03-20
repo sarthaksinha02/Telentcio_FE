@@ -17,23 +17,42 @@ const Clients = () => {
 
     const fetchData = async () => {
         try {
-            setLoading(true);
-            // Fetch Clients (Main Data)
-            try {
-                const clientsRes = await api.get('/projects/clients');
-                setClients(clientsRes.data);
-            } catch (err) {
-                console.error("Failed to load clients", err);
+            const cacheKey = `client_data_${user?._id}`;
+            const cachedData = sessionStorage.getItem(cacheKey);
+            
+            if (cachedData) {
+                const parsed = JSON.parse(cachedData);
+                setClients(parsed.clients);
+                setBusinessUnits(parsed.businessUnits);
+                setLoading(false);
+            }
+
+            // Fetch Clients and Business Units in parallel
+            const [clientsRes, buRes] = await Promise.allSettled([
+                api.get('/projects/clients'),
+                api.get('/projects/business-units')
+            ]);
+
+            const clientData = clientsRes.status === 'fulfilled' ? clientsRes.value.data : [];
+            const buData = buRes.status === 'fulfilled' ? buRes.value.data : [];
+
+            if (clientsRes.status === 'rejected') {
+                console.error("Failed to load clients", clientsRes.reason);
                 toast.error('Failed to load clients');
             }
 
-            // Fetch Business Units (For Dropdown - Optional if just viewing)
-            try {
-                const buRes = await api.get('/projects/business-units');
-                setBusinessUnits(buRes.data);
-            } catch (err) {
-                console.warn("Failed to load business units (likely no permission)", err);
-                // Don't show error toast as it might be expected for read-only users
+            // Fingerprint check
+            const newFingerprint = JSON.stringify({ c: clientData.length, b: buData.length });
+            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+
+            if (newFingerprint !== oldFingerprint) {
+                setClients(clientData);
+                setBusinessUnits(buData);
+                sessionStorage.setItem(cacheKey, JSON.stringify({ 
+                    clients: clientData, 
+                    businessUnits: buData, 
+                    fingerprint: newFingerprint 
+                }));
             }
 
         } catch (error) {

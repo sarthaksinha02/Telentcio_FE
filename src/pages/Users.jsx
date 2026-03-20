@@ -465,6 +465,17 @@ const Users = () => {
             const canReadUsers = user?.permissions?.includes('user.read');
             const canReadRoles = user?.permissions?.includes('role.read') || isAdmin;
 
+            // Session Caching Logic
+            const cacheKey = `user_data_${user?._id}`;
+            const cachedData = sessionStorage.getItem(cacheKey);
+            
+            if (cachedData) {
+                const parsed = JSON.parse(cachedData);
+                setUsers(parsed.users);
+                setRoles(parsed.roles);
+                setLoading(false); // Immediate UI update
+            }
+
             let usersData = [];
             let rolesData = [];
 
@@ -496,8 +507,19 @@ const Users = () => {
                 }
             }
 
-            setUsers(usersData);
-            setRoles(rolesData);
+            // Fingerprint check
+            const newFingerprint = JSON.stringify({ u: usersData.length, r: rolesData.length, lu: usersData[0]?._id });
+            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+
+            if (newFingerprint !== oldFingerprint) {
+                setUsers(usersData);
+                setRoles(rolesData);
+                sessionStorage.setItem(cacheKey, JSON.stringify({ 
+                    users: usersData, 
+                    roles: rolesData, 
+                    fingerprint: newFingerprint 
+                }));
+            }
         } catch (error) {
             toast.error('Failed to load data');
             console.error(error);
@@ -582,6 +604,7 @@ const Users = () => {
                 await api.post('/admin/users', formData);
                 toast.success('User Created Successfully');
             }
+            sessionStorage.removeItem(`user_data_${user?._id}`);
             setShowModal(false);
             fetchData();
         } catch (error) {

@@ -17,8 +17,28 @@ const BusinessUnits = () => {
 
     const fetchUnits = async () => {
         try {
+            const cacheKey = `business_unit_data_${user?._id}`;
+            const cachedData = sessionStorage.getItem(cacheKey);
+            
+            if (cachedData) {
+                setUnits(JSON.parse(cachedData).units);
+                setLoading(false);
+            }
+
             const res = await api.get('/projects/business-units');
-            setUnits(res.data);
+            const unitData = res.data;
+
+            // Fingerprint check
+            const newFingerprint = JSON.stringify({ u: unitData.length, lu: unitData[0]?._id });
+            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+
+            if (newFingerprint !== oldFingerprint) {
+                setUnits(unitData);
+                sessionStorage.setItem(cacheKey, JSON.stringify({ 
+                    units: unitData, 
+                    fingerprint: newFingerprint 
+                }));
+            }
         } catch (error) {
             console.error(error);
             toast.error('Failed to load Business Units');
@@ -41,6 +61,7 @@ const BusinessUnits = () => {
                 await api.post('/projects/business-units', formData);
                 toast.success('Business Unit Created');
             }
+            sessionStorage.removeItem(`business_unit_data_${user?._id}`);
             setShowModal(false);
             setFormData({ name: '', description: '' });
             setEditingId(null);

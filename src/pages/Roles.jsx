@@ -18,12 +18,37 @@ const Roles = () => {
 
     const fetchData = async () => {
         try {
+            const cacheKey = `role_data_${user?._id}`;
+            const cachedData = sessionStorage.getItem(cacheKey);
+            
+            if (cachedData) {
+                const parsed = JSON.parse(cachedData);
+                setRoles(parsed.roles);
+                setPermissions(parsed.permissions);
+                setLoading(false);
+            }
+
             const [rolesRes, permsRes] = await Promise.all([
                 api.get('/admin/roles'),
                 api.get('/admin/permissions')
             ]);
-            setRoles(rolesRes.data);
-            setPermissions(permsRes.data);
+
+            const rolesData = rolesRes.data;
+            const permsData = permsRes.data;
+
+            // Fingerprint check
+            const newFingerprint = JSON.stringify({ r: rolesData.length, p: Object.keys(permsData).length, lr: rolesData[0]?._id });
+            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+
+            if (newFingerprint !== oldFingerprint) {
+                setRoles(rolesData);
+                setPermissions(permsData);
+                sessionStorage.setItem(cacheKey, JSON.stringify({ 
+                    roles: rolesData, 
+                    permissions: permsData, 
+                    fingerprint: newFingerprint 
+                }));
+            }
         } catch (error) {
             toast.error('Failed to load data');
         } finally {
@@ -118,6 +143,7 @@ const Roles = () => {
                 });
                 toast.success('Role Created Successfully');
             }
+            sessionStorage.removeItem(`role_data_${user?._id}`);
             setShowModal(false);
             setRoleName('');
             setSelectedPerms([]);

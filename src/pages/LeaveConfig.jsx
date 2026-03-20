@@ -3,7 +3,10 @@ import api from '../api/axios';
 import { Settings, Edit2, Shield, Plus, Check, X, AlertCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+import { useAuth } from '../context/AuthContext';
+
 const LeaveConfig = () => {
+    const { user } = useAuth();
     const [policies, setPolicies] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editingPolicy, setEditingPolicy] = useState(null);
@@ -19,8 +22,28 @@ const LeaveConfig = () => {
 
     const fetchPolicies = async () => {
         try {
+            const cacheKey = `leave_config_data_${user?._id}`;
+            const cachedData = sessionStorage.getItem(cacheKey);
+            
+            if (cachedData) {
+                setPolicies(JSON.parse(cachedData).policies);
+                setLoading(false);
+            }
+
             const res = await api.get('/leaves/config');
-            setPolicies(res.data);
+            const policiesData = res.data;
+
+            // Fingerprint check
+            const newFingerprint = JSON.stringify({ l: policiesData.length, lp: policiesData[0]?._id });
+            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+
+            if (newFingerprint !== oldFingerprint) {
+                setPolicies(policiesData);
+                sessionStorage.setItem(cacheKey, JSON.stringify({ 
+                    policies: policiesData, 
+                    fingerprint: newFingerprint 
+                }));
+            }
         } catch (error) {
             console.error(error);
             toast.error('Failed to load policies');
@@ -73,6 +96,7 @@ const LeaveConfig = () => {
         try {
             await api.delete(`/leaves/config/${id}`);
             toast.success('Policy Deleted');
+            sessionStorage.removeItem(`leave_config_data_${user?._id}`);
             fetchPolicies();
         } catch (error) {
             toast.error('Failed to delete policy');
@@ -116,6 +140,7 @@ const LeaveConfig = () => {
         try {
             await api.post('/leaves/config', formData);
             toast.success('Policy Updated Successfully');
+            sessionStorage.removeItem(`leave_config_data_${user?._id}`);
             setShowModal(false);
             fetchPolicies();
         } catch (error) {
@@ -128,6 +153,7 @@ const LeaveConfig = () => {
         try {
             await api.post('/leaves/config/seed');
             toast.success('Defaults Seeded');
+            sessionStorage.removeItem(`leave_config_data_${user?._id}`);
             fetchPolicies();
         } catch (error) {
             toast.error('Seed Failed');
