@@ -47,7 +47,7 @@ const Onboarding = () => {
   const [formData, setFormData] = useState({
     firstName: '', lastName: '', email: '', phone: '',
     designation: '', department: '', joiningDate: '', documentDeadline: '',
-    workLocation: '', probationPeriod: '6 months',
+    workLocation: '', address: '', probationPeriod: '6 months',
     salary: { annualCTC: '', basic: '', hra: '', specialAllowance: '', monthlyGross: '', monthlyCTC: '' }
   });
 
@@ -167,7 +167,7 @@ const Onboarding = () => {
       setFormData({ 
         firstName: '', lastName: '', email: '', phone: '', 
         designation: '', department: '', joiningDate: '', documentDeadline: '',
-        workLocation: '', probationPeriod: '6 months',
+        workLocation: '', address: '', probationPeriod: '6 months',
         salary: { annualCTC: '', basic: '', hra: '', specialAllowance: '', monthlyGross: '', monthlyCTC: '' }
       });
       fetchEmployees();
@@ -441,9 +441,9 @@ const Onboarding = () => {
                 </button>
               </div>
             {onboardingSettings.offerLetterTemplateUrl && (
-              <a href={onboardingSettings.offerLetterTemplateUrl} target="_blank" rel="noreferrer" style={{ fontSize: '13px', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none', fontWeight: '500', marginTop: '12px' }}>
-                <Download size={14} /> Download current custom template
-              </a>
+              <button onClick={() => handleDownloadTemplate('offerLetter')} style={{ background: 'none', border: 'none', padding: 0, fontSize: '13px', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontWeight: '500', marginTop: '12px' }}>
+                <Download size={14} /> Download current custom template (.docx)
+              </button>
             )}
           </div>
 
@@ -481,9 +481,9 @@ const Onboarding = () => {
                 </button>
               </div>
             {onboardingSettings.declarationTemplateUrl && (
-              <a href={onboardingSettings.declarationTemplateUrl} target="_blank" rel="noreferrer" style={{ fontSize: '13px', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none', fontWeight: '500', marginTop: '12px' }}>
-                <Download size={14} /> Download current custom template
-              </a>
+              <button onClick={() => handleDownloadTemplate('declaration')} style={{ background: 'none', border: 'none', padding: 0, fontSize: '13px', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontWeight: '500', marginTop: '12px' }}>
+                <Download size={14} /> Download current custom template (.docx)
+              </button>
             )}
           </div>
         </div>
@@ -562,6 +562,10 @@ const Onboarding = () => {
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Work Location</label>
                   <input value={formData.workLocation} onChange={(e) => setFormData({ ...formData, workLocation: e.target.value })} placeholder="e.g. Gurugram, HR" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Physical Address</label>
+                  <textarea value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} placeholder={"House/Flat No., Street Name\nArea/Locality\nCity, State – PIN Code"} rows="3" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', resize: 'vertical' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Probation Period</label>
@@ -676,7 +680,7 @@ const Onboarding = () => {
                               <div><span style={{ color: '#94a3b8' }}>Blood Group:</span> <br/> <strong>{s.data?.bloodGroup || '—'}</strong></div>
                               <div><span style={{ color: '#94a3b8' }}>Email:</span> <br/> <strong>{s.data?.personalEmail || '—'}</strong></div>
                               <div><span style={{ color: '#94a3b8' }}>Mobile:</span> <br/> <strong>{s.data?.personalMobile || '—'}</strong></div>
-                              <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>Current Address:</span> <br/> <strong>{s.data?.currentAddress ? `${s.data.currentAddress.line1}, ${s.data.currentAddress.city}, ${s.data.currentAddress.state} - ${s.data.currentAddress.pincode}` : '—'}</strong></div>
+                              <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>Current Address:</span> <br/> <strong>{s.data?.currentAddress && s.data.currentAddress.line1 ? `${s.data.currentAddress.line1}, ${s.data.currentAddress.city}, ${s.data.currentAddress.state} - ${s.data.currentAddress.pincode}` : (selectedEmployee.address || '—')}</strong></div>
                               {s.data?.linkedinUrl && <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>LinkedIn:</span> <br/> <a href={s.data.linkedinUrl} target="_blank" rel="noreferrer" style={{ color: '#3b82f6' }}>{s.data.linkedinUrl}</a></div>}
                             </div>
                           )}
