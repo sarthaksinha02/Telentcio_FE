@@ -336,8 +336,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     };
 
     useEffect(() => {
-        if (canApprove) fetchApprovals();
-    }, [user]);
+        if (canApprove && activeTab === 'approvals') {
+            fetchApprovals();
+        }
+    }, [user, activeTab]);
 
 
     // Check for userId in URL (for Manager view)
