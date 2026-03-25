@@ -178,9 +178,23 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date,
                             )}
 
                             {leave && (
-                                <div className="mb-1 text-[9px] font-bold px-1 py-0.5 rounded bg-purple-100 text-purple-700 truncate" title={`${leave.leaveType} (${leave.status})`}>
-                                    {leave.leaveType}
-                                </div>
+                                (() => {
+                                    const isHoliday = !!holiday;
+                                    const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
+                                    const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day.getDay()];
+                                    const isWeeklyOff = weeklyOffDays.includes(dayName);
+                                    
+                                    // If it's a holiday or weekly off, only show leave if sandwich rule is active
+                                    if (isHoliday || isWeeklyOff) {
+                                        if (!leave.sandwichRule) return null;
+                                    }
+                                    
+                                    return (
+                                        <div className="mb-1 text-[9px] font-bold px-1 py-0.5 rounded bg-purple-100 text-purple-700 truncate" title={`${leave.leaveType} (${leave.status})`}>
+                                            {leave.leaveType}
+                                        </div>
+                                    );
+                                })()
                             )}
 
                             {record ? (
