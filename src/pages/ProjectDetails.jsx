@@ -47,17 +47,49 @@ const ProjectDetails = () => {
 
     const fetchData = async () => {
         try {
-            setLoading(true);
+            const cacheKey = `project_details_${id}`;
+            const cachedData = sessionStorage.getItem(cacheKey);
+            
+            if (cachedData) {
+                const parsed = JSON.parse(cachedData);
+                setProject(parsed.project);
+                setModules(parsed.modules);
+                setTasks(parsed.tasks);
+                setEmployees(parsed.employees);
+                setLoading(false);
+            }
+
             const [projRes, empRes] = await Promise.all([
                 api.get(`/projects/${id}/hierarchy`),
                 api.get('/projects/employees')
             ]);
 
             const projData = projRes.data;
-            setProject(projData);
-            setModules(projData.modules || []);
-            setTasks(projData.modules?.flatMap(m => m.tasks) || []);
-            setEmployees(empRes.data);
+            const empData = empRes.data;
+            const moduleData = projData.modules || [];
+            const taskData = moduleData.flatMap(m => m.tasks) || [];
+
+            // Fingerprint check
+            const newFingerprint = JSON.stringify({ 
+                m: moduleData.length, 
+                t: taskData.length, 
+                updates: moduleData.map(m => m.tasks?.length).join(',') 
+            });
+            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+
+            if (newFingerprint !== oldFingerprint) {
+                setProject(projData);
+                setModules(moduleData);
+                setTasks(taskData);
+                setEmployees(empData);
+                sessionStorage.setItem(cacheKey, JSON.stringify({ 
+                    project: projData, 
+                    modules: moduleData, 
+                    tasks: taskData, 
+                    employees: empData, 
+                    fingerprint: newFingerprint 
+                }));
+            }
 
         } catch (error) {
             console.error(error);
@@ -83,6 +115,8 @@ const ProjectDetails = () => {
                 await api.post('/projects/modules', { ...moduleForm, project: id });
                 toast.success('Module Created');
             }
+            sessionStorage.removeItem(`project_details_${id}`);
+            sessionStorage.removeItem(`project_data_${user?._id}`);
             setShowModuleModal(false);
             setEditingModuleId(null);
             setModuleForm({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
@@ -105,6 +139,8 @@ const ProjectDetails = () => {
                 await api.post('/projects/tasks', { ...taskForm, module: activeModuleId });
                 toast.success('Task Created');
             }
+            sessionStorage.removeItem(`project_details_${id}`);
+            sessionStorage.removeItem(`project_data_${user?._id}`);
             setShowTaskModal(false);
             setEditingTaskId(null);
             setTaskForm({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '' });
@@ -122,8 +158,11 @@ const ProjectDetails = () => {
         try {
             await api.post(`/projects/tasks/${loggingTaskId}/log`, logForm);
             toast.success('Work Logged Successfully');
+            sessionStorage.removeItem(`project_details_${id}`);
+            sessionStorage.removeItem(`project_data_${user?._id}`);
             setShowLogModal(false);
             setLoggingTaskId(null);
+            fetchData();
         } catch (error) {
             toast.error('Failed to log work');
         } finally {
@@ -199,6 +238,8 @@ const ProjectDetails = () => {
                                             try {
                                                 await api.delete(`/projects/modules/${module._id}`);
                                                 toast.success('Module Deleted');
+                                                sessionStorage.removeItem(`project_details_${id}`);
+                                                sessionStorage.removeItem(`project_data_${user?._id}`);
                                                 fetchData();
                                             } catch (error) {
                                                 toast.error('Failed to delete module');
@@ -403,6 +444,8 @@ const ProjectDetails = () => {
                                                                         try {
                                                                             await api.delete(`/projects/tasks/${task._id}`);
                                                                             toast.success('Task Deleted');
+                                                                            sessionStorage.removeItem(`project_details_${id}`);
+                                                                            sessionStorage.removeItem(`project_data_${user?._id}`);
                                                                             fetchData();
                                                                         } catch (error) {
                                                                             toast.error('Failed');

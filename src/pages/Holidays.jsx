@@ -24,18 +24,53 @@ const Holidays = () => {
     const optionalHolidays = holidays.filter(h => h.isOptional).length;
 
     const isAdmin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
+    const canCreateHoliday = isAdmin || user?.permissions?.includes('holiday.create') || user?.hasAllPermissions;
+    const canEditHoliday = isAdmin || user?.permissions?.includes('holiday.edit') || user?.hasAllPermissions;
+    const canDeleteHoliday = isAdmin || user?.permissions?.includes('holiday.delete') || user?.hasAllPermissions;
 
     useEffect(() => {
         fetchHolidays();
     }, []);
 
-    const fetchHolidays = async () => {
+    const fetchHolidays = async (isBackground = false, force = false) => {
+        const CACHE_KEY = `holiday_data_${user?._id}_${new Date().getFullYear()}`;
+
+        // Helper: Generate fingerprint for change detection
+        const buildFingerprint = (data) => {
+            if (!Array.isArray(data)) return '';
+            return data.map(h => `${h._id}-${h.name}-${h.date}-${h.isOptional}`).join('|');
+        };
+
+        // 1. Initial Load from Cache
+        if (!isBackground && !force) {
+            const cached = sessionStorage.getItem(CACHE_KEY);
+            if (cached) {
+                try {
+                    const parsed = JSON.parse(cached);
+                    setHolidays(parsed);
+                    setLoading(false);
+                } catch (e) {
+                    sessionStorage.removeItem(CACHE_KEY);
+                }
+            }
+        }
+
         try {
+            if (!isBackground && !force && !sessionStorage.getItem(CACHE_KEY)) setLoading(true);
             const res = await api.get('/holidays');
-            setHolidays(res.data);
+            const freshData = res.data;
+
+            // 2. Check for changes via fingerprint
+            const oldFingerprint = buildFingerprint(JSON.parse(sessionStorage.getItem(CACHE_KEY) || '[]'));
+            const newFingerprint = buildFingerprint(freshData);
+
+            if (newFingerprint !== oldFingerprint || force) {
+                setHolidays(freshData);
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(freshData));
+            }
         } catch (error) {
             console.error(error);
-            toast.error("Failed to load holidays");
+            if (!isBackground) toast.error("Failed to load holidays");
         } finally {
             setLoading(false);
         }
@@ -67,7 +102,7 @@ const Holidays = () => {
                 toast.success("Holiday added");
             }
             setIsModalOpen(false);
-            fetchHolidays();
+            fetchHolidays(false, true); // Force refresh cache
         } catch (error) {
             toast.error(error.response?.data?.message || "Operation failed");
         }
@@ -78,7 +113,7 @@ const Holidays = () => {
         try {
             await api.delete(`/holidays/${id}`);
             toast.success("Holiday deleted");
-            fetchHolidays();
+            fetchHolidays(false, true); // Force refresh cache
         } catch (error) {
             toast.error("Failed to delete holiday");
         }
@@ -91,7 +126,7 @@ const Holidays = () => {
                     <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Holiday Calendar</h1>
                     <p className="text-slate-500 mt-1">Manage annual holidays and optional leaves for your organization.</p>
                 </div>
-                {isAdmin && (
+                {canCreateHoliday && (
                     <button
                         onClick={() => handleOpenModal()}
                         className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all font-medium"
@@ -157,8 +192,8 @@ const Holidays = () => {
                                             <tr
                                                 key={holiday._id}
                                                 // Make row clickable for admins to edit
-                                                onClick={() => isAdmin && handleOpenModal(holiday)}
-                                                className={`hover:bg-slate-50/80 transition-colors group ${isAdmin ? 'cursor-pointer' : ''}`}
+                                                onClick={() => canEditHoliday && handleOpenModal(holiday)}
+                                                className={`hover:bg-slate-50/80 transition-colors group ${canEditHoliday ? 'cursor-pointer' : ''}`}
                                             >
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="flex items-center space-x-4">
@@ -275,7 +310,7 @@ const Holidays = () => {
 
                             <div className="pt-6 flex justify-between items-center border-t border-slate-100 mt-4">
                                 <div>
-                                    {editingHoliday && (
+                                    {editingHoliday && canDeleteHoliday && (
                                         <button
                                             type="button"
                                             onClick={() => {

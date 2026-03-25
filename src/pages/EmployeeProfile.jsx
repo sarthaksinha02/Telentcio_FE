@@ -4,7 +4,7 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
     User, Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar,
-    ArrowLeft, Edit2, Clock, FileText, Activity, AlertCircle
+    ArrowLeft, Edit2, Clock, FileText, Activity, AlertCircle, UserMinus, UserCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
@@ -40,8 +40,22 @@ const EmployeeProfile = () => {
         reportingManagers: []
     });
 
-    const isAuthorizedForTA = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('ta.read');
+    const enabledModules = currentUser?.company?.enabledModules || [];
+    const hasTA = enabledModules.includes('talentAcquisition');
+    const hasAttendance = enabledModules.includes('attendance');
+    const hasTimesheet = enabledModules.includes('timesheet');
+    const hasDossier = enabledModules.includes('employeeDossier');
+
+    const isAuthorizedForTA = (currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('ta.read')) && hasTA;
     const isAuthorizedForEdit = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('user.update');
+
+    // Reset active tab if it becomes unauthorized or module is disabled
+    useEffect(() => {
+        if (activeTab === 'ta-analytics' && !isAuthorizedForTA) setActiveTab('overview');
+        if (activeTab === 'attendance' && !hasAttendance) setActiveTab('overview');
+        if (activeTab === 'timesheet' && !hasTimesheet) setActiveTab('overview');
+        if (activeTab === 'dossier' && !hasDossier) setActiveTab('overview');
+    }, [activeTab, isAuthorizedForTA, hasAttendance, hasTimesheet, hasDossier]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -97,6 +111,19 @@ const EmployeeProfile = () => {
             fetchData();
         }
     }, [id]);
+
+    const handleToggleStatus = async () => {
+        if (!window.confirm(`Are you sure you want to ${profile.isActive ? 'deactivate' : 'reactivate'} this user?`)) return;
+        
+        try {
+            const loadingToast = toast.loading(`${profile.isActive ? 'Deactivating' : 'Activating'} user...`);
+            const res = await api.patch(`/admin/users/${id}/status`);
+            toast.success(res.data.message, { id: loadingToast });
+            setProfile(prev => ({ ...prev, isActive: res.data.isActive }));
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to update status');
+        }
+    };
 
     const handleFormChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -178,6 +205,19 @@ const EmployeeProfile = () => {
                                         <Shield size={12} /> {role.name}
                                     </span>
                                 ))}
+                                {isAuthorizedForEdit && (
+                                    <button
+                                        onClick={handleToggleStatus}
+                                        className={`ml-2 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm border ${
+                                            profile.isActive 
+                                            ? 'bg-white text-red-600 border-red-200 hover:bg-red-50' 
+                                            : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'
+                                        }`}
+                                    >
+                                        {profile.isActive ? <UserMinus size={14} /> : <UserCheck size={14} />}
+                                        {profile.isActive ? 'Deactivate User' : 'Activate User'}
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -201,26 +241,32 @@ const EmployeeProfile = () => {
                         </button>
                     )}
 
-                    <button
-                        onClick={() => setActiveTab('timesheet')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === 'timesheet' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
-                    >
-                        <Clock size={16} /> Timesheet
-                    </button>
+                    {hasTimesheet && (
+                        <button
+                            onClick={() => setActiveTab('timesheet')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === 'timesheet' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
+                        >
+                            <Clock size={16} /> Timesheet
+                        </button>
+                    )}
 
-                    <button
-                        onClick={() => setActiveTab('attendance')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === 'attendance' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
-                    >
-                        <Clock size={16} /> Attendance
-                    </button>
+                    {hasAttendance && (
+                        <button
+                            onClick={() => setActiveTab('attendance')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === 'attendance' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
+                        >
+                            <Clock size={16} /> Attendance
+                        </button>
+                    )}
 
-                    <button
-                        onClick={() => setActiveTab('dossier')}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === 'dossier' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
-                    >
-                        <FileText size={16} /> Dossier
-                    </button>
+                    {hasDossier && (
+                        <button
+                            onClick={() => setActiveTab('dossier')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === 'dossier' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
+                        >
+                            <FileText size={16} /> Dossier
+                        </button>
+                    )}
 
                     {isAuthorizedForTA && (
                         <button

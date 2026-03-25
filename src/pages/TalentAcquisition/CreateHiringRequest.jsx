@@ -2,17 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign, X, Loader } from 'lucide-react';
+import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign, X, Loader, Upload, Paperclip } from 'lucide-react';
 import toast from 'react-hot-toast';
 import WorkflowSettings from './WorkflowSettings';
 
-const Section = ({ title, icon: Icon, children }) => (
+const Section = ({ title, icon: Icon, children, fullWidth = false }) => (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
         <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
             {Icon && <Icon className="text-slate-400" size={20} />}
             <h3 className="text-lg font-bold text-slate-800">{title}</h3>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className={fullWidth ? "grid grid-cols-1 gap-6" : "grid grid-cols-1 md:grid-cols-2 gap-6"}>
             {children}
         </div>
     </div>
@@ -136,7 +136,11 @@ const CreateHiringRequest = () => {
         expectedJoiningDate: '',
         budgetMin: '',
         budgetMax: '',
-        priority: 'Medium'
+        priority: 'Medium',
+
+        // Job Description
+        jobDescription: '',
+        jobDescriptionFile: ''
     });
 
     const [searchParams] = useSearchParams();
@@ -196,7 +200,9 @@ const CreateHiringRequest = () => {
                         expectedJoiningDate: data.hiringDetails.expectedJoiningDate ? data.hiringDetails.expectedJoiningDate.split('T')[0] : '', // Format for date input
                         budgetMin: data.hiringDetails.budgetRange.min,
                         budgetMax: data.hiringDetails.budgetRange.max,
-                        priority: data.hiringDetails.priority
+                        priority: data.hiringDetails.priority,
+                        jobDescription: data.jobDescription || '',
+                        jobDescriptionFile: data.jobDescriptionFile || ''
                     });
                 } catch (error) {
                     console.error(error);
@@ -213,6 +219,29 @@ const CreateHiringRequest = () => {
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const [uploadingFile, setUploadingFile] = useState(false);
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const uploadFormData = new FormData();
+        uploadFormData.append('jdFile', file);
+
+        try {
+            setUploadingFile(true);
+            const res = await api.post('/ta/hiring-request/upload-jd', uploadFormData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            setFormData(prev => ({ ...prev, jobDescriptionFile: res.data.url }));
+            toast.success('JD File uploaded successfully');
+        } catch (error) {
+            console.error('File upload failed', error);
+            toast.error('Failed to upload JD file');
+        } finally {
+            setUploadingFile(false);
+        }
     };
 
     const handleSubmit = async (isDraft) => {
@@ -300,7 +329,9 @@ const CreateHiringRequest = () => {
                         max: Number(formData.budgetMax)
                     },
                     priority: formData.priority
-                }
+                },
+                jobDescription: formData.jobDescription,
+                jobDescriptionFile: formData.jobDescriptionFile
             };
 
             if (id) {
@@ -478,6 +509,81 @@ const CreateHiringRequest = () => {
                     <Input label="Min Budget (CTC)" name="budgetMin" type="number" value={formData.budgetMin} onChange={handleChange} />
                     <Input label="Max Budget (CTC)" name="budgetMax" type="number" value={formData.budgetMax} onChange={handleChange} />
                     <Input label="Priority" name="priority" value={formData.priority} onChange={handleChange} options={['High', 'Medium', 'Low']} />
+                </Section>
+
+                <Section title="5. Job Description & Attachments" icon={FileText} fullWidth>
+                    <div className="col-span-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Job Description (JD)
+                        </label>
+                        <textarea
+                            name="jobDescription"
+                            value={formData.jobDescription}
+                            onChange={handleChange}
+                            placeholder="Paste the complete job description here..."
+                            rows={8}
+                            className="w-full p-3 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+                        />
+                    </div>
+                    <div className="col-span-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Upload JD File (PDF/Docx)
+                        </label>
+                        <div className="relative border-2 border-dashed border-slate-300 rounded-xl p-8 bg-slate-50 hover:bg-slate-100 transition-all flex flex-col items-center justify-center gap-3">
+                            {uploadingFile ? (
+                                <>
+                                    <Loader className="animate-spin text-blue-600" size={32} />
+                                    <p className="text-sm font-medium text-slate-600">Uploading file...</p>
+                                </>
+                            ) : formData.jobDescriptionFile ? (
+                                <>
+                                    <div className="p-3 bg-green-100 text-green-600 rounded-full">
+                                        <Paperclip size={24} />
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-sm font-bold text-slate-800">JD File Attached!</p>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, jobDescriptionFile: '' }))}
+                                            className="text-xs text-red-500 hover:text-red-700 font-medium underline mt-1"
+                                        >
+                                            Remove and upload again
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <Upload className="text-slate-400" size={32} />
+                                    <div className="text-center">
+                                        <p className="text-sm font-medium text-slate-600">Click to upload or drag and drop</p>
+                                        <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tight">PDF, DOCX (Max 5MB)</p>
+                                    </div>
+                                    <input 
+                                        type="file" 
+                                        onChange={handleFileUpload}
+                                        accept=".pdf,.doc,.docx"
+                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                    />
+                                </>
+                            )}
+                        </div>
+                        {formData.jobDescriptionFile && (
+                            <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <FileText className="text-blue-600" size={18} />
+                                    <span className="text-xs font-medium text-blue-800 truncate max-w-[200px]">JD_Attachment.pdf</span>
+                                </div>
+                                <a 
+                                    href={formData.jobDescriptionFile} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-blue-600 hover:underline font-bold"
+                                >
+                                    View File
+                                </a>
+                            </div>
+                        )}
+                    </div>
                 </Section>
 
             </div>

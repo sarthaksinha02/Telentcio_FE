@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
-import { Mail, Lock, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import Button from '../components/Button';
 
 const Login = () => {
@@ -11,6 +11,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -19,7 +20,14 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await login(email, password);
+      const data = await login(email, password);
+      
+      if (data?.passwordResetRequired) {
+        toast.success("Identity verification required");
+        navigate('/reset-password', { state: { email: data.email, userId: data.userId } });
+        return;
+      }
+
       toast.success("Welcome back!");
       navigate('/');
     } catch (error) {
@@ -160,16 +168,23 @@ const Login = () => {
                   <input
                     id="password"
                     name="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onFocus={() => setFocusedInput('password')}
                     onBlur={() => setFocusedInput(null)}
-                    className="block w-full py-3 pl-10 bg-transparent border-b-2 border-slate-200 placeholder-transparent text-slate-900 focus:outline-none focus:border-blue-600 transition-colors sm:text-sm"
+                    className="block w-full py-3 pl-10 pr-10 bg-transparent border-b-2 border-slate-200 placeholder-transparent text-slate-900 focus:outline-none focus:border-blue-600 transition-colors sm:text-sm"
                     placeholder="Password"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-blue-600 transition-colors focus:outline-none"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
 
                 </div>
               </div>

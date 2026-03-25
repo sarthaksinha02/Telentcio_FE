@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { Loader } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const Layout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -10,6 +11,15 @@ const Layout = () => {
     const [isNavigating, setIsNavigating] = useState(false);
     const location = useLocation();
     const timerRef = useRef(null);
+    const { user } = useAuth();
+
+    useEffect(() => {
+        if (user?.company?.settings?.themeColor) {
+            document.documentElement.style.setProperty('--primary-color', user.company.settings.themeColor);
+            // Also set a hover variant or lighter variant if needed
+            document.documentElement.style.setProperty('--primary-hover', `${user.company.settings.themeColor}dd`);
+        }
+    }, [user]);
 
     useEffect(() => {
         // Show progress bar on route change

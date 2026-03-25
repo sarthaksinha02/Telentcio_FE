@@ -243,6 +243,15 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
         };
     }, [previewUrl]);
 
+    // Initialize formData when entering edit mode if it's empty
+    useEffect(() => {
+        if (editMode && profile && (Object.keys(formData).length === 0 || editMode !== 'hris')) {
+            // If it's a section-specific edit, we might want to just target that? 
+            // But usually formData is the whole profile for simplicity in this component.
+            setFormData(JSON.parse(JSON.stringify(profile)));
+        }
+    }, [editMode, profile]);
+
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -456,19 +465,32 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
         }
     }, [activeTab, currentUser]);
 
-    // Handle Tab Change
     const tabs = [
         { id: 'personal', label: 'Personal', icon: User },
-        { id: 'employment', label: 'Employment History', icon: Briefcase },
-        { id: 'documents', label: 'Documents', icon: FileText },
-        { id: 'hris', label: 'HRIS', icon: Shield },
-        { id: 'history', label: 'Activities', icon: Calendar },
+        { id: 'employment', label: 'Employment History', icon: Briefcase }
     ];
 
-    const isManager = currentUser?.roles?.some(r => r.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
-    if (isManager) {
+    const hasDossierModule = currentUser?.company?.enabledModules?.includes('employeeDossier');
+
+    if (hasDossierModule) {
+        tabs.push(
+            { id: 'documents', label: 'Documents', icon: FileText },
+            { id: 'hris', label: 'HRIS', icon: Shield },
+            { id: 'history', label: 'Activities', icon: Calendar }
+        );
+    }
+
+    const isManager = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
+    if (isManager && hasDossierModule) {
         tabs.push({ id: 'requests', label: 'Requests', icon: AlertCircle });
     }
+
+    // Ensure active tab defaults to 'personal' if user tries to reach a disabled tab
+    useEffect(() => {
+        if (!hasDossierModule && ['documents', 'hris', 'history', 'requests'].includes(activeTab)) {
+            setActiveTab('personal');
+        }
+    }, [hasDossierModule, activeTab]);
 
     // Handle Input Change for nested objects
     const handleInputChange = (section, field, value) => {
@@ -587,6 +609,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
         }
     };
 
+
     // Validation Helper
     const validateSectionData = (section) => {
         const data = formData[section] || {};
@@ -617,6 +640,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
         }
         if (section === 'family') {
             if (isEmpty(data.fatherName) || isEmpty(data.motherName)) return 'All fields are required';
+        }
+        if (section === 'experience') {
+            return null; // Optional fields, no strict validation required
         }
         return null;
     };
@@ -898,50 +924,152 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
 
     const renderEmployment = () => {
         return (
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-slate-800">Employment Details</h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Designation */}
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Designation</label>
-                        <div className="text-slate-800 font-medium">{profile.employment?.designation || profile.user?.roles?.[0]?.name || '-'}</div>
+            <div className="space-y-6">
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-lg font-bold text-slate-800">Employment Details</h3>
                     </div>
 
-                    {/* Department */}
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Department</label>
-                        <div className="text-slate-800 font-medium">{profile.employment?.department || '-'}</div>
-                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Designation */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Designation</label>
+                            <div className="text-slate-800 font-medium text-sm">{profile.employment?.designation || profile.user?.roles?.[0]?.name || '-'}</div>
+                        </div>
 
-                    {/* Joining Date */}
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Joining Date</label>
-                        <div className="text-slate-800 font-medium">{(profile.employment?.joiningDate || profile.user?.joiningDate) ? format(new Date(profile.employment?.joiningDate || profile.user?.joiningDate), 'dd MMM yyyy') : '-'}</div>
-                    </div>
+                        {/* Department */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Department</label>
+                            <div className="text-slate-800 font-medium text-sm">{profile.employment?.department || '-'}</div>
+                        </div>
 
-                    {/* Status */}
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Status</label>
-                        <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                            {profile.employment?.status || 'Active'}
+                        {/* Joining Date */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Joining Date</label>
+                            <div className="text-slate-800 font-medium text-sm">{(profile.employment?.joiningDate || profile.user?.joiningDate) ? format(new Date(profile.employment?.joiningDate || profile.user?.joiningDate), 'dd MMM yyyy') : '-'}</div>
+                        </div>
+
+                        {/* Status */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Status</label>
+                            <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-tight">
+                                {profile.employment?.status || 'Active'}
+                            </div>
+                        </div>
+
+                        {/* Work Location */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Work Location</label>
+                            <div className="text-slate-800 font-medium text-sm">{profile.user?.workLocation || profile.employment?.workLocation || 'Office'}</div>
+                        </div>
+
+                        {/* Employment Type */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Employment Type</label>
+                            <div className="text-slate-800 font-medium text-sm">{profile.user?.employmentType || 'Full Time'}</div>
                         </div>
                     </div>
-
-                    {/* Work Location */}
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Work Location</label>
-                        <div className="text-slate-800 font-medium">{profile.user?.workLocation || profile.employment?.workLocation || 'Office'}</div>
-                    </div>
-
-                    {/* Employment Type */}
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Employment Type</label>
-                        <div className="text-slate-800 font-medium">{profile.user?.employmentType || 'Full Time'}</div>
-                    </div>
                 </div>
+
+                <SectionCard
+                    title="Previous Work Experience"
+                    sectionName="experience"
+                    icon={Briefcase}
+                    editMode={editMode}
+                    setEditMode={setEditMode}
+                    onSave={handleSave}
+                    isLoading={savingSection === 'experience'}
+                >
+                    {(isEditing) => (
+                        <div className="space-y-6">
+                            {(formData.experience || []).map((exp, idx) => (
+                                <div key={idx} className={`p-4 rounded-xl border ${isEditing ? 'border-blue-100 bg-blue-50/20' : 'border-slate-100 bg-slate-50/30'}`}>
+                                    <div className="flex justify-between items-start mb-4">
+                                        <h4 className="text-sm font-bold text-slate-700">Experience #{idx + 1}</h4>
+                                        {isEditing && (
+                                            <button
+                                                onClick={() => removeArrayItem('experience', idx)}
+                                                className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                                title="Remove Experience"
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <Field
+                                            label="Company Name"
+                                            section="experience"
+                                            value={exp.companyName}
+                                            valueOverride={formData.experience?.[idx]?.companyName || exp.companyName}
+                                            isEditing={isEditing}
+                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'companyName', e.target.value)}
+                                        />
+                                        <Field
+                                            label="Designation"
+                                            section="experience"
+                                            value={exp.designation}
+                                            valueOverride={formData.experience?.[idx]?.designation || exp.designation}
+                                            isEditing={isEditing}
+                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'designation', e.target.value)}
+                                        />
+                                        <Field
+                                            label="From Date"
+                                            section="experience"
+                                            type="date"
+                                            value={exp.startDate}
+                                            valueOverride={formData.experience?.[idx]?.startDate || exp.startDate}
+                                            isEditing={isEditing}
+                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'startDate', e.target.value)}
+                                        />
+                                        <Field
+                                            label="To Date"
+                                            section="experience"
+                                            type="date"
+                                            value={exp.endDate}
+                                            valueOverride={formData.experience?.[idx]?.endDate || exp.endDate}
+                                            isEditing={isEditing}
+                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'endDate', e.target.value)}
+                                        />
+                                        <div className="md:col-span-2">
+                                            <Field
+                                                label="Reason for Leaving"
+                                                section="experience"
+                                                value={exp.reasonForLeaving}
+                                                valueOverride={formData.experience?.[idx]?.reasonForLeaving || exp.reasonForLeaving}
+                                                isEditing={isEditing}
+                                                onChangeOverride={(e) => handleArrayChange('experience', idx, 'reasonForLeaving', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {isEditing && (
+                                <button
+                                    onClick={() => addArrayItem('experience', {
+                                        companyName: '',
+                                        designation: '',
+                                        startDate: '',
+                                        endDate: '',
+                                        reasonForLeaving: '',
+                                        totalExperience: ''
+                                    })}
+                                    className="w-full py-3 border-2 border-dashed border-blue-200 rounded-xl text-blue-600 hover:bg-blue-50 hover:border-blue-300 transition-all font-semibold flex items-center justify-center gap-2"
+                                >
+                                    + Add Past Experience
+                                </button>
+                            )}
+
+                            {(!formData.experience || formData.experience.length === 0) && !isEditing && (
+                                <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                    <Briefcase size={40} className="mx-auto text-slate-300 mb-3" />
+                                    <p className="text-slate-500 text-sm italic">No past work experience added yet.</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </SectionCard>
             </div>
         );
     };
@@ -1740,35 +1868,35 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                 <div key={idx} className="bg-slate-50 p-4 rounded-lg border border-slate-100 flex gap-6">
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
                                         <Field section="education" isEditing={isEditing} label="Institution" field={`inst_${idx}`}
-                                            value={edu.institution} valueOverride={formData.education?.[idx]?.institution}
+                                            value={edu.institution} valueOverride={formData.education?.[idx]?.institution || edu.institution}
                                             onChangeOverride={(e) => handleArrayChange('education', idx, 'institution', e.target.value)}
                                         />
                                         <Field section="education" isEditing={isEditing} label="University" field={`univ_${idx}`}
-                                            value={edu.university} valueOverride={formData.education?.[idx]?.university}
+                                            value={edu.university} valueOverride={formData.education?.[idx]?.university || edu.university}
                                             onChangeOverride={(e) => handleArrayChange('education', idx, 'university', e.target.value)}
                                         />
                                         <Field section="education" isEditing={isEditing} label="Degree" field={`deg_${idx}`}
-                                            value={edu.degree} valueOverride={formData.education?.[idx]?.degree}
+                                            value={edu.degree} valueOverride={formData.education?.[idx]?.degree || edu.degree}
                                             onChangeOverride={(e) => handleArrayChange('education', idx, 'degree', e.target.value)}
                                         />
                                         <Field section="education" isEditing={isEditing} label="Course Name" field={`course_${idx}`}
-                                            value={edu.courseName} valueOverride={formData.education?.[idx]?.courseName}
+                                            value={edu.courseName} valueOverride={formData.education?.[idx]?.courseName || edu.courseName}
                                             onChangeOverride={(e) => handleArrayChange('education', idx, 'courseName', e.target.value)}
                                         />
                                         <Field section="education" isEditing={isEditing} label="Grade/CGPA" field={`grade_${idx}`}
-                                            value={edu.grade} valueOverride={formData.education?.[idx]?.grade}
+                                            value={edu.grade} valueOverride={formData.education?.[idx]?.grade || edu.grade}
                                             onChangeOverride={(e) => handleArrayChange('education', idx, 'grade', e.target.value)}
                                         />
                                         <Field section="education" isEditing={isEditing} label="College Rank" field={`rank_${idx}`}
-                                            value={edu.collegeRank} valueOverride={formData.education?.[idx]?.collegeRank}
+                                            value={edu.collegeRank} valueOverride={formData.education?.[idx]?.collegeRank || edu.collegeRank}
                                             onChangeOverride={(e) => handleArrayChange('education', idx, 'collegeRank', e.target.value)}
                                         />
                                         <Field section="education" isEditing={isEditing} label="From Date" field={`from_${idx}`} type="date"
-                                            value={edu.fromDate} valueOverride={formData.education?.[idx]?.fromDate}
+                                            value={edu.fromDate} valueOverride={formData.education?.[idx]?.fromDate || edu.fromDate}
                                             onChangeOverride={(e) => handleArrayChange('education', idx, 'fromDate', e.target.value)}
                                         />
                                         <Field section="education" isEditing={isEditing} label="To Date" field={`to_${idx}`} type="date"
-                                            value={edu.toDate} valueOverride={formData.education?.[idx]?.toDate}
+                                            value={edu.toDate} valueOverride={formData.education?.[idx]?.toDate || edu.toDate}
                                             onChangeOverride={(e) => handleArrayChange('education', idx, 'toDate', e.target.value)}
                                         />
                                     </div>
@@ -1801,23 +1929,23 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                                 <div key={idx} className="bg-slate-50 p-4 rounded-lg border border-slate-100 flex gap-6">
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
                                         <Field section="experience" isEditing={isEditing} label="Company Name" field={`comp_${idx}`}
-                                            value={exp.companyName} valueOverride={formData.experience?.[idx]?.companyName}
+                                            value={exp.companyName} valueOverride={formData.experience?.[idx]?.companyName || exp.companyName}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'companyName', e.target.value)}
                                         />
                                         <Field section="experience" isEditing={isEditing} label="Designation" field={`desig_${idx}`}
-                                            value={exp.designation} valueOverride={formData.experience?.[idx]?.designation}
+                                            value={exp.designation} valueOverride={formData.experience?.[idx]?.designation || exp.designation}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'designation', e.target.value)}
                                         />
                                         <Field section="experience" isEditing={isEditing} label="Start Date" field={`start_${idx}`} type="date"
-                                            value={exp.startDate} valueOverride={formData.experience?.[idx]?.startDate}
+                                            value={exp.startDate} valueOverride={formData.experience?.[idx]?.startDate || exp.startDate}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'startDate', e.target.value)}
                                         />
                                         <Field section="experience" isEditing={isEditing} label="End Date" field={`end_${idx}`} type="date"
-                                            value={exp.endDate} valueOverride={formData.experience?.[idx]?.endDate}
+                                            value={exp.endDate} valueOverride={formData.experience?.[idx]?.endDate || exp.endDate}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'endDate', e.target.value)}
                                         />
                                         <Field section="experience" isEditing={isEditing} label="Total Work Experience" field={`total_${idx}`}
-                                            value={exp.totalExperience} valueOverride={formData.experience?.[idx]?.totalExperience}
+                                            value={exp.totalExperience} valueOverride={formData.experience?.[idx]?.totalExperience || exp.totalExperience}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'totalExperience', e.target.value)}
                                         />
                                     </div>

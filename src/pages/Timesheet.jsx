@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
-import { format, startOfWeek, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
+import { format, startOfWeek, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -31,7 +31,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [pendingApprovals, setPendingApprovals] = useState([]);
     const [loadingApprovals, setLoadingApprovals] = useState(false);
 
-    const canApprove = user?.roles?.includes('Admin') || user?.permissions?.includes('attendance.approve');
+    const canApprove = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
+                      user?.permissions?.includes('*') || 
+                      user?.permissions?.includes('attendance.approve') || 
+                      user?.permissions?.includes('timesheet.approve');
 
     // Permission to edit own attendance
     const canEditAttendance = user?.roles?.includes('Admin') || user?.permissions?.includes('attendance.update_self');
@@ -339,9 +342,71 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const targetUserId = propUserId || queryParams.get('userId');
     const targetUserName = propUserName || queryParams.get('name');
 
-    const fetchData = async () => {
+    const fetchData = async (skipCache = false) => {
+        const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+        let formattedMonth;
+        if (cycle === 'Weekly') {
+            formattedMonth = format(viewDate, "yyyy-'W'II");
+        } else if (cycle === 'Daily') {
+            formattedMonth = format(viewDate, 'yyyy-MM-dd');
+        } else {
+            formattedMonth = format(viewDate, 'yyyy-MM');
+        }
+
+        // Cache Key: Scoped by User, Period, and Cycle
+        const CACHE_KEY = `timesheet_${user?._id}_${targetUserId || 'self'}_${formattedMonth}_${cycle}`;
+
+        const readCache = () => {
+            try {
+                const raw = sessionStorage.getItem(CACHE_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed?.data?.timesheet) {
+                    sessionStorage.removeItem(CACHE_KEY);
+                    return null;
+                }
+                return parsed;
+            } catch { return null; }
+        };
+
+        const writeCache = (data, fingerprint) => {
+            try {
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, fingerprint }));
+            } catch { /* Ignore if storage full */ }
+        };
+
+        const buildFingerprint = (data) => {
+            if (!data) return '';
+            const tsPart = `${data.timesheet?._id}:${data.timesheet?.status}:${data.timesheet?.entries?.length || 0}`;
+            const logPart = data.attendanceLogs?.map(l => `${l._id}:${l.clockIn}:${l.clockOut}`).join('|') || '';
+            const holPart = data.holidays?.length || 0;
+            return `${tsPart}#${logPart}#${holPart}`;
+        };
+
+        const applyData = (data) => {
+            if (data.timesheet) {
+                setTimesheet(data.timesheet);
+                setAttendanceLogs(data.timesheet.attendanceLog || []);
+            }
+            if (data.projects) {
+                setProjects(data.projects);
+                setAvailableProjects(data.projects);
+            }
+            if (data.holidays) setHolidays(data.holidays);
+            // viewUser update is skipped for cache to avoid flickering if targetUserId changed
+        };
+
+        const cached = skipCache ? null : readCache();
+
+        // 1. Show cached data instantly
+        if (!skipCache && cached?.data) {
+            applyData(cached.data);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
+
         try {
-            const formattedMonth = format(viewDate, 'yyyy-MM');
             const [tsRes, projRes, holRes] = await Promise.all([
                 targetUserId
                     ? api.get(`/timesheet/user/${targetUserId}?month=${formattedMonth}`)
@@ -349,27 +414,37 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 api.get('/timesheet/projects'),
                 api.get('/holidays')
             ]);
+
+            const payload = {
+                timesheet: tsRes.data,
+                attendanceLogs: tsRes.data.attendanceLog || [],
+                projects: projRes.data,
+                holidays: holRes.data || []
+            };
+
+            const freshFingerprint = buildFingerprint(payload);
+            const cachedFingerprint = cached?.fingerprint || (readCache()?.fingerprint || '');
+
+            if (freshFingerprint !== cachedFingerprint) {
+                applyData(payload);
+                writeCache(payload, freshFingerprint);
+            } else {
+                writeCache(payload, freshFingerprint);
+            }
+
+            // Always update users if in target mode
             if (targetUserId) {
-                // Fetch target user details for correct joining date/etc
                 try {
                     const userRes = await api.get(`/admin/users/${targetUserId}`);
                     setViewUser(userRes.data);
-                } catch (e) {
-                    console.error("Failed to fetch user details", e);
-                    // Fallback to basic info if needed or handling error
-                }
+                } catch (e) { console.error("Failed to fetch user details", e); }
             } else {
                 setViewUser(user);
             }
 
-            setTimesheet(tsRes.data);
-            setAttendanceLogs(tsRes.data.attendanceLog || []);
-            setProjects(projRes.data);
-            setAvailableProjects(projRes.data); // Store for dropdowns
-            setHolidays(holRes.data || []);
         } catch (error) {
-            console.error(error);
-            toast.error('Failed to load timesheet');
+            console.error('Timesheet fetch error', error);
+            if (!cached?.data) toast.error('Failed to load timesheet');
         } finally {
             setLoading(false);
         }
@@ -458,7 +533,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             }
         };
 
-        if (user && (user.roles.includes('Admin') || user.roles.includes('Manager') || user.permissions?.includes('timesheet.view'))) {
+        if (user && (
+            user.roles?.some(r => r === 'Admin' || r.name === 'Admin' || r === 'Manager' || r.name === 'Manager') || 
+            user.permissions?.includes('timesheet.view') || 
+            user.permissions?.includes('*') ||
+            (user.directReports && user.directReports.length > 0)
+        )) {
             fetchUsers();
         }
     }, [user]);
@@ -483,12 +563,27 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     useEffect(() => {
         fetchData();
+
+        // Background polling for real-time timesheet status/entry updates
+        const pollInterval = setInterval(() => fetchData(true), 30000);
+        return () => clearInterval(pollInterval);
     }, [viewDate, targetUserId]); // Re-fetch when month or user changes
 
     // Generate days for current view (Monthly)
-    const monthStart = startOfMonth(viewDate);
-    const monthEnd = endOfMonth(viewDate);
-    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+    const weeklyOff = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
+    
+    let visibleDays = [];
+    if (cycle === 'Weekly') {
+        const start = startOfWeek(viewDate);
+        visibleDays = eachDayOfInterval({ start, end: addDays(start, 6) });
+    } else if (cycle === 'Daily') {
+        visibleDays = [startOfDay(viewDate)];
+    } else {
+        const monthStart = startOfMonth(viewDate);
+        const monthEnd = endOfMonth(viewDate);
+        visibleDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    }
 
     // State for Details Modal
     const [selectedCell, setSelectedCell] = useState(null); // { date: Date, project: ProjectObj, logs: [] }
@@ -992,7 +1087,15 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 {targetUserName ? `${targetUserName}'s Timesheet` : 'Timesheet'}
                                             </h1>
                                             <div className="flex items-center space-x-2 text-sm text-slate-500">
-                                                <span>{format(viewDate, 'MMMM yyyy')}</span>
+                                                                                                <span>
+                                                    {(() => {
+                                                        const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+                                                        if (cycle === 'Weekly') return `Week ${format(viewDate, 'II')}, ${format(viewDate, 'yyyy')}`;
+                                                        if (cycle === 'Daily') return format(viewDate, 'do MMMM yyyy');
+                                                        return format(viewDate, 'MMMM yyyy');
+                                                    })()}
+                                                </span>
+
                                                 <span>•</span>
                                                 <span className={`font-bold ${timesheet?.status === 'APPROVED' ? 'text-emerald-600' : timesheet?.status === 'REJECTED' ? 'text-red-600' : 'text-blue-600'}`}>
                                                     {timesheet?.status || 'DRAFT'}
@@ -1005,14 +1108,24 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
 
                                             <Button
-                                                onClick={() => setViewDate(d => addDays(d, -30))}
+                                                onClick={() => {
+                                                    const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+                                                    if (cycle === 'Weekly') setViewDate(d => subWeeks(d, 1));
+                                                    else if (cycle === 'Daily') setViewDate(d => subDays(d, 1));
+                                                    else setViewDate(d => subMonths(d, 1));
+                                                }}
                                                 variant="secondary"
                                                 className="flex items-center space-x-2"
                                             >
                                                 <ChevronLeft size={16} /> <span>Prev</span>
                                             </Button>
                                             <Button
-                                                onClick={() => setViewDate(d => addDays(d, 30))}
+                                                onClick={() => {
+                                                    const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+                                                    if (cycle === 'Weekly') setViewDate(d => addWeeks(d, 1));
+                                                    else if (cycle === 'Daily') setViewDate(d => addDays(d, 1));
+                                                    else setViewDate(d => addMonths(d, 1));
+                                                }}
                                                 variant="secondary"
                                                 className="flex items-center space-x-2"
                                             >
@@ -1181,11 +1294,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             <th className="p-4 border-r border-slate-200 min-w-[250px] sticky left-0 z-30 bg-slate-50 font-bold shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 Project / Task
                                             </th>
-                                            {daysInMonth.map(day => {
+                                            {visibleDays.map(day => {
                                                 const dateKey = format(day, 'yyyy-MM-dd');
                                                 const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
+                                                const isOffDay = weeklyOff.includes(format(day, 'EEEE'));
                                                 return (
-                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[60px] text-center ${holiday ? 'bg-green-50' : ['Sat', 'Sun'].includes(format(day, 'EEE')) ? 'bg-slate-100/50' : ''}`}>
+                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[60px] text-center ${holiday ? 'bg-green-50' : isOffDay ? 'bg-slate-100/50' : ''}`}>
                                                         <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
                                                         <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
                                                         {holiday && (
@@ -1210,10 +1324,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     <span className="text-[10px] text-slate-400 font-normal uppercase">Check-in / Out</span>
                                                 </div>
                                             </td>
-                                            {daysInMonth.map(day => {
+                                            {visibleDays.map(day => {
                                                 const dateKey = format(day, 'yyyy-MM-dd');
                                                 const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateKey);
-                                                const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
+                                                const isOffDay = weeklyOff.includes(format(day, 'EEEE'));
 
                                                 // Joining Date Check
                                                 const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
@@ -1233,7 +1347,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         }}
                                                         className={`p-1 border-r border-slate-200 text-center text-xs transition-colors ${isBeforeJoining || isFutureDate
                                                             ? 'bg-slate-50 cursor-not-allowed opacity-50'
-                                                            : `cursor-pointer hover:bg-blue-50 ${isWeekend ? 'bg-slate-100/50' : ''}`
+                                                            : `cursor-pointer hover:bg-blue-50 ${isOffDay ? 'bg-slate-100/50' : ''}`
                                                             }`}
                                                         title={isBeforeJoining ? 'Before Joining Date' : isFutureDate ? 'Future Date' : ''}
                                                     >
@@ -1281,11 +1395,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 <span className="text-xs text-slate-400 font-normal">{group.project.client?.name || 'Internal'}</span>
                                                             </div>
                                                         </td>
-                                                        {daysInMonth.map(day => {
+                                                        {visibleDays.map(day => {
                                                             const dateKey = format(day, 'yyyy-MM-dd');
                                                             const hours = group.hours[dateKey];
                                                             const logs = group.logs[dateKey] || [];
-                                                            const isWeekend = ['Sat', 'Sun'].includes(format(day, 'EEE'));
+                                                            const isOffDay = weeklyOff.includes(format(day, 'EEEE'));
                                                             const isRejected = logs.some(l => l.status === 'REJECTED');
                                                             const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
 
@@ -1311,7 +1425,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     }}
                                                                     className={`p-1 border-r border-slate-200 text-center transition-colors ${holiday ? 'bg-green-50/30 cursor-not-allowed'
                                                                         : isBeforeJoining || isFutureDate ? 'bg-slate-50 cursor-not-allowed opacity-50'
-                                                                            : `cursor-pointer hover:bg-blue-100 ${isWeekend ? 'bg-slate-50/30' : ''}`
+                                                                            : `cursor-pointer hover:bg-blue-100 ${isOffDay ? 'bg-slate-50/30' : ''}`
                                                                         }`}
                                                                     title={isBeforeJoining ? 'Before Joining Date' : isFutureDate ? 'Future Date' : ''}
                                                                 >
@@ -1347,7 +1461,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             })
                                         ) : (
                                             <tr>
-                                                <td colSpan={daysInMonth.length + 2} className="p-12 text-center text-slate-500 bg-slate-50/50">
+                                                <td colSpan={visibleDays.length + 2} className="p-12 text-center text-slate-500 bg-slate-50/50">
                                                     <div className="flex flex-col items-center">
                                                         <Calendar size={48} className="text-slate-300 mb-3" />
                                                         <p className="font-medium">No timesheet entries found</p>
@@ -1360,7 +1474,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         {/* Daily Totals Row */}
                                         <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs uppercase text-slate-700">
                                             <td className="p-3 border-r border-slate-300 sticky left-0 bg-slate-100 z-20">Daily Total</td>
-                                            {daysInMonth.map(day => {
+                                            {visibleDays.map(day => {
                                                 const total = getTotalPerDay(day);
                                                 return (
                                                     <td key={day.toString()} className="p-1 border-r border-slate-300 text-center">
@@ -1373,7 +1487,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 );
                                             })}
                                             <td className="p-4 border-l border-slate-200 font-bold text-center text-white bg-slate-600 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                {daysInMonth.reduce((acc, day) => acc + getTotalPerDay(day), 0).toFixed(1)}
+                                                {visibleDays.reduce((acc, day) => acc + getTotalPerDay(day), 0).toFixed(1)}
                                             </td>
                                         </tr>
                                     </tbody>
@@ -1873,7 +1987,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         const dateStr = format(day, 'yyyy-MM-dd');
                                         const record = attendanceLogs.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
                                         const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-                                        const isSunday = day.getDay() === 0;
+                                        const isWeeklyOff = weeklyOff.includes(format(day, 'EEEE'));
                                         const isFuture = day > new Date();
 
                                         // Status Logic
@@ -1892,7 +2006,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         } else if (record) {
                                             status = 'Present';
                                             statusColor = 'bg-green-100 text-green-700';
-                                        } else if (isSunday) {
+                                        } else if (isWeeklyOff) {
                                             status = 'Weekoff';
                                             statusColor = 'bg-slate-100 text-slate-500';
                                         }

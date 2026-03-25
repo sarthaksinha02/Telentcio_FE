@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase, Settings, FileText, Check, X, ClipboardList, LifeBuoy, MessageSquare } from 'lucide-react';
+import { Users, Clock, Calendar, CalendarDays, LogOut, Shield, Building, Briefcase, Settings, FileText, Check, X, ClipboardList, LifeBuoy, MessageSquare, UserPlus } from 'lucide-react';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
@@ -45,37 +45,47 @@ const Sidebar = ({ isOpen, onClose }) => {
               <span>Dashboard</span>
             </Link>
           )}
-          <Link to="/attendance" className={isActive('/attendance')} onClick={onClose}>
-            <Clock size={18} />
-            <span>Attendance</span>
-          </Link>
-          <Link to="/leaves" className={isActive('/leaves')} onClick={onClose}>
-            <FileText size={18} />
-            <span>Leaves</span>
-          </Link>
-          <Link to="/timesheet" className={isActive('/timesheet')} onClick={onClose}>
-            <Calendar size={18} />
-            <span>Timesheet</span>
-          </Link>
+          {user?.company?.enabledModules?.includes('attendance') && (
+            <Link to="/attendance" className={isActive('/attendance')} onClick={onClose}>
+              <Clock size={18} />
+              <span>Attendance</span>
+            </Link>
+          )}
+          {user?.company?.enabledModules?.includes('leaves') && (
+            <Link to="/leaves" className={isActive('/leaves')} onClick={onClose}>
+              <FileText size={18} />
+              <span>Leaves</span>
+            </Link>
+          )}
+          {user?.company?.enabledModules?.includes('timesheet') && (
+            <Link to="/timesheet" className={isActive('/timesheet')} onClick={onClose}>
+              <Calendar size={18} />
+              <span>Timesheet</span>
+            </Link>
+          )}
           <Link to="/holidays" className={isActive('/holidays')} onClick={onClose}>
             <CalendarDays size={18} />
             <span>Holidays</span>
           </Link>
-          <Link
-            to={(user?.roles?.includes('Admin') || user?.permissions?.includes('discussion.read')) ? "/discussions" : "/meetings"}
-            className={(location.pathname === '/meetings' || location.pathname.startsWith('/discussions')) ? "zoho-sidebar-link-active" : "zoho-sidebar-link"}
-            onClick={onClose}
-          >
-            <ClipboardList size={18} />
-            <span>Meetings</span>
-          </Link>
-          <Link to="/helpdesk" className={isActive('/helpdesk')} onClick={onClose}>
-            <LifeBuoy size={18} />
-            <span>Help Desk</span>
-          </Link>
+          {user?.company?.enabledModules?.includes('meetingsOfMinutes') && (
+            <Link
+              to={(user?.roles?.includes('Admin') || user?.permissions?.includes('discussion.read')) ? "/discussions" : "/meetings"}
+              className={(location.pathname === '/meetings' || location.pathname.startsWith('/discussions')) ? "zoho-sidebar-link-active" : "zoho-sidebar-link"}
+              onClick={onClose}
+            >
+              <ClipboardList size={18} />
+              <span>Meetings</span>
+            </Link>
+          )}
+          {user?.company?.enabledModules?.includes('helpdesk') && (
+            <Link to="/helpdesk" className={isActive('/helpdesk')} onClick={onClose}>
+              <LifeBuoy size={18} />
+              <span>Help Desk</span>
+            </Link>
+          )}
 
           {/* TA is visible to admins, users with 'ta.view' permission, or those actively participating in a workflow */}
-          {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view') || user?.isTAParticipant) && (
+          {user?.company?.enabledModules?.includes('talentAcquisition') && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view') || user?.isTAParticipant) && (
             <Link to="/ta" className={isActive('/ta')} onClick={onClose}>
               <Briefcase size={18} />
               <span>Talent Acquisition</span>
@@ -85,10 +95,16 @@ const Sidebar = ({ isOpen, onClose }) => {
 
 
           <div className="px-3 mt-8 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Organization</div>
-          {(user?.roles?.includes('Admin') || user?.permissions?.includes('user.read') || user?.directReportsCount > 0) && (
+          {(user?.company?.enabledModules?.includes('userManagement')) && (user?.roles?.includes('Admin') || user?.permissions?.includes('user.read') || user?.directReportsCount > 0) && (
             <Link to="/users" className={isActive('/users')} onClick={onClose}>
               <Users size={18} />
               <span>Employees</span>
+            </Link>
+          )}
+          {(user?.roles?.includes('Admin') || user?.permissions?.includes('user.read')) && (
+            <Link to="/onboarding" className={isActive('/onboarding')} onClick={onClose}>
+              <UserPlus size={18} />
+              <span>Onboarding</span>
             </Link>
           )}
 
@@ -104,7 +120,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <span>Roles & Permissions</span>
                 </Link>
               )}
-              {(user?.roles?.includes('Admin') || user?.hasAllPermissions) && (
+              {(user?.roles?.includes('Admin') || user?.permissions?.includes('role.read') || user?.hasAllPermissions) && user?.company?.enabledModules?.includes('leaves') && (
                 <Link to="/leave-config" className={isActive('/leave-config')} onClick={onClose}>
                   <Settings size={18} />
                   <span>Leave Policies</span>
@@ -114,26 +130,30 @@ const Sidebar = ({ isOpen, onClose }) => {
           )}
 
           {/* Project Management Section */}
-          <div className="px-3 mt-8 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Project Management</div>
+          {user?.company?.enabledModules?.includes('projectManagement') && (
+            <>
+              <div className="px-3 mt-8 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Project Management</div>
 
-          {(user?.roles?.includes('Admin') || user?.permissions?.includes('business_unit.read')) && (
-            <Link to="/business-units" className={isActive('/business-units')} onClick={onClose}>
-              <Building size={18} />
-              <span>Business Units</span>
-            </Link>
+              {(user?.roles?.includes('Admin') || user?.permissions?.includes('business_unit.read')) && (
+                <Link to="/business-units" className={isActive('/business-units')} onClick={onClose}>
+                  <Building size={18} />
+                  <span>Business Units</span>
+                </Link>
+              )}
+
+              {(user?.roles?.includes('Admin') || user?.permissions?.includes('client.read')) && (
+                <Link to="/clients" className={isActive('/clients')} onClick={onClose}>
+                  <Users size={18} />
+                  <span>Clients</span>
+                </Link>
+              )}
+
+              <Link to="/projects" className={isActive('/projects')} onClick={onClose}>
+                <Briefcase size={18} />
+                <span>Projects</span>
+              </Link>
+            </>
           )}
-
-          {(user?.roles?.includes('Admin') || user?.permissions?.includes('client.read')) && (
-            <Link to="/clients" className={isActive('/clients')} onClick={onClose}>
-              <Users size={18} />
-              <span>Clients</span>
-            </Link>
-          )}
-
-          <Link to="/projects" className={isActive('/projects')} onClick={onClose}>
-            <Briefcase size={18} />
-            <span>Projects</span>
-          </Link>
         </div>
 
         <div className="p-4 border-t border-slate-700/50">

@@ -3,7 +3,10 @@ import api from '../api/axios';
 import { Settings, Edit2, Shield, Plus, Check, X, AlertCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+import { useAuth } from '../context/AuthContext';
+
 const LeaveConfig = () => {
+    const { user } = useAuth();
     const [policies, setPolicies] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editingPolicy, setEditingPolicy] = useState(null);
@@ -13,14 +16,34 @@ const LeaveConfig = () => {
         leaveType: '', name: '', description: '', isPaid: true,
         accrualType: 'Monthly', accrualAmount: 0,
         maxLimitPerYear: 0, carryForward: false, maxCarryForward: 0,
-        encashmentAllowed: false, sandwichRule: false, allowNegativeBalance: false,
+        sandwichRule: false, allowNegativeBalance: false,
         allowBackdated: true, proRata: true, proofRequiredAbove: 0
     });
 
     const fetchPolicies = async () => {
         try {
+            const cacheKey = `leave_config_data_${user?._id}`;
+            const cachedData = sessionStorage.getItem(cacheKey);
+            
+            if (cachedData) {
+                setPolicies(JSON.parse(cachedData).policies);
+                setLoading(false);
+            }
+
             const res = await api.get('/leaves/config');
-            setPolicies(res.data);
+            const policiesData = res.data;
+
+            // Fingerprint check
+            const newFingerprint = JSON.stringify({ l: policiesData.length, lp: policiesData[0]?._id });
+            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+
+            if (newFingerprint !== oldFingerprint) {
+                setPolicies(policiesData);
+                sessionStorage.setItem(cacheKey, JSON.stringify({ 
+                    policies: policiesData, 
+                    fingerprint: newFingerprint 
+                }));
+            }
         } catch (error) {
             console.error(error);
             toast.error('Failed to load policies');
@@ -40,7 +63,7 @@ const LeaveConfig = () => {
             employeeTypes: [],
             accrualType: 'Monthly', accrualAmount: 0,
             maxLimitPerYear: 0, carryForward: false, maxCarryForward: 0,
-            encashmentAllowed: false, sandwichRule: false, allowNegativeBalance: false,
+            sandwichRule: false, allowNegativeBalance: false,
             allowBackdated: true, proRata: true, proofRequiredAbove: 0
         });
         setShowModal(true);
@@ -59,7 +82,6 @@ const LeaveConfig = () => {
             maxLimitPerYear: policy.maxLimitPerYear,
             carryForward: policy.carryForward,
             maxCarryForward: policy.maxCarryForward,
-            encashmentAllowed: policy.encashmentAllowed,
             sandwichRule: policy.sandwichRule,
             allowNegativeBalance: policy.allowNegativeBalance,
             allowBackdated: policy.allowBackdated,
@@ -74,6 +96,7 @@ const LeaveConfig = () => {
         try {
             await api.delete(`/leaves/config/${id}`);
             toast.success('Policy Deleted');
+            sessionStorage.removeItem(`leave_config_data_${user?._id}`);
             fetchPolicies();
         } catch (error) {
             toast.error('Failed to delete policy');
@@ -117,6 +140,7 @@ const LeaveConfig = () => {
         try {
             await api.post('/leaves/config', formData);
             toast.success('Policy Updated Successfully');
+            sessionStorage.removeItem(`leave_config_data_${user?._id}`);
             setShowModal(false);
             fetchPolicies();
         } catch (error) {
@@ -129,6 +153,7 @@ const LeaveConfig = () => {
         try {
             await api.post('/leaves/config/seed');
             toast.success('Defaults Seeded');
+            sessionStorage.removeItem(`leave_config_data_${user?._id}`);
             fetchPolicies();
         } catch (error) {
             toast.error('Seed Failed');
@@ -205,7 +230,6 @@ const LeaveConfig = () => {
                                 <div className="border-t border-slate-100 pt-3 flex flex-wrap gap-2">
                                     {policy.sandwichRule && <span className="px-2 py-1 bg-orange-50 text-orange-600 text-xs rounded border border-orange-100 flex items-center"><AlertCircle size={10} className="mr-1" /> Sandwich Rule</span>}
                                     {policy.allowBackdated && <span className="px-2 py-1 bg-emerald-50 text-emerald-600 text-xs rounded border border-emerald-100 flex items-center"><Check size={10} className="mr-1" /> Backdated</span>}
-                                    {policy.encashmentAllowed && <span className="px-2 py-1 bg-blue-50 text-blue-600 text-xs rounded border border-blue-100 flex items-center"><Check size={10} className="mr-1" /> Encashable</span>}
                                 </div>
                             </div>
                         </div>
@@ -332,10 +356,6 @@ const LeaveConfig = () => {
                                                 <input type="number" name="maxCarryForward" min="0" value={formData.maxCarryForward} onChange={handleChange} className="zoho-input" />
                                             </div>
                                         )}
-                                        <label className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-slate-50 cursor-pointer">
-                                            <input type="checkbox" name="encashmentAllowed" checked={formData.encashmentAllowed} onChange={handleChange} className="rounded text-blue-600 focus:ring-blue-500" />
-                                            <span className="text-sm font-medium text-slate-700">Allow Encashment</span>
-                                        </label>
                                         <label className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-slate-50 cursor-pointer">
                                             <input type="checkbox" name="allowNegativeBalance" checked={formData.allowNegativeBalance} onChange={handleChange} className="rounded text-blue-600 focus:ring-blue-500" />
                                             <span className="text-sm font-medium text-slate-700">Allow Negative Balance</span>

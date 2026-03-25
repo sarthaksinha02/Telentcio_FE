@@ -142,6 +142,8 @@ const MeetingForm = () => {
                 await api.post('/meetings', formData);
                 toast.success('Meeting created successfully');
             }
+            // Clear cache so Meetings.jsx fetches fresh data
+            sessionStorage.removeItem(`meeting_data_${user?._id}`);
             navigate('/meetings');
         } catch (error) {
             console.error(error);

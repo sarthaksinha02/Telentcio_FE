@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
-import { Plus, Search, Filter, Briefcase, Clock, CheckCircle, XCircle, AlertCircle, Settings, TrendingUp } from 'lucide-react';
+import { Plus, Search, Filter, Briefcase, Clock, CheckCircle, XCircle, AlertCircle, Settings, TrendingUp, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
 
 const HiringRequestList = () => {
     const { user } = useAuth();
+    const { clientName } = useParams();
     const [requests, setRequests] = useState([]);
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -24,7 +25,8 @@ const HiringRequestList = () => {
                     params: {
                         status: filterStatus === 'All' ? '' : filterStatus,
                         page,
-                        limit: 10
+                        limit: 10,
+                        client: clientName ? decodeURIComponent(clientName) : ''
                     }
                 }),
                 api.get('/projects/clients')
@@ -82,7 +84,16 @@ const HiringRequestList = () => {
             {/* Sticky Top Navbar */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <h1 className="text-xl font-bold text-slate-800">Talent Acquisition</h1>
+                    <div className="flex flex-col">
+                        <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
+                            <Link to="/ta" className="hover:text-blue-600 transition-colors">Talent Acquisition</Link>
+                            <ChevronRight size={14} />
+                            <span className="font-medium text-slate-800">{clientName ? decodeURIComponent(clientName) : 'All Positions'}</span>
+                        </div>
+                        <h1 className="text-xl font-bold text-slate-800">
+                            {clientName ? `${decodeURIComponent(clientName)} Positions` : 'Talent Acquisition'}
+                        </h1>
+                    </div>
                     <div className="flex flex-wrap gap-3 w-full sm:w-auto">
                         <Link
                             to="/ta/workflows"

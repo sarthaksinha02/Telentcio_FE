@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 
 
 const Topbar = ({ toggleSidebar }) => {
-    const { user } = useAuth();
+    const { user, hasModule } = useAuth();
     const navigate = useNavigate();
     const [notifications, setNotifications] = useState([]);
     const [interviews, setInterviews] = useState([]);
@@ -19,7 +19,9 @@ const Topbar = ({ toggleSidebar }) => {
     useEffect(() => {
         if (user) {
             fetchNotifications();
-            fetchMyInterviews();
+            if (hasModule('talentAcquisition')) {
+                fetchMyInterviews();
+            }
             
             // Listen for real-time notifications
             const handleSocketNotification = (newNotif) => {
