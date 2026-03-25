@@ -191,10 +191,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
             // Fetch dependent dropdowns
             if (pid) {
-                api.get(`/projects/${pid}/modules`).then(res => setEditFilteredModules(res.data));
+                api.get(`/projects/${pid}/modules`, { params: { userId: effectiveUserId } }).then(res => setEditFilteredModules(res.data));
             }
             if (mid) {
-                api.get(`/projects/tasks?moduleId=${mid}`).then(res => setEditFilteredTasks(res.data));
+                api.get(`/projects/tasks`, { params: { moduleId: mid, userId: effectiveUserId } }).then(res => setEditFilteredTasks(res.data));
             }
         }
     };
@@ -207,7 +207,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         setEditFilteredTasks([]);
         if (projectId) {
             try {
-                const res = await api.get(`/projects/${projectId}/modules`);
+                const res = await api.get(`/projects/${projectId}/modules`, { params: { userId: effectiveUserId } });
                 setEditFilteredModules(res.data);
             } catch (error) { console.error(error); }
         }
@@ -219,7 +219,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         setEditFilteredTasks([]);
         if (moduleId) {
             try {
-                const res = await api.get(`/projects/tasks?moduleId=${moduleId}`);
+                const res = await api.get(`/projects/tasks`, { params: { moduleId, userId: effectiveUserId } });
                 setEditFilteredTasks(res.data);
             } catch (error) { console.error(error); }
         }
@@ -341,6 +341,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const queryParams = new URLSearchParams(window.location.search);
     const targetUserId = propUserId || queryParams.get('userId');
     const targetUserName = propUserName || queryParams.get('name');
+    const effectiveUserId = targetUserId || user?._id;
 
     const fetchData = async (skipCache = false) => {
         const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
@@ -411,7 +412,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 targetUserId
                     ? api.get(`/timesheet/user/${targetUserId}?month=${formattedMonth}`)
                     : api.get(`/timesheet/current?month=${formattedMonth}`),
-                api.get('/timesheet/projects'),
+                api.get('/timesheet/projects', { params: { userId: effectiveUserId } }),
                 api.get('/holidays')
             ]);
 
@@ -458,7 +459,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             return;
         }
         try {
-            const res = await api.get(`/projects/${projectId}/modules`);
+            const res = await api.get(`/projects/${projectId}/modules`, { params: { userId: effectiveUserId } });
             setFilteredModules(res.data);
         } catch (error) {
             console.error("Failed to fetch modules", error);
@@ -474,7 +475,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         try {
             // Check getTasks API signature in projectController.
             // It accepts moduleId query param.
-            const res = await api.get(`/projects/tasks?moduleId=${moduleId}`);
+            const res = await api.get(`/projects/tasks`, { params: { moduleId, userId: effectiveUserId } });
             setFilteredTasks(res.data);
         } catch (error) {
             console.error("Failed to fetch tasks", error);
