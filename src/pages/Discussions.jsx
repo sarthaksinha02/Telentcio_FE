@@ -7,7 +7,8 @@ import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { Download } from 'lucide-react';
+import { Download, Loader } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const Discussions = () => {
     const navigate = useNavigate();
@@ -32,10 +33,14 @@ const Discussions = () => {
     // State for toggling full descriptions inline
     const [expandedIds, setExpandedIds] = useState([]);
 
+    const { user } = useAuth();
+    const [supervisors, setSupervisors] = useState([]);
+
     const [newDiscussion, setNewDiscussion] = useState({
         discussion: '',
         status: 'inprogress',
-        dueDate: ''
+        dueDate: '',
+        supervisor: ''
     });
 
     // Pagination state
@@ -58,8 +63,18 @@ const Discussions = () => {
         }
     };
 
+    const fetchSupervisors = async () => {
+        try {
+            const res = await api.get('/discussions/supervisors');
+            setSupervisors(res.data);
+        } catch (error) {
+            console.error('Error fetching supervisors:', error);
+        }
+    };
+
     useEffect(() => {
         fetchDiscussions(currentPage);
+        fetchSupervisors();
     }, [currentPage]);
 
     // Close export menu when clicking outside
@@ -213,7 +228,8 @@ const Discussions = () => {
             setNewDiscussion({
                 discussion: '',
                 status: 'inprogress',
-                dueDate: ''
+                dueDate: '',
+                supervisor: ''
             });
         } catch (error) {
             console.error('Error creating discussion:', error);
@@ -228,7 +244,8 @@ const Discussions = () => {
         setEditData({
             discussion: discussion.discussion,
             status: discussion.status,
-            dueDate: discussion.dueDate ? discussion.dueDate.split('T')[0] : ''
+            dueDate: discussion.dueDate ? discussion.dueDate.split('T')[0] : '',
+            supervisor: discussion.supervisor?._id || discussion.supervisor
         });
     };
 
@@ -441,8 +458,8 @@ const Discussions = () => {
                                             className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${getStatusBadgeColor(discussion.status)}`}
                                         >
                                             <option value="inprogress">In Progress</option>
-                                            <option value="on-hold">On-hold</option>
-                                            <option value="mark as complete">Mark as complete</option>
+                                            <option value="on-hold" disabled={discussion.supervisor?._id !== user?._id}>On-hold {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
+                                            <option value="mark as complete" disabled={discussion.supervisor?._id !== user?._id}>Mark as complete {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
                                         </select>
                                         {discussion.dueDate ? (
                                             <div className="flex items-center text-slate-500 text-xs">
@@ -487,7 +504,8 @@ const Discussions = () => {
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600">Description</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Created Date</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Due Date</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-40">Status</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-36">Status</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-44">Supervisor</th>
                                     <th className="px-6 py-4 text-right font-semibold text-slate-600 w-64">Actions</th>
                                 </tr>
                             </thead>
@@ -512,10 +530,20 @@ const Discussions = () => {
                                         <td className="px-6 py-4">
                                             <select value={newDiscussion.status}
                                                 onChange={(e) => setNewDiscussion({ ...newDiscussion, status: e.target.value })}
-                                                className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-full ${getStatusBadgeColor(newDiscussion.status)}`}>
+                                                className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 ${getStatusBadgeColor(newDiscussion.status)}`}>
                                                 <option value="inprogress">In Progress</option>
                                                 <option value="on-hold">On-hold</option>
                                                 <option value="mark as complete">Mark as complete</option>
+                                            </select>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <select value={newDiscussion.supervisor}
+                                                onChange={(e) => setNewDiscussion({ ...newDiscussion, supervisor: e.target.value })}
+                                                className="w-40 px-2 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                                <option value="">Select Supervisor</option>
+                                                {supervisors.map(s => (
+                                                    <option key={s._id} value={s._id}>{s.firstName} {s.lastName}</option>
+                                                ))}
                                             </select>
                                         </td>
                                         <td className="px-6 py-4 text-right">
@@ -566,10 +594,20 @@ const Discussions = () => {
                                                 <td className="px-6 py-4">
                                                     <select value={editData.status}
                                                         onChange={(e) => setEditData({ ...editData, status: e.target.value })}
-                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-fit ${getStatusBadgeColor(editData.status)}`}>
+                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 truncate ${getStatusBadgeColor(editData.status)}`}>
                                                         <option value="inprogress">In Progress</option>
-                                                        <option value="on-hold">On-hold</option>
-                                                        <option value="mark as complete">Mark as complete</option>
+                                                        <option value="on-hold" disabled={discussion.supervisor?._id !== user?._id}>On-hold {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
+                                                        <option value="mark as complete" disabled={discussion.supervisor?._id !== user?._id}>Mark as complete {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <select value={editData.supervisor}
+                                                        onChange={(e) => setEditData({ ...editData, supervisor: e.target.value })}
+                                                        className="w-40 px-2 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700">
+                                                        <option value="">Select Supervisor</option>
+                                                        {supervisors.map(s => (
+                                                            <option key={s._id} value={s._id}>{s.firstName} {s.lastName}</option>
+                                                        ))}
                                                     </select>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
@@ -611,11 +649,25 @@ const Discussions = () => {
                                                 <td className="px-6 py-4">
                                                     <select value={discussion.status}
                                                         onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
-                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-fit ${getStatusBadgeColor(discussion.status)}`}>
+                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 truncate ${getStatusBadgeColor(discussion.status)}`}>
                                                         <option value="inprogress">In Progress</option>
-                                                        <option value="on-hold">On-hold</option>
-                                                        <option value="mark as complete">Mark as complete</option>
+                                                        <option value="on-hold" disabled={discussion.supervisor?._id !== user?._id}>On-hold {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
+                                                        <option value="mark as complete" disabled={discussion.supervisor?._id !== user?._id}>Mark as complete {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
                                                     </select>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        {discussion.supervisor?.profilePicture ? (
+                                                            <img src={discussion.supervisor.profilePicture} alt="" className="w-6 h-6 rounded-full border border-slate-200" />
+                                                        ) : (
+                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 uppercase">
+                                                                {discussion.supervisor?.firstName?.[0]}{discussion.supervisor?.lastName?.[0]}
+                                                            </div>
+                                                        )}
+                                                        <span className="text-xs text-slate-600 font-medium">
+                                                            {discussion.supervisor?.firstName} {discussion.supervisor?.lastName}
+                                                        </span>
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
