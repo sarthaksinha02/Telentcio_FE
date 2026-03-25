@@ -24,6 +24,7 @@ import Holidays from './pages/Holidays';
 import LeaveConfig from './pages/LeaveConfig';
 import Leaves from './pages/Leaves';
 import EmployeeDossier from './pages/EmployeeDossier';
+import ClientSelection from './pages/TalentAcquisition/ClientSelection';
 import HiringRequestList from './pages/TalentAcquisition/HiringRequestList';
 import CreateHiringRequest from './pages/TalentAcquisition/CreateHiringRequest';
 import HiringRequestDetails from './pages/TalentAcquisition/HiringRequestDetails';
@@ -77,7 +78,8 @@ function App() {
 
                 {/* Talent Acquisition */}
                 <Route element={<ModuleRoute moduleName="talentAcquisition" />}>
-                  <Route path="/ta" element={<HiringRequestList />} />
+                  <Route path="/ta" element={<ClientSelection />} />
+                  <Route path="/ta/hiring-requests/:clientName" element={<HiringRequestList />} />
                   <Route path="/ta/workflows" element={<WorkflowSettings />} />
                   <Route path="/ta/create-request" element={<CreateHiringRequest />} />
                   <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
