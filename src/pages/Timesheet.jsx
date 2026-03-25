@@ -37,7 +37,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                       user?.permissions?.includes('timesheet.approve');
 
     // Permission to edit own attendance
-    const canEditAttendance = user?.roles?.includes('Admin') || user?.permissions?.includes('attendance.update_self');
+    const canEditAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
+                            user?.permissions?.includes('*') || 
+                            user?.permissions?.includes('attendance.update_self') ||
+                            user?.permissions?.includes('attendance.update_others');
 
     // Rejection Modal State
     const [showRejectModal, setShowRejectModal] = useState(false);
@@ -987,8 +990,22 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         saveAs(new Blob([buffer]), fileName);
     };
 
-    const canViewAttendance = user?.roles?.includes('Admin') || user?.permissions?.includes('attendance.view');
-    const canViewTimesheets = user?.roles?.includes('Admin') || user?.permissions?.includes('timesheet.view');
+    const canViewAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
+                            user?.permissions?.includes('*') || 
+                            user?.permissions?.includes('attendance.view') ||
+                            user?.permissions?.includes('attendance.update_others');
+    const canViewTimesheets = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
+                            user?.permissions?.includes('*') || 
+                            user?.permissions?.includes('timesheet.view') ||
+                            user?.permissions?.includes('timesheet.update_others');
+
+    const canUpdateAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
+                               user?.permissions?.includes('*') || 
+                               user?.permissions?.includes('attendance.update_others');
+                               
+    const canUpdateTimesheet = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
+                              user?.permissions?.includes('*') || 
+                              user?.permissions?.includes('timesheet.update_others');
 
     return (
         <div className={`${isEmbedded ? 'w-full' : 'min-h-screen bg-slate-100 p-6 md:p-10'} font-sans overflow-x-hidden`}>
@@ -1511,7 +1528,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         <h4 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center justify-between">
                                             <div className="flex items-center"><Clock size={12} className="mr-1" /> Attendance</div>
                                             {attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date))) ? (
-                                                (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && (!targetUserId || user?.roles?.includes('Admin')) && canEditAttendance && (
+                                                ((timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED' || canUpdateAttendance) && (!targetUserId || canUpdateAttendance)) && canEditAttendance && (
                                                     <button
                                                         onClick={() => {
                                                             const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
@@ -1526,7 +1543,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     </button>
                                                 )
                                             ) : (
-                                                (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED' || !timesheet) && (!targetUserId || user?.roles?.includes('Admin')) && canEditAttendance && selectedCell.date <= new Date() && (
+                                                (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED' || !timesheet || canUpdateAttendance) && (!targetUserId || canUpdateAttendance) && canEditAttendance && selectedCell.date <= new Date() && (
                                                     <button
                                                         onClick={() => {
                                                             setEntryToEdit({ type: 'ATTENDANCE_CREATE', date: selectedCell.date });
@@ -1636,7 +1653,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                     {/* Add Work Log Section */}
                                     <div className="p-4 bg-white border-t border-slate-100">
                                         {!isAddingEntry ? (
-                                            ((timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && (!targetUserId || user?.roles?.includes('Admin'))) && (
+                                            ((timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED' || canUpdateTimesheet) && (!targetUserId || canUpdateTimesheet)) && (
                                                 <Button
                                                     onClick={() => {
                                                         setIsAddingEntry(true);
@@ -1889,7 +1906,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             <span className={`text-xs font-bold px-2 py-1 rounded-full ${log.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
                                                                 {log.hours}h
                                                             </span>
-                                                            {(timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED') && !targetUserId && (
+                                                            {((timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED' || canUpdateTimesheet) && (!targetUserId || canUpdateTimesheet)) && (
                                                                 <button
                                                                     onClick={() => { handleEditClick(log); }}
                                                                     className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
@@ -2075,6 +2092,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                 user={viewUser}
                                 holidays={holidays}
                                 date={viewDate}
+                                isPrivileged={canUpdateAttendance}
                             />
                         </div>
                     </div>

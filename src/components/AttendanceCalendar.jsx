@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Edit2 } from 'lucide-react';
 import { differenceInCalendarDays } from 'date-fns';
 
-const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date, approvedLeaves = [], onRegularize }) => {
+const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date, approvedLeaves = [], onRegularize, isPrivileged = false }) => {
     const [currentDate, setCurrentDate] = useState(date || new Date());
 
     useEffect(() => {
@@ -152,7 +152,7 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date,
                                 const fourWorkingDaysAgo = new Date(checkDate);
                                 fourWorkingDaysAgo.setHours(0, 0, 0, 0);
 
-                                const canRegularize = day >= fourWorkingDaysAgo;
+                                const canRegularize = day >= fourWorkingDaysAgo || isPrivileged;
                                 
                                 if (canRegularize) {
                                     return (

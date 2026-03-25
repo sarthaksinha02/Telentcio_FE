@@ -36,8 +36,14 @@ const Roles = () => {
             const rolesData = rolesRes.data;
             const permsData = permsRes.data;
 
-            // Fingerprint check
-            const newFingerprint = JSON.stringify({ r: rolesData.length, p: Object.keys(permsData).length, lr: rolesData[0]?._id });
+            // Fingerprint check - include total number of permissions (sum across all modules)
+            const totalPerms = Object.values(permsData).reduce((sum, modulePerms) => sum + modulePerms.length, 0);
+            const newFingerprint = JSON.stringify({ 
+                r: rolesData.length, 
+                p: Object.keys(permsData).length, 
+                tp: totalPerms,
+                lr: rolesData[0]?._id 
+            });
             const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
 
             if (newFingerprint !== oldFingerprint) {
