@@ -74,21 +74,29 @@ const QueryDetails = () => {
         commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [query?.comments]);
 
-    const handleStatusUpdate = async (newStatus) => {
+    const handleStatusUpdate = async (newStatus, feedback = null) => {
         let confirmMsg = `Are you sure you want to change status to ${newStatus}?`;
-        if (newStatus === 'Closed') confirmMsg = "Are you sure you want to close this query?";
+        if (newStatus === 'Closed' && query.status !== 'Resolved') confirmMsg = "Are you sure you want to close this query?";
+        if (newStatus === 'Resolved') confirmMsg = "Are you sure you want to mark this query as resolved?";
         if (newStatus === 'Escalated') confirmMsg = "Are you sure you want to escalate this query?";
-        
-        if (!window.confirm(confirmMsg)) return;
-        
+
+        if (!feedback && !window.confirm(confirmMsg)) return;
+
         try {
-            await api.put(`/helpdesk/${id}/close`, { status: newStatus });
-            toast.success(`Query marked as ${newStatus}`);
+            await api.put(`/helpdesk/${id}/close`, { status: newStatus, feedback });
+            toast.success(newStatus === 'In Progress' && query.status === 'Resolved' ? 'Query reopened with feedback' : `Query marked as ${newStatus}`);
             // Clear list cache to reflect status change in main list
             sessionStorage.removeItem(`helpdesk_data_${user?._id}`);
             fetchQueryDetails();
         } catch (error) {
             toast.error(error.response?.data?.message || `Failed to update status to ${newStatus}`);
+        }
+    };
+
+    const handleReopen = () => {
+        const feedback = window.prompt("Please provide feedback on why this was not resolved:");
+        if (feedback) {
+            handleStatusUpdate('In Progress', feedback);
         }
     };
 
@@ -137,6 +145,7 @@ const QueryDetails = () => {
         if (status === 'new') return 'bg-amber-100 text-amber-700 border-amber-200';
         if (status === 'in progress') return 'bg-blue-100 text-blue-700 border-blue-200';
         if (status === 'escalated') return 'bg-red-100 text-red-700 border-red-200 animate-pulse';
+        if (status === 'resolved') return 'bg-indigo-100 text-indigo-700 border-indigo-200';
         if (status === 'closed') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
         return 'bg-slate-100 text-slate-700 border-slate-200';
     };
@@ -151,7 +160,7 @@ const QueryDetails = () => {
     const isAdmin = user?.roles?.some(r => (r.name || r) === 'Admin' || r?.isSystem === true);
     const isAssignee = query.assignedTo?._id === user?._id || query.assignedTo === user?._id;
     const isRaiser = query.raisedBy?._id === user?._id || query.raisedBy === user?._id;
-    
+
     const isClosed = query.status === 'Closed';
 
     return (
@@ -182,12 +191,20 @@ const QueryDetails = () => {
                     </div>
 
                     <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                        {!isClosed && (isAdmin || isAssignee) && query.status === 'New' && (
+                        {!isClosed && query.status === 'New' && (isAdmin || isAssignee) && (
                             <button
                                 onClick={() => handleStatusUpdate('In Progress')}
                                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
                             >
                                 Start Progress
+                            </button>
+                        )}
+                        {!isClosed && (query.status === 'In Progress' || query.status === 'Escalated' || query.status === 'New') && (isAdmin || isAssignee) && (
+                            <button
+                                onClick={() => handleStatusUpdate('Resolved')}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                            >
+                                Mark Resolved
                             </button>
                         )}
                         {!isClosed && (isAdmin || isAssignee) && (query.status === 'In Progress' || query.status === 'Escalated') && (
@@ -198,21 +215,59 @@ const QueryDetails = () => {
                                 Mark Pending
                             </button>
                         )}
-                        {!isClosed && (isAdmin || isAssignee || isRaiser) && query.status !== 'Escalated' && (
-                            <button
-                                onClick={() => handleStatusUpdate('Escalated')}
-                                className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-rose-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
-                            >
-                                Escalate
-                            </button>
+
+                        {!isClosed && query.status !== 'Escalated' && query.status !== 'Resolved' && (
+                            (() => {
+                                const canEscalate = query.canEscalate;
+                                if (!canEscalate && !isRaiser) return null; // Someone else
+
+                                return (
+                                    <button
+                                        onClick={() => {
+                                            if (isRaiser && !isAdmin && !isAssignee && !canEscalate) {
+                                                toast.error(`You can only escalate your query after 48 work hours. Currently ${query.workHoursElapsed?.toFixed(1) || 0} work hours have passed (excluding weekends).`);
+                                                return;
+                                            }
+                                            handleStatusUpdate('Escalated');
+                                        }}
+                                        className={`${(isRaiser && !canEscalate && !isAdmin && !isAssignee) ? 'opacity-50 cursor-not-allowed bg-slate-400' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20 hover:-translate-y-0.5'} text-white px-4 py-2 rounded-xl font-semibold shadow-md transition-all flex items-center justify-center gap-2 flex-1 md:flex-none text-sm`}
+                                    >
+                                        Escalate
+                                    </button>
+                                );
+                            })()
                         )}
-                        {!isClosed && (isAdmin || isAssignee || isRaiser) && (
+
+                        {!isClosed && query.status === 'Resolved' && isRaiser && (
+                            <div className="flex gap-2 w-full md:w-auto">
+                                <button
+                                    onClick={() => handleStatusUpdate('Closed')}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                                >
+                                    Yes, Resolved
+                                </button>
+                                <button
+                                    onClick={handleReopen}
+                                    className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-rose-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                                >
+                                    No, Reopen
+                                </button>
+                            </div>
+                        )}
+
+                        {!isClosed && query.status === 'Resolved' && (isAdmin || isAssignee) && (
                             <button
-                                onClick={() => handleStatusUpdate('Closed')}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                                onClick={() => {
+                                    if (!query.canDirectlyClose && !isAdmin) {
+                                        toast.error(`You can only close this query after 48 work hours of resolution. Currently ${query.resolvedWorkHoursElapsed?.toFixed(1) || 0} work hours have passed.`);
+                                        return;
+                                    }
+                                    handleStatusUpdate('Closed');
+                                }}
+                                className={`${(!query.canDirectlyClose && !isAdmin) ? 'opacity-50 cursor-not-allowed bg-slate-400' : 'bg-slate-700 hover:bg-slate-800 shadow-slate-700/20 hover:-translate-y-0.5'} text-white px-4 py-2 rounded-xl font-semibold shadow-md transition-all flex items-center justify-center gap-2 flex-1 md:flex-none text-sm`}
                             >
                                 <Check size={18} />
-                                Close Query
+                                Close Directly
                             </button>
                         )}
                     </div>
@@ -388,17 +443,44 @@ const QueryDetails = () => {
                                     </div>
                                 </div>
                                 <div className="p-4">
-                                    <p className="text-[10px] font-bold text-indigo-400 mb-2 uppercase tracking-wider">Assigned To</p>
+                                    <p className="text-[10px] font-bold text-indigo-400 mb-2 uppercase tracking-wider">
+                                        {query.originalAssignee ? 'Originally Assigned To' : 'Assigned To'}
+                                    </p>
                                     <div className="flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs border border-indigo-100">
-                                            {query.assignedTo?.firstName?.charAt(0)}{query.assignedTo?.lastName?.charAt(0)}
+                                            {(query.originalAssignee || query.assignedTo)?.firstName?.charAt(0)}{(query.originalAssignee || query.assignedTo)?.lastName?.charAt(0)}
                                         </div>
                                         <div>
-                                            <p className="text-sm font-bold text-slate-800">{query.assignedTo?.firstName} {query.assignedTo?.lastName}</p>
-                                            <p className="text-[10px] font-semibold text-slate-500">{query.assignedTo?.email}</p>
+                                            <p className="text-sm font-bold text-slate-800">
+                                                {(query.originalAssignee || query.assignedTo)?.firstName} {(query.originalAssignee || query.assignedTo)?.lastName}
+                                            </p>
+                                            <p className="text-[10px] font-semibold text-slate-500">
+                                                {(query.originalAssignee || query.assignedTo)?.email}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
+
+                                {query.originalAssignee && (
+                                    <div className="p-4 bg-amber-50/20 border-t border-amber-100">
+                                        <p className="text-[10px] font-bold text-amber-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                                            <AlertTriangle size={10} />
+                                            Escalated To
+                                        </p>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xs border border-amber-100 shadow-sm">
+                                                {query.assignedTo?.firstName?.charAt(0)}{query.assignedTo?.lastName?.charAt(0)}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-800">{query.assignedTo?.firstName} {query.assignedTo?.lastName}</p>
+                                                <p className="text-[10px] font-semibold text-slate-500">{query.assignedTo?.email}</p>
+                                                <div className="mt-1 flex items-center gap-1">
+                                                    <span className="text-[8px] font-black bg-amber-100 text-amber-700 px-1 py-0.5 rounded uppercase tracking-tighter shadow-sm blur-[0.1px]">Escalation Level</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
