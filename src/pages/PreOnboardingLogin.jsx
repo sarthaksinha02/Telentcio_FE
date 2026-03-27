@@ -12,6 +12,8 @@ const PreOnboardingLogin = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showRegenModal, setShowRegenModal] = useState(false);
+  const [regenReason, setRegenReason] = useState('');
 
   const [credentials, setCredentials] = useState({ tempEmployeeId: '', password: '' });
   const [newPassword, setNewPassword] = useState('');
@@ -56,7 +58,33 @@ const PreOnboardingLogin = () => {
         navigate('/pre-onboarding/portal');
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed');
+      const msg = err.response?.data?.message || 'Login failed';
+      toast.error(msg);
+      if (msg.toLowerCase().includes('expired')) {
+        setShowRegenModal(true);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRequestRegen = async (e) => {
+    e.preventDefault();
+    if (!credentials.tempEmployeeId) {
+      toast.error('Please enter your Employee ID first');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await axios.post(`${API_URL}/request-regeneration`, {
+        tempEmployeeId: credentials.tempEmployeeId,
+        reason: regenReason
+      }, { headers: getHeaders() });
+      toast.success(res.data.message || 'Request sent!');
+      setShowRegenModal(false);
+      setRegenReason('');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to request credentials');
     } finally {
       setLoading(false);
     }
@@ -151,6 +179,12 @@ const PreOnboardingLogin = () => {
                 <LogIn size={18} />
                 {loading ? 'Logging in...' : 'Log In'}
               </button>
+
+              <div style={{ marginTop: '20px', textAlign: 'center' }}>
+                <button type="button" onClick={() => setShowRegenModal(true)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '13px', cursor: 'pointer', textDecoration: 'underline' }}>
+                  Credentials expired or lost? Request new ones
+                </button>
+              </div>
             </form>
           ) : (
             <form onSubmit={handleChangePassword}>
@@ -209,6 +243,41 @@ const PreOnboardingLogin = () => {
           © {new Date().getFullYear()} TalentCio. Powered by HRCODE.
         </p>
       </div>
+
+      {showRegenModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: '#1e293b', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px', border: '1px solid rgba(148,163,184,0.1)' }}>
+            <h3 style={{ color: '#f1f5f9', marginTop: 0, marginBottom: '16px', fontSize: '18px' }}>Request New Credentials</h3>
+            <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '20px' }}>If your temporary password has expired or you've lost it, you can request HR to generate a new one.</p>
+            
+            <form onSubmit={handleRequestRegen}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Your Employee ID</label>
+                <input
+                  required
+                  value={credentials.tempEmployeeId}
+                  onChange={(e) => setCredentials({ ...credentials, tempEmployeeId: e.target.value })}
+                  placeholder="e.g., EMP-2024-0001"
+                  style={{ width: '100%', padding: '12px', background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '8px', color: '#f1f5f9', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Reason (Optional)</label>
+                <input
+                  value={regenReason}
+                  onChange={(e) => setRegenReason(e.target.value)}
+                  placeholder="e.g., Link expired"
+                  style={{ width: '100%', padding: '12px', background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '8px', color: '#f1f5f9', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowRegenModal(false)} style={{ padding: '10px 16px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', borderRadius: '8px', fontWeight: '600' }}>Cancel</button>
+                <button type="submit" disabled={loading} style={{ padding: '10px 16px', background: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer', borderRadius: '8px', fontWeight: '600' }}>Send Request</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

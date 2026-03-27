@@ -236,6 +236,22 @@ const CandidateDetails = () => {
         }
     };
 
+    const handleTransferToOnboarding = async () => {
+        if (!window.confirm("Are you sure you want to transfer this candidate to the onboarding pipeline? This will create a new onboarding record for them.")) return;
+
+        try {
+            setActionLoading(true);
+            const res = await api.post(`/ta/candidates/${candidateId}/transfer-to-onboarding`);
+            toast.success('Candidate transferred successfully to onboarding.');
+            fetchCandidate();
+        } catch (error) {
+            console.error('Transfer error:', error);
+            toast.error(error.response?.data?.message || 'Failed to transfer candidate');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     const handleUpdateInternalRemark = async () => {
         try {
             setInternalRemarkLoading(true);
@@ -456,6 +472,24 @@ const CandidateDetails = () => {
                                                         <option value="No Show">No Show</option>
                                                         <option value="Offer Declined">Offer Declined</option>
                                                     </select>
+                                                )}
+
+                                                {/* Transfer to Onboarding Button */}
+                                                {currentPhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None' && !candidate.isTransferredToOnboarding && (
+                                                    <button
+                                                        onClick={handleTransferToOnboarding}
+                                                        disabled={actionLoading}
+                                                        className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-sm transition-all animate-pulse"
+                                                    >
+                                                        {actionLoading ? <Loader size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                                        Transfer to Onboarding
+                                                    </button>
+                                                )}
+
+                                                {candidate.isTransferredToOnboarding && (
+                                                    <div className="mt-3 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-center font-bold text-emerald-700 text-xs">
+                                                        Transferred to Onboarding Module
+                                                    </div>
                                                 )}
                                             </div>
                                         )}

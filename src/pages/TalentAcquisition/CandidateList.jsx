@@ -377,7 +377,20 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
         try {
             const res = await api.post(`/ta/hiring-request/transfer-candidate/${candidateId}`);
             toast.success(res.data.message || 'Candidate transferred successfully');
-            fetchCandidates(); // Refresh list to maybe update visual indicators if we implement fetching transfer status
+            fetchCandidates();
+        } catch (error) {
+            console.error('Transfer error:', error);
+            toast.error(error.response?.data?.message || 'Failed to transfer candidate');
+        }
+    }, [fetchCandidates]);
+
+    const handleTransferToOnboarding = useCallback(async (candidateId) => {
+        if (!window.confirm("Are you sure you want to transfer this candidate to the onboarding pipeline? This will create a new onboarding record for them.")) return;
+
+        try {
+            const res = await api.post(`/ta/candidates/${candidateId}/transfer-to-onboarding`);
+            toast.success('Candidate transferred successfully to onboarding.');
+            fetchCandidates();
         } catch (error) {
             console.error('Transfer error:', error);
             toast.error(error.response?.data?.message || 'Failed to transfer candidate');
@@ -1517,7 +1530,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                                                                 </button>
                                                             )}
 
-                                                            {isLegacyView && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                            {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
                                                                 <button
                                                                     onClick={() => {
                                                                         handleTransfer(candidate._id);
@@ -1527,6 +1540,19 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                                                                 >
                                                                     <Briefcase size={16} className="text-blue-500" />
                                                                     Transfer to Active Requisition
+                                                                </button>
+                                                            )}
+
+                                                            {activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None' && !candidate.isTransferredToOnboarding && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        handleTransferToOnboarding(candidate._id);
+                                                                        setActiveMenu(null);
+                                                                    }}
+                                                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50 transition-colors text-left font-bold"
+                                                                >
+                                                                    <CheckCircle size={16} className="text-emerald-500" />
+                                                                    Transfer to Onboarding
                                                                 </button>
                                                             )}
 
