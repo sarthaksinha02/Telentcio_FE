@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -10,6 +10,7 @@ import Skeleton from '../../components/Skeleton';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import BulkCandidateImport from './BulkCandidateImport';
+import CandidateDetails from './CandidateDetails';
 
 const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) => {
     const { user } = useAuth();
@@ -17,9 +18,6 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
-
-
-
 
     // Filter States
     const [filterPreference, setFilterPreference] = useState('All');
@@ -32,10 +30,29 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
     const [filterTransferred, setFilterTransferred] = useState('All');
     const [users, setUsers] = useState([]);
 
+    const [searchParams, setSearchParams] = useSearchParams();
+    const selectedCandidateId = searchParams.get('candidateId');
+
     // Menu State
     const [activeMenu, setActiveMenu] = useState(null);
     const [activePhase, setActivePhase] = useState(1);
     const [showBulkImport, setShowBulkImport] = useState(false);
+
+    const handleSelectCandidate = (candId) => {
+        const newParams = new URLSearchParams(searchParams);
+        if (selectedCandidateId === candId) {
+            newParams.delete('candidateId');
+        } else {
+            newParams.set('candidateId', candId);
+        }
+        setSearchParams(newParams);
+    };
+
+    const handleCloseCandidate = () => {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('candidateId');
+        setSearchParams(newParams);
+    };
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -749,923 +766,982 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         </button>
                     )}
                 </div>
-            </div>            {/* Pipeline Summary Boxes */}
-            {activePhase === 1 ? (() => {
-                const funnelCards = [
-                    {
-                        id: 'total',
-                        label: 'Total Sourced',
-                        value: metrics.total,
-                        icon: Users,
-                        color: 'purple',
-                        isActive: filterStatus === 'All' && filterDecision === 'All' && filterInterviewStatus === 'All' && filterTransferred === 'All',
-                        onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
-                    },
-                    {
-                        id: 'interested',
-                        label: 'Interested',
-                        value: metrics.interested,
-                        icon: CheckCircle,
-                        color: 'green',
-                        isActive: filterStatus === 'Interested',
-                        onClick: () => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
-                    },
-                    {
-                        id: 'interviewScheduled',
-                        label: 'Interview Scheduled',
-                        value: metrics.interviewScheduled,
-                        icon: UserCheck,
-                        color: 'amber',
-                        isActive: filterInterviewStatus === 'Scheduled',
-                        onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); setFilterTransferred('All'); }
-                    },
-                    {
-                        id: 'shortlisted',
-                        label: 'Shortlisted',
-                        value: metrics.shortlisted,
-                        icon: ThumbsUp,
-                        color: 'sky',
-                        isActive: filterDecision === 'Shortlisted',
-                        onClick: () => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
-                    },
-                    {
-                        id: 'onHold',
-                        label: 'On Hold',
-                        value: metrics.onHold,
-                        icon: Clock,
-                        color: 'slate',
-                        isActive: filterDecision === 'On Hold',
-                        onClick: () => { setFilterStatus('All'); setFilterDecision('On Hold'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
-                    }
-                ];
+            </div>
+            
+            {/* Layout Wrapper for Split View */}
+            <div className={`flex flex-col lg:flex-row gap-6 items-start transition-all duration-300 ${selectedCandidateId ? 'relative' : ''}`}>
+                
+                {/* Left Side: Metrics, Filters, and Table */}
+                <div className={`flex-1 min-w-0 transition-all duration-300 space-y-6 ${selectedCandidateId ? 'w-full lg:w-[30%]' : 'w-full'}`}>
+                                        {/* Summary Boxes - Only show when no candidate is selected */}
+                    {!selectedCandidateId &&
+                        (activePhase === 1 ? (() => {
+                            const funnelCards = [
+                                {
+                                    id: 'total',
+                                    label: 'Total Sourced',
+                                    value: metrics.total,
+                                    icon: Users,
+                                    color: 'purple',
+                                    isActive: filterStatus === 'All' && filterDecision === 'All' && filterInterviewStatus === 'All' && filterTransferred === 'All',
+                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                                },
+                                {
+                                    id: 'interested',
+                                    label: 'Interested',
+                                    value: metrics.interested,
+                                    icon: CheckCircle,
+                                    color: 'green',
+                                    isActive: filterStatus === 'Interested',
+                                    onClick: () => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                                },
+                                {
+                                    id: 'interviewScheduled',
+                                    label: 'Interview Scheduled',
+                                    value: metrics.interviewScheduled,
+                                    icon: UserCheck,
+                                    color: 'amber',
+                                    isActive: filterInterviewStatus === 'Scheduled',
+                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); setFilterTransferred('All'); }
+                                },
+                                {
+                                    id: 'shortlisted',
+                                    label: 'Shortlisted',
+                                    value: metrics.shortlisted,
+                                    icon: ThumbsUp,
+                                    color: 'sky',
+                                    isActive: filterDecision === 'Shortlisted',
+                                    onClick: () => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                                },
+                                {
+                                    id: 'onHold',
+                                    label: 'On Hold',
+                                    value: metrics.onHold,
+                                    icon: Clock,
+                                    color: 'slate',
+                                    isActive: filterDecision === 'On Hold',
+                                    onClick: () => { setFilterStatus('All'); setFilterDecision('On Hold'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                                }
+                            ];
 
-                const dynamicCards = [];
+                            const dynamicCards = [];
 
-                if (filterStatus !== 'All' && filterStatus !== 'Interested') {
-                    const statusCount = basePhase1Candidates.filter(c => c.status === filterStatus).length;
-                    dynamicCards.push({
-                        label: filterStatus,
-                        value: statusCount,
-                        icon: ThumbsDown,
-                        color: 'rose',
-                        onClick: () => { }
-                    });
-                }
+                            if (filterStatus !== 'All' && filterStatus !== 'Interested') {
+                                const statusCount = basePhase1Candidates.filter(c => c.status === filterStatus).length;
+                                dynamicCards.push({
+                                    label: filterStatus,
+                                    value: statusCount,
+                                    icon: ThumbsDown,
+                                    color: 'rose',
+                                    onClick: () => { }
+                                });
+                            }
 
-                if (filterDecision === 'Rejected') {
-                    dynamicCards.push({
-                        label: 'Rejected',
-                        value: metrics.rejected,
-                        icon: XCircle,
-                        color: 'rose',
-                        onClick: () => { }
-                    });
-                }
+                            if (filterDecision === 'Rejected') {
+                                dynamicCards.push({
+                                    label: 'Rejected',
+                                    value: metrics.rejected,
+                                    icon: XCircle,
+                                    color: 'rose',
+                                    onClick: () => { }
+                                });
+                            }
 
-                if (filterPreference !== 'All') {
-                    const prefCount = basePhase1Candidates.filter(c => c.preference === filterPreference).length;
-                    dynamicCards.push({
-                        label: filterPreference,
-                        value: prefCount,
-                        icon: UserCheck,
-                        color: 'indigo',
-                        onClick: () => { }
-                    });
-                }
+                            if (filterPreference !== 'All') {
+                                const prefCount = basePhase1Candidates.filter(c => c.preference === filterPreference).length;
+                                dynamicCards.push({
+                                    label: filterPreference,
+                                    value: prefCount,
+                                    icon: UserCheck,
+                                    color: 'indigo',
+                                    onClick: () => { }
+                                });
+                            }
 
-                if (filterRating !== 'All') {
-                    const ratedCount = basePhase1Candidates.filter(c => {
-                        const rounds = c.interviewRounds || [];
-                        const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                        if (ratedRounds.length === 0) return false;
-                        const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                        return avgRating >= Number(filterRating);
-                    }).length;
-                    dynamicCards.push({
-                        label: `${filterRating}+ Rating`,
-                        value: ratedCount,
-                        icon: ThumbsUp,
-                        color: 'amber',
-                        onClick: () => { }
-                    });
-                }
+                            if (filterRating !== 'All') {
+                                const ratedCount = basePhase1Candidates.filter(c => {
+                                    const rounds = c.interviewRounds || [];
+                                    const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                                    if (ratedRounds.length === 0) return false;
+                                    const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                                    return avgRating >= Number(filterRating);
+                                }).length;
+                                dynamicCards.push({
+                                    label: `${filterRating}+ Rating`,
+                                    value: ratedCount,
+                                    icon: ThumbsUp,
+                                    color: 'amber',
+                                    onClick: () => { }
+                                });
+                            }
 
-                if (filterInterviewStatus !== 'All' && filterInterviewStatus !== 'Scheduled') {
-                    const interviewCount = basePhase1Candidates.filter(candidate => {
-                        const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
-                        const hasFailed = rounds.some(r => r.status === 'Failed');
-                        const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
+                            if (filterInterviewStatus !== 'All' && filterInterviewStatus !== 'Scheduled') {
+                                const interviewCount = basePhase1Candidates.filter(candidate => {
+                                    const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
+                                    const hasFailed = rounds.some(r => r.status === 'Failed');
+                                    const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
 
-                        if (filterInterviewStatus === 'None') return rounds.length === 0;
-                        if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') return rounds.length > 0;
-                        if (filterInterviewStatus === 'Passed') return allPassed;
-                        if (filterInterviewStatus === 'Failed') return hasFailed;
-                        if (filterInterviewStatus === 'In_Process') return rounds.length > 0 && !hasFailed && (!candidate.decision || candidate.decision === 'None');
-                        return false;
-                    }).length;
-                    dynamicCards.push({
-                        label: filterInterviewStatus.replace('_', ' '),
-                        value: interviewCount,
-                        icon: Clock,
-                        color: 'amber',
-                        onClick: () => { }
-                    });
-                }
+                                    if (filterInterviewStatus === 'None') return rounds.length === 0;
+                                    if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') return rounds.length > 0;
+                                    if (filterInterviewStatus === 'Passed') return allPassed;
+                                    if (filterInterviewStatus === 'Failed') return hasFailed;
+                                    if (filterInterviewStatus === 'In_Process') return rounds.length > 0 && !hasFailed && (!candidate.decision || candidate.decision === 'None');
+                                    return false;
+                                }).length;
+                                dynamicCards.push({
+                                    label: filterInterviewStatus.replace('_', ' '),
+                                    value: interviewCount,
+                                    icon: Clock,
+                                    color: 'amber',
+                                    onClick: () => { }
+                                });
+                            }
 
-                if (filterExperience) {
-                    const expCount = basePhase1Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
-                    dynamicCards.push({
-                        label: `${filterExperience}+ Yrs Exp`,
-                        value: expCount,
-                        icon: Briefcase,
-                        color: 'blue',
-                        onClick: () => { }
-                    });
-                }
+                            if (filterExperience) {
+                                const expCount = basePhase1Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
+                                dynamicCards.push({
+                                    label: `${filterExperience}+ Yrs Exp`,
+                                    value: expCount,
+                                    icon: Briefcase,
+                                    color: 'blue',
+                                    onClick: () => { }
+                                });
+                            }
 
-                if (filterPulledBy !== 'All') {
-                    const pulledCount = basePhase1Candidates.filter(c => c.profilePulledBy === filterPulledBy).length;
-                    dynamicCards.push({
-                        label: `By: ${filterPulledBy.split(' ')[0]}`,
-                        value: pulledCount,
-                        icon: Users,
-                        color: 'indigo',
-                        onClick: () => { }
-                    });
-                }
+                            if (filterPulledBy !== 'All') {
+                                const pulledCount = basePhase1Candidates.filter(c => c.profilePulledBy === filterPulledBy).length;
+                                dynamicCards.push({
+                                    label: `By: ${filterPulledBy.split(' ')[0]}`,
+                                    value: pulledCount,
+                                    icon: Users,
+                                    color: 'indigo',
+                                    onClick: () => { }
+                                });
+                            }
 
-                if (filterTransferred === 'Transferred') {
-                    dynamicCards.push({
-                        label: 'Transferred',
-                        value: metrics.transferred,
-                        icon: Download,
-                        color: 'blue',
-                        onClick: () => { }
-                    });
-                }
+                            if (filterTransferred === 'Transferred') {
+                                dynamicCards.push({
+                                    label: 'Transferred',
+                                    value: metrics.transferred,
+                                    icon: Download,
+                                    color: 'blue',
+                                    onClick: () => { }
+                                });
+                            }
 
-                const allCards = [...funnelCards, ...dynamicCards];
-                const gridCols = `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
-
-                return (
-                    <div className={`grid ${gridCols} gap-4`}>
-                        {allCards.map((card, idx) => {
-                            const Icon = card.icon;
-                            const colorMap = {
-                                purple: 'border-b-purple-500 text-purple-600',
-                                green: 'border-b-green-500 text-green-600',
-                                amber: 'border-b-amber-500 text-amber-600',
-                                sky: 'border-b-sky-500 text-sky-600',
-                                slate: 'border-b-slate-500 text-slate-600',
-                                rose: 'border-b-rose-500 text-rose-600',
-                                indigo: 'border-b-indigo-500 text-indigo-600',
-                                blue: 'border-b-blue-500 text-blue-600'
-                            };
+                            const allCards = [...funnelCards, ...dynamicCards];
+                            const gridCols = selectedCandidateId ? 'grid-cols-1 md:grid-cols-2' : `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
 
                             return (
-                                <div
-                                    key={idx}
-                                    onClick={card.onClick}
-                                    className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
-                                >
-                                    <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
-                                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                    <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                <div className={`grid ${gridCols} gap-4`}>
+                                    {allCards.map((card, idx) => {
+                                        const Icon = card.icon;
+                                        const colorMap = {
+                                            purple: 'border-b-purple-500 text-purple-600',
+                                            green: 'border-b-green-500 text-green-600',
+                                            amber: 'border-b-amber-500 text-amber-600',
+                                            sky: 'border-b-sky-500 text-sky-600',
+                                            slate: 'border-b-slate-500 text-slate-600',
+                                            rose: 'border-b-rose-500 text-rose-600',
+                                            indigo: 'border-b-indigo-500 text-indigo-600',
+                                            blue: 'border-b-blue-500 text-blue-600'
+                                        };
+
+                                        return (
+                                            <div
+                                                key={idx}
+                                                onClick={card.onClick}
+                                                className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
+                                            >
+                                                <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
+                                                <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
+                                                <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             );
-                        })}
-                    </div>
-                );
-            })()
-                : activePhase === 2 ? (() => {
-                    const funnelCards = [
-                        {
-                            id: 'total',
-                            label: 'Total Profile Sent',
-                            value: phase2Metrics.totalShortlisted,
-                            icon: Users,
-                            color: 'purple',
-                            isActive: filterDecision === 'All' && filterInterviewStatus === 'All' && filterStatus === 'All',
-                            onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterStatus('All'); }
-                        },
-                        {
-                            id: 'shortlisted',
-                            label: 'Shortlisted',
-                            value: phase2Metrics.totalScreened,
-                            icon: UserCheck,
-                            color: 'sky',
-                            isActive: filterDecision === 'Shortlisted_Selected',
-                            onClick: () => { setFilterDecision('Shortlisted_Selected'); setFilterStatus('All'); }
-                        },
-                        {
-                            id: 'interviewScheduled',
-                            label: 'Interview Scheduled',
-                            value: phase2Metrics.interviewScheduled,
-                            icon: Clock,
-                            color: 'amber',
-                            isActive: filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled',
-                            onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('Pending'); }
-                        },
-                        {
-                            id: 'selected',
-                            label: 'Selected',
-                            value: phase2Metrics.selected,
-                            icon: CheckCircle,
-                            color: 'emerald',
-                            isActive: filterDecision === 'Selected',
-                            onClick: () => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }
-                        },
-                        {
-                            id: 'rejected',
-                            label: 'Rejected',
-                            value: phase2Metrics.rejected,
-                            icon: ThumbsDown,
-                            color: 'rose',
-                            isActive: filterDecision === 'Rejected',
-                            onClick: () => { setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }
-                        }
-                    ];
+                        })()
+                            : activePhase === 2 ? (() => {
+                                const funnelCards = [
+                                    {
+                                        id: 'total',
+                                        label: 'Total Profile Sent',
+                                        value: phase2Metrics.totalShortlisted,
+                                        icon: Users,
+                                        color: 'purple',
+                                        isActive: filterDecision === 'All' && filterInterviewStatus === 'All' && filterStatus === 'All',
+                                        onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterStatus('All'); }
+                                    },
+                                    {
+                                        id: 'shortlisted',
+                                        label: 'Shortlisted',
+                                        value: phase2Metrics.totalScreened,
+                                        icon: UserCheck,
+                                        color: 'sky',
+                                        isActive: filterDecision === 'Shortlisted_Selected',
+                                        onClick: () => { setFilterDecision('Shortlisted_Selected'); setFilterStatus('All'); }
+                                    },
+                                    {
+                                        id: 'interviewScheduled',
+                                        label: 'Interview Scheduled',
+                                        value: phase2Metrics.interviewScheduled,
+                                        icon: Clock,
+                                        color: 'amber',
+                                        isActive: filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled',
+                                        onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('Pending'); }
+                                    },
+                                    {
+                                        id: 'selected',
+                                        label: 'Selected',
+                                        value: phase2Metrics.selected,
+                                        icon: CheckCircle,
+                                        color: 'emerald',
+                                        isActive: filterDecision === 'Selected',
+                                        onClick: () => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }
+                                    },
+                                    {
+                                        id: 'rejected',
+                                        label: 'Rejected',
+                                        value: phase2Metrics.rejected,
+                                        icon: ThumbsDown,
+                                        color: 'rose',
+                                        isActive: filterDecision === 'Rejected',
+                                        onClick: () => { setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }
+                                    }
+                                ];
 
-                    const dynamicCards = [];
+                                const dynamicCards = [];
 
-                    if (filterPreference !== 'All') {
-                        const prefCount = basePhase2Candidates.filter(c => c.preference === filterPreference).length;
-                        dynamicCards.push({
-                            label: filterPreference,
-                            value: prefCount,
-                            icon: UserCheck,
-                            color: 'indigo',
-                            onClick: () => { }
-                        });
-                    }
+                                if (filterPreference !== 'All') {
+                                    const prefCount = basePhase2Candidates.filter(c => c.preference === filterPreference).length;
+                                    dynamicCards.push({
+                                        label: filterPreference,
+                                        value: prefCount,
+                                        icon: UserCheck,
+                                        color: 'indigo',
+                                        onClick: () => { }
+                                    });
+                                }
 
-                    if (filterRating !== 'All') {
-                        const ratedCount = basePhase2Candidates.filter(c => {
-                            const rounds = c.interviewRounds || [];
-                            const ratedRounds = rounds.filter(r => (r.phase || 1) === 2 && r.rating && r.rating > 0);
-                            if (ratedRounds.length === 0) return false;
-                            const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                            return avgRating >= Number(filterRating);
-                        }).length;
-                        dynamicCards.push({
-                            label: `${filterRating}+ Rating`,
-                            value: ratedCount,
-                            icon: ThumbsUp,
-                            color: 'amber',
-                            onClick: () => { }
-                        });
-                    }
+                                if (filterRating !== 'All') {
+                                    const ratedCount = basePhase2Candidates.filter(c => {
+                                        const rounds = c.interviewRounds || [];
+                                        const ratedRounds = rounds.filter(r => (r.phase || 1) === 2 && r.rating && r.rating > 0);
+                                        if (ratedRounds.length === 0) return false;
+                                        const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                                        return avgRating >= Number(filterRating);
+                                    }).length;
+                                    dynamicCards.push({
+                                        label: `${filterRating}+ Rating`,
+                                        value: ratedCount,
+                                        icon: ThumbsUp,
+                                        color: 'amber',
+                                        onClick: () => { }
+                                    });
+                                }
 
-                    if (filterExperience) {
-                        const expCount = basePhase2Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
-                        dynamicCards.push({
-                            label: `${filterExperience}+ Yrs Exp`,
-                            value: expCount,
-                            icon: Briefcase,
-                            color: 'blue',
-                            onClick: () => { }
-                        });
-                    }
+                                if (filterExperience) {
+                                    const expCount = basePhase2Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
+                                    dynamicCards.push({
+                                        label: `${filterExperience}+ Yrs Exp`,
+                                        value: expCount,
+                                        icon: Briefcase,
+                                        color: 'blue',
+                                        onClick: () => { }
+                                    });
+                                }
 
-                    const allCards = [...funnelCards, ...dynamicCards];
-                    const gridCols = `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
-
-                    return (
-                        <div className={`grid ${gridCols} gap-4`}>
-                            {allCards.map((card, idx) => {
-                                const Icon = card.icon;
-                                const colorMap = {
-                                    purple: 'border-b-purple-500 text-purple-600',
-                                    sky: 'border-b-sky-500 text-sky-600',
-                                    amber: 'border-b-amber-500 text-amber-600',
-                                    emerald: 'border-b-emerald-500 text-emerald-600',
-                                    rose: 'border-b-rose-500 text-rose-600',
-                                    indigo: 'border-b-indigo-500 text-indigo-600',
-                                    blue: 'border-b-blue-500 text-blue-600'
-                                };
+                                const allCards = [...funnelCards, ...dynamicCards];
+                                const gridCols = selectedCandidateId ? 'grid-cols-1 md:grid-cols-2' : `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
 
                                 return (
-                                    <div
-                                        key={idx}
-                                        onClick={card.onClick}
-                                        className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
-                                    >
-                                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
-                                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                        <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                    <div className={`grid ${gridCols} gap-4`}>
+                                        {allCards.map((card, idx) => {
+                                            const Icon = card.icon;
+                                            const colorMap = {
+                                                purple: 'border-b-purple-500 text-purple-600',
+                                                sky: 'border-b-sky-500 text-sky-600',
+                                                amber: 'border-b-amber-500 text-amber-600',
+                                                emerald: 'border-b-emerald-500 text-emerald-600',
+                                                rose: 'border-b-rose-500 text-rose-600',
+                                                indigo: 'border-b-indigo-500 text-indigo-600',
+                                                blue: 'border-b-blue-500 text-blue-600'
+                                            };
+
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    onClick={card.onClick}
+                                                    className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
+                                                >
+                                                    <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
+                                                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
+                                                    <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 );
-                            })}
-                        </div>
-                    );
-                })()
-                    : (() => {
-                        const funnelCards = [
-                            {
-                                id: 'total',
-                                label: 'Total Candidates',
-                                value: phase3Metrics.total,
-                                icon: Users,
-                                color: 'purple',
-                                isActive: filterDecision === 'All' && filterStatus === 'All',
-                                onClick: () => { setFilterDecision('All'); setFilterStatus('All'); }
-                            },
-                            {
-                                id: 'offerSent',
-                                label: 'Offer Sent',
-                                value: phase3Metrics.offerSent,
-                                icon: FileText,
-                                color: 'sky',
-                                isActive: filterDecision === 'Offer Sent',
-                                onClick: () => { setFilterDecision('Offer Sent'); setFilterStatus('All'); }
-                            },
-                            {
-                                id: 'offerAccepted',
-                                label: 'Offer Accepted',
-                                value: phase3Metrics.offerAccepted,
-                                icon: ThumbsUp,
-                                color: 'amber',
-                                isActive: filterDecision === 'Offer Accepted',
-                                onClick: () => { setFilterDecision('Offer Accepted'); setFilterInterviewStatus('All'); }
-                            },
-                            {
-                                id: 'joined',
-                                label: 'Joined',
-                                value: phase3Metrics.joined,
-                                icon: CheckCircle,
-                                color: 'emerald',
-                                isActive: filterDecision === 'Joined',
-                                onClick: () => { setFilterDecision('Joined'); setFilterInterviewStatus('All'); }
-                            },
-                            {
-                                id: 'noShow',
-                                label: 'No Show / Declined',
-                                value: phase3Metrics.noShow,
-                                icon: XCircle,
-                                color: 'rose',
-                                isActive: filterDecision === 'No Show_Offer Declined',
-                                onClick: () => { setFilterDecision('No Show_Offer Declined'); setFilterInterviewStatus('All'); }
-                            }
-                        ];
+                            })()
+                                : (() => {
+                                    const funnelCards = [
+                                        {
+                                            id: 'total',
+                                            label: 'Total Candidates',
+                                            value: phase3Metrics.total,
+                                            icon: Users,
+                                            color: 'purple',
+                                            isActive: filterDecision === 'All' && filterStatus === 'All',
+                                            onClick: () => { setFilterDecision('All'); setFilterStatus('All'); }
+                                        },
+                                        {
+                                            id: 'offerSent',
+                                            label: 'Offer Sent',
+                                            value: phase3Metrics.offerSent,
+                                            icon: FileText,
+                                            color: 'sky',
+                                            isActive: filterDecision === 'Offer Sent',
+                                            onClick: () => { setFilterDecision('Offer Sent'); setFilterStatus('All'); }
+                                        },
+                                        {
+                                            id: 'offerAccepted',
+                                            label: 'Offer Accepted',
+                                            value: phase3Metrics.offerAccepted,
+                                            icon: ThumbsUp,
+                                            color: 'amber',
+                                            isActive: filterDecision === 'Offer Accepted',
+                                            onClick: () => { setFilterDecision('Offer Accepted'); setFilterInterviewStatus('All'); }
+                                        },
+                                        {
+                                            id: 'joined',
+                                            label: 'Joined',
+                                            value: phase3Metrics.joined,
+                                            icon: CheckCircle,
+                                            color: 'emerald',
+                                            isActive: filterDecision === 'Joined',
+                                            onClick: () => { setFilterDecision('Joined'); setFilterInterviewStatus('All'); }
+                                        },
+                                        {
+                                            id: 'noShow',
+                                            label: 'No Show / Declined',
+                                            value: phase3Metrics.noShow,
+                                            icon: XCircle,
+                                            color: 'rose',
+                                            isActive: filterDecision === 'No Show_Offer Declined',
+                                            onClick: () => { setFilterDecision('No Show_Offer Declined'); setFilterInterviewStatus('All'); }
+                                        }
+                                    ];
 
-                        const dynamicCards = [];
+                                    const dynamicCards = [];
 
-                        if (filterPreference !== 'All') {
-                            const prefCount = basePhase3Candidates.filter(c => c.preference === filterPreference).length;
-                            dynamicCards.push({
-                                label: filterPreference,
-                                value: prefCount,
-                                icon: UserCheck,
-                                color: 'indigo',
-                                onClick: () => { }
-                            });
-                        }
+                                    if (filterPreference !== 'All') {
+                                        const prefCount = basePhase3Candidates.filter(c => c.preference === filterPreference).length;
+                                        dynamicCards.push({
+                                            label: filterPreference,
+                                            value: prefCount,
+                                            icon: UserCheck,
+                                            color: 'indigo',
+                                            onClick: () => { }
+                                        });
+                                    }
 
-                        if (filterRating !== 'All') {
-                            const ratedCount = basePhase3Candidates.filter(c => {
-                                const rounds = c.interviewRounds || [];
-                                const ratedRounds = rounds.filter(r => (r.phase || 1) === 3 && r.rating && r.rating > 0);
-                                if (ratedRounds.length === 0) return false;
-                                const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                                return avgRating >= Number(filterRating);
-                            }).length;
-                            dynamicCards.push({
-                                label: `${filterRating}+ Rating`,
-                                value: ratedCount,
-                                icon: ThumbsUp,
-                                color: 'amber',
-                                onClick: () => { }
-                            });
-                        }
+                                    if (filterRating !== 'All') {
+                                        const ratedCount = basePhase3Candidates.filter(c => {
+                                            const rounds = c.interviewRounds || [];
+                                            const ratedRounds = rounds.filter(r => (r.phase || 1) === 3 && r.rating && r.rating > 0);
+                                            if (ratedRounds.length === 0) return false;
+                                            const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                                            return avgRating >= Number(filterRating);
+                                        }).length;
+                                        dynamicCards.push({
+                                            label: `${filterRating}+ Rating`,
+                                            value: ratedCount,
+                                            icon: ThumbsUp,
+                                            color: 'amber',
+                                            onClick: () => { }
+                                        });
+                                    }
 
-                        if (filterExperience) {
-                            const expCount = basePhase3Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
-                            dynamicCards.push({
-                                label: `${filterExperience}+ Yrs Exp`,
-                                value: expCount,
-                                icon: Briefcase,
-                                color: 'blue',
-                                onClick: () => { }
-                            });
-                        }
+                                    if (filterExperience) {
+                                        const expCount = basePhase3Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
+                                        dynamicCards.push({
+                                            label: `${filterExperience}+ Yrs Exp`,
+                                            value: expCount,
+                                            icon: Briefcase,
+                                            color: 'blue',
+                                            onClick: () => { }
+                                        });
+                                    }
 
-                        const allCards = [...funnelCards, ...dynamicCards];
-                        const gridCols = `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
-
-                        return (
-                            <div className={`grid ${gridCols} gap-4`}>
-                                {allCards.map((card, idx) => {
-                                    const Icon = card.icon;
-                                    const colorMap = {
-                                        purple: 'border-b-purple-500 text-purple-600',
-                                        sky: 'border-b-sky-500 text-sky-600',
-                                        amber: 'border-b-amber-500 text-amber-600',
-                                        emerald: 'border-b-emerald-500 text-emerald-600',
-                                        rose: 'border-b-rose-500 text-rose-600',
-                                        indigo: 'border-b-indigo-500 text-indigo-600',
-                                        blue: 'border-b-blue-500 text-blue-600'
-                                    };
+                                    const allCards = [...funnelCards, ...dynamicCards];
+                                    const gridCols = selectedCandidateId ? 'grid-cols-1 md:grid-cols-2' : `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
 
                                     return (
-                                        <div
-                                            key={idx}
-                                            onClick={card.onClick}
-                                            className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
-                                        >
-                                            <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
-                                            <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                            <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                        <div className={`grid ${gridCols} gap-4`}>
+                                            {allCards.map((card, idx) => {
+                                                const Icon = card.icon;
+                                                const colorMap = {
+                                                    purple: 'border-b-purple-500 text-purple-600',
+                                                    sky: 'border-b-sky-500 text-sky-600',
+                                                    amber: 'border-b-amber-500 text-amber-600',
+                                                    emerald: 'border-b-emerald-500 text-emerald-600',
+                                                    rose: 'border-b-rose-500 text-rose-600',
+                                                    indigo: 'border-b-indigo-500 text-indigo-600',
+                                                    blue: 'border-b-blue-500 text-blue-600'
+                                                };
+
+                                                return (
+                                                    <div
+                                                        key={idx}
+                                                        onClick={card.onClick}
+                                                        className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
+                                                    >
+                                                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
+                                                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
+                                                        <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     );
-                                })}
-                            </div>
-                        );
-                    })()}
+                                })())}
 
-            {/* Filters */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-end">
-                <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Preference</label>
-                    <select
-                        value={filterPreference}
-                        onChange={(e) => setFilterPreference(e.target.value)}
-                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        <option value="All">All Preferences</option>
-                        <option value="Highly Recommended">Highly Recommended</option>
-                        <option value="Recommended">Recommended</option>
-                        <option value="Neutral / Average">Neutral / Average</option>
-                        <option value="Not Recommended">Not Recommended</option>
-                        <option value="Very Poor">Very Poor</option>
-                    </select>
+                    {/* Filters - Only show when no candidate is selected */}
+                    {!selectedCandidateId && (
+                        <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-end">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 mb-1">Preference</label>
+                                <select
+                                    value={filterPreference}
+                                    onChange={(e) => setFilterPreference(e.target.value)}
+                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="All">All Preferences</option>
+                                    <option value="Highly Recommended">Highly Recommended</option>
+                                    <option value="Recommended">Recommended</option>
+                                    <option value="Neutral / Average">Neutral / Average</option>
+                                    <option value="Not Recommended">Not Recommended</option>
+                                    <option value="Very Poor">Very Poor</option>
+                                </select>
+                            </div>
+                            {activePhase === 1 && (
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
+                                    <select
+                                        value={filterStatus}
+                                        onChange={(e) => setFilterStatus(e.target.value)}
+                                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="All">All Statuses</option>
+                                        <option value="Interested">Interested</option>
+                                        <option value="Not Interested">Not Interested</option>
+                                        <option value="Not Relevant">Not Relevant</option>
+                                        <option value="Not Picking">Not Picking</option>
+                                    </select>
+                                </div>
+                            )}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 mb-1">Decision</label>
+                                <select
+                                    value={filterDecision}
+                                    onChange={(e) => setFilterDecision(e.target.value)}
+                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="All">All Decisions</option>
+                                    {activePhase === 1 && (
+                                        <>
+                                            <option value="Shortlisted">Shortlisted</option>
+                                            <option value="Rejected">Rejected</option>
+                                            <option value="On Hold">On Hold</option>
+                                            <option value="None">None</option>
+                                        </>
+                                    )}
+                                    {activePhase === 2 && (
+                                        <>
+                                            <option value="Selected">Selected</option>
+                                            <option value="Shortlisted">Shortlisted (Screened)</option>
+                                            <option value="Rejected">Rejected</option>
+                                            <option value="On Hold">On Hold</option>
+                                        </>
+                                    )}
+                                    {activePhase === 3 && (
+                                        <>
+                                            <option value="Offer Sent">Offer Sent</option>
+                                            <option value="Offer Accepted">Offer Accepted</option>
+                                            <option value="Joined">Joined</option>
+                                            <option value="No Show">No Show</option>
+                                            <option value="Offer Declined">Offer Declined</option>
+                                        </>
+                                    )}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 mb-1">Interview Status</label>
+                                <select
+                                    value={filterInterviewStatus}
+                                    onChange={(e) => setFilterInterviewStatus(e.target.value)}
+                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                                >
+                                    <option value="All">All Interviews</option>
+                                    <option value="None">None Scheduled</option>
+                                    <option value="In_Process">In Interviews (Active)</option>
+                                    <option value="Scheduled">Has Interviews (All)</option>
+                                    <option value="Pending">In Progress / Pending</option>
+                                    <option value="Passed">All Passed</option>
+                                    <option value="Failed">Failed</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 mb-1">Min Avg Rating</label>
+                                <select
+                                    value={filterRating}
+                                    onChange={(e) => setFilterRating(e.target.value)}
+                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
+                                >
+                                    <option value="All">All Ratings</option>
+                                    <option value="9">9+ (Excellent)</option>
+                                    <option value="7">7+ (Good)</option>
+                                    <option value="5">5+ (Average)</option>
+                                    <option value="3">3+ (Below Avg)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 mb-1">Pulled By</label>
+                                <select
+                                    value={filterPulledBy}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setFilterPulledBy(val);
+                                        if (val !== 'All') {
+                                            setFilterStatus('All');
+                                            setFilterDecision('All');
+                                            setFilterInterviewStatus('All');
+                                        }
+                                    }}
+                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                                >
+                                    <option value="All">All Users</option>
+                                    {users.map(u => (
+                                        <option key={u._id} value={`${u.firstName || ''} ${u.lastName || ''}`.trim()}>
+                                            {u.firstName} {u.lastName}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            {!isLegacyView && candidates.some(c => c.isTransferred) && (
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Origin</label>
+                                    <select
+                                        value={filterTransferred}
+                                        onChange={(e) => setFilterTransferred(e.target.value)}
+                                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                                    >
+                                        <option value="All">All Origins</option>
+                                        <option value="New">New Applications</option>
+                                        <option value="Transferred">Transferred</option>
+                                    </select>
+                                </div>
+                            )}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 mb-1">Min Experience (Yrs)</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="e.g. 2"
+                                    value={filterExperience}
+                                    onChange={(e) => setFilterExperience(e.target.value)}
+                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
+                                />
+                            </div>
+                            {(filterPreference !== 'All' || (activePhase === 1 && filterStatus !== 'Interested') || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
+                                <button
+                                    onClick={() => {
+                                        setFilterPreference('All');
+                                        if (activePhase === 1) setFilterStatus('Interested');
+                                        else setFilterStatus('All');
+                                        setFilterDecision('All');
+                                        setFilterExperience('');
+                                        setFilterInterviewStatus('All');
+                                        setFilterRating('All');
+                                        setFilterPulledBy('All');
+                                        setFilterTransferred('All');
+                                    }}
+                                    className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
+                                >
+                                    Clear Filters
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+
+                    {/* Candidates Table */}
+                    {candidates.length === 0 ? (
+                        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+                            <Upload className="mx-auto text-slate-300 mb-4" size={48} />
+                            <h3 className="text-lg font-semibold text-slate-700 mb-2">No Candidates Yet</h3>
+                            <p className="text-slate-500 mb-4">Start by uploading candidate resumes and filling their details</p>
+                            {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                                <button
+                                    onClick={handleAddNew}
+                                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                                >
+                                    Upload First Resume
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-xl border border-slate-200 mb-24">
+                            <div className="w-full overflow-x-auto">
+                                <div className={selectedCandidateId ? "min-w-full" : "min-w-[1100px]"}>
+                                    <table className="w-full">
+                                        <thead className="bg-slate-50 border-b border-slate-200">
+                                            <tr key="header-row">
+                                                <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Preference</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled By</th>}
+                                                <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-200">
+                                            {paginatedCandidates.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="8" className="px-4 py-8 text-center text-slate-500">
+                                                        No candidates match the selected filters.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                paginatedCandidates.map((candidate) => (
+                                                    <tr 
+                                                        key={candidate._id} 
+                                                        onClick={() => handleSelectCandidate(candidate._id)}
+                                                        className={`transition-colors border-b border-slate-100 last:border-0 cursor-pointer ${
+                                                            selectedCandidateId === candidate._id 
+                                                                ? 'bg-blue-50 ring-1 ring-inset ring-blue-100' 
+                                                                : 'hover:bg-slate-50 bg-white'
+                                                        }`}
+                                                    >
+                                                        <td className="px-4 py-4 align-top">
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-[13px] font-bold text-slate-700 leading-tight">
+                                                                    {candidate.candidateName.split(' ')[0]}<br />
+                                                                    {candidate.candidateName.split(' ').slice(1).join(' ')}
+                                                                </span>
+                                                                {candidate.isTransferred && !isLegacyView && (
+                                                                    <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded font-bold w-max uppercase tracking-wider mt-1 border border-blue-200" title="Moved from an older requisition">
+                                                                        Transferred
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        {!selectedCandidateId && (
+                                                            <td className="px-4 py-4 align-top">
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-[12px] text-slate-600 font-medium">{candidate.email}</span>
+                                                                    <span className="text-[12px] text-slate-500">{candidate.mobile}</span>
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                        {!selectedCandidateId && (
+                                                            <td className="px-4 py-4 align-top">
+                                                                <span className="text-[13px] font-bold text-slate-700">{candidate.totalExperience || '-'} yrs</span>
+                                                            </td>
+                                                        )}
+                                                        {!selectedCandidateId && (
+                                                            <td className="px-4 py-4 align-top">
+                                                                <div className="flex flex-col gap-0.5 text-[13px]">
+                                                                    {candidate.preference ? (
+                                                                        <>
+                                                                            <span className="text-slate-700 font-medium">
+                                                                                {candidate.preference.split(' ')[0]}
+                                                                            </span>
+                                                                            <span className="text-slate-700 font-medium">
+                                                                                {candidate.preference.split(' ').slice(1).join(' ')}
+                                                                            </span>
+                                                                        </>
+                                                                    ) : (
+                                                                        <span className="text-slate-400 italic">-</span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                        {!selectedCandidateId && (
+                                                            <td className="px-4 py-4 align-top">
+                                                            {(() => {
+                                                                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
+
+                                                                const summary = getInterviewStatusSummary(rounds);
+
+                                                                const hasFailed = rounds.some(r => r.status === 'Failed');
+                                                                const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                                                                let avgRating = null;
+
+                                                                if (!hasFailed && ratedRounds.length > 0) {
+                                                                    const total = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
+                                                                    avgRating = Number.isInteger(total) ? total.toString() : total.toFixed(1);
+                                                                }
+
+                                                                return (
+                                                                    <div className="flex flex-col gap-1.5 items-start">
+                                                                        <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold tracking-wide ${summary.color}`}>
+                                                                            {summary.label}
+                                                                        </span>
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
+                                                                                {rounds.length} rounds total
+                                                                            </span>
+                                                                            <div className="flex flex-wrap gap-1 mt-0.5">
+                                                                                {ratedRounds.length > 0 && ratedRounds.slice(0, 2).map((r, idx) => (
+                                                                                    <span key={r._id || idx} title={r.roundName} className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                                                                        R{idx + 1}: {r.rating}/10
+                                                                                    </span>
+                                                                                ))}
+                                                                                {ratedRounds.length > 2 && (
+                                                                                    <span
+                                                                                        className="text-[10px] font-bold text-amber-600 flex items-center justify-center bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors"
+                                                                                        onClick={(e) => { e.stopPropagation(); handleView(candidate); }}
+                                                                                        title="View all rounds"
+                                                                                    >
+                                                                                        ...
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                )
+                                                            })()}
+                                                            </td>
+                                                        )}
+                                                        {!selectedCandidateId && (
+                                                            <td className="px-4 py-4 align-top">
+                                                                <div className="relative inline-block w-full max-w-[110px]">
+                                                                {activePhase === 1 ? (
+                                                                    <select
+                                                                        value={candidate.decision || 'None'}
+                                                                        onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
+                                                                        className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                    >
+                                                                        <option value="None" className="text-slate-600">None</option>
+                                                                        <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
+                                                                        <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                                        <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
+                                                                    </select>
+                                                                ) : activePhase === 2 ? (
+                                                                    <select
+                                                                        value={candidate.phase2Decision || 'None'}
+                                                                        onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
+                                                                        className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                    >
+                                                                        <option value="None" className="text-slate-600">None</option>
+                                                                        <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
+                                                                        <option value="Selected" className="text-purple-600 font-bold">Selected</option>
+                                                                        <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                                        <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
+                                                                    </select>
+                                                                ) : (
+                                                                    <select
+                                                                        value={candidate.phase3Decision || 'None'}
+                                                                        onChange={(e) => handlePhase3DecisionChange(candidate._id, e.target.value)}
+                                                                        className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase3Decision || 'None')}`}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                    >
+                                                                        <option value="None" className="text-slate-600">None</option>
+                                                                        <option value="Offer Sent" className="text-blue-600 font-bold">Offer Sent</option>
+                                                                        <option value="Offer Accepted" className="text-amber-600 font-bold">Offer Accepted</option>
+                                                                        <option value="Joined" className="text-emerald-600 font-bold">Joined</option>
+                                                                        <option value="No Show" className="text-rose-600 font-bold">No Show</option>
+                                                                        <option value="Offer Declined" className="text-rose-600 font-bold">Offer Declined</option>
+                                                                    </select>
+                                                                )}
+                                                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                                                                    <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                                                        <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                                                                    </svg>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        )}
+                                                        {!selectedCandidateId && (
+                                                            <td className="px-4 py-4 align-top">
+                                                                <div className="flex flex-col gap-0.5 text-[12px] text-slate-500 font-medium whitespace-nowrap">
+                                                                    <span
+                                                                        className="font-bold text-blue-600 mb-0.5 max-w-[120px] truncate cursor-pointer hover:underline"
+                                                                        title={candidate.profilePulledBy || '-'}
+                                                                        onClick={() => candidate.profilePulledBy && navigate(`/ta/user-dashboard/${encodeURIComponent(candidate.profilePulledBy)}`)}
+                                                                    >
+                                                                        {candidate.profilePulledBy || '-'}
+                                                                    </span>
+                                                                    <span>{format(new Date(candidate.uploadedAt), 'MMM dd, yyyy')}</span>
+                                                                    <span className="text-[10px] mt-0.5">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</span>
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                        <td className="px-4 py-4 align-top text-center">
+                                                            <button
+                                                                onClick={(e) => toggleMenu(e, candidate._id)}
+                                                                className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors relative"
+                                                            >
+                                                                <MoreVertical size={18} />
+                                                            </button>
+
+                                                            {/* Dropdown Menu */}
+                                                            {activeMenu === candidate._id && typeof document !== 'undefined' && createPortal(
+                                                                <div
+                                                                    className="fixed z-[9999] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
+                                                                    style={menuPosition}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            handleView(candidate);
+                                                                            setActiveMenu(null);
+                                                                        }}
+                                                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                                                    >
+                                                                        <Eye size={16} className="text-slate-500" />
+                                                                        View Details
+                                                                    </button>
+
+                                                                    <a
+                                                                        href={candidate.resumeUrl}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                                                        onClick={() => setActiveMenu(null)}
+                                                                    >
+                                                                        <FileText size={16} className="text-slate-500" />
+                                                                        View Resume
+                                                                    </a>
+
+                                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleEdit(candidate);
+                                                                                setActiveMenu(null);
+                                                                            }}
+                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                                                        >
+                                                                            <Edit size={16} className="text-slate-500" />
+                                                                            Edit Candidate
+                                                                        </button>
+                                                                    )}
+
+                                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleTransfer(candidate._id);
+                                                                                setActiveMenu(null);
+                                                                            }}
+                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
+                                                                        >
+                                                                            <Briefcase size={16} className="text-blue-500" />
+                                                                            Transfer to Active Requisition
+                                                                        </button>
+                                                                    )}
+
+                                                                    {activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None' && !candidate.isTransferredToOnboarding && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleTransferToOnboarding(candidate._id);
+                                                                                setActiveMenu(null);
+                                                                            }}
+                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50 transition-colors text-left font-bold"
+                                                                        >
+                                                                            <CheckCircle size={16} className="text-emerald-500" />
+                                                                            Transfer to Onboarding
+                                                                        </button>
+                                                                    )}
+
+                                                                    <div className="border-t border-slate-100 my-1"></div>
+
+                                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.delete')) && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleDelete(candidate._id);
+                                                                                setActiveMenu(null);
+                                                                            }}
+                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
+                                                                        >
+                                                                            <Trash2 size={16} />
+                                                                            Delete Candidate
+                                                                        </button>
+                                                                    )}
+                                                                </div>,
+                                                                document.body
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Pagination Controls */}
+                            {!loading && filteredCandidates.length > 0 && (
+                                <div className="flex justify-end items-center mt-6 gap-4 pr-4 pb-4">
+                                    <button
+                                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                                        disabled={page === 1}
+                                        className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                                    >
+                                        Previous
+                                    </button>
+                                    <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
+                                        Page {page} of {totalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={page === totalPages}
+                                        className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
-                {activePhase === 1 && (
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
-                        <select
-                            value={filterStatus}
-                            onChange={(e) => setFilterStatus(e.target.value)}
-                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            <option value="All">All Statuses</option>
-                            <option value="Interested">Interested</option>
-                            <option value="Not Interested">Not Interested</option>
-                            <option value="Not Relevant">Not Relevant</option>
-                            <option value="Not Picking">Not Picking</option>
-                        </select>
+
+                {/* Right Side: Candidate Details Side Panel */}
+                {selectedCandidateId && (
+                    <div className="w-full lg:w-[72%] sticky top-20 h-[calc(100vh-100px)] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col z-10 animate-in slide-in-from-right duration-300">
+                        {/* Side Panel Header */}
+                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
+                            <h2 className="text-lg font-bold text-slate-800">Quick Profile View</h2>
+                            <button 
+                                onClick={handleCloseCandidate}
+                                className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500 hover:text-slate-800 shadow-sm bg-white border border-slate-200"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        {/* Scrollable Content Area */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50">
+                            <CandidateDetails 
+                                key={selectedCandidateId}
+                                candidateId={selectedCandidateId} 
+                                hiringRequestId={hiringRequestId} 
+                                isSidePanel={true} 
+                                onUpdate={fetchCandidates}
+                            />
+                        </div>
                     </div>
-                )}
-                <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Decision</label>
-                    <select
-                        value={filterDecision}
-                        onChange={(e) => setFilterDecision(e.target.value)}
-                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        <option value="All">All Decisions</option>
-                        {activePhase === 1 && (
-                            <>
-                                <option value="Shortlisted">Shortlisted</option>
-                                <option value="Rejected">Rejected</option>
-                                <option value="On Hold">On Hold</option>
-                                <option value="None">None</option>
-                            </>
-                        )}
-                        {activePhase === 2 && (
-                            <>
-                                <option value="Selected">Selected</option>
-                                <option value="Shortlisted">Shortlisted (Screened)</option>
-                                <option value="Rejected">Rejected</option>
-                                <option value="On Hold">On Hold</option>
-                            </>
-                        )}
-                        {activePhase === 3 && (
-                            <>
-                                <option value="Offer Sent">Offer Sent</option>
-                                <option value="Offer Accepted">Offer Accepted</option>
-                                <option value="Joined">Joined</option>
-                                <option value="No Show">No Show</option>
-                                <option value="Offer Declined">Offer Declined</option>
-                            </>
-                        )}
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Interview Status</label>
-                    <select
-                        value={filterInterviewStatus}
-                        onChange={(e) => setFilterInterviewStatus(e.target.value)}
-                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                    >
-                        <option value="All">All Interviews</option>
-                        <option value="None">None Scheduled</option>
-                        <option value="In_Process">In Interviews (Active)</option>
-                        <option value="Scheduled">Has Interviews (All)</option>
-                        <option value="Pending">In Progress / Pending</option>
-                        <option value="Passed">All Passed</option>
-                        <option value="Failed">Failed</option>
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Min Avg Rating</label>
-                    <select
-                        value={filterRating}
-                        onChange={(e) => setFilterRating(e.target.value)}
-                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
-                    >
-                        <option value="All">All Ratings</option>
-                        <option value="9">9+ (Excellent)</option>
-                        <option value="7">7+ (Good)</option>
-                        <option value="5">5+ (Average)</option>
-                        <option value="3">3+ (Below Avg)</option>
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Pulled By</label>
-                    <select
-                        value={filterPulledBy}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            setFilterPulledBy(val);
-                            if (val !== 'All') {
-                                setFilterStatus('All');
-                                setFilterDecision('All');
-                                setFilterInterviewStatus('All');
-                            }
-                        }}
-                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                    >
-                        <option value="All">All Users</option>
-                        {users.map(u => (
-                            <option key={u._id} value={`${u.firstName || ''} ${u.lastName || ''}`.trim()}>
-                                {u.firstName} {u.lastName}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-                {!isLegacyView && candidates.some(c => c.isTransferred) && (
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Origin</label>
-                        <select
-                            value={filterTransferred}
-                            onChange={(e) => setFilterTransferred(e.target.value)}
-                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                        >
-                            <option value="All">All Origins</option>
-                            <option value="New">New Applications</option>
-                            <option value="Transferred">Transferred</option>
-                        </select>
-                    </div>
-                )}
-                <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">Min Experience (Yrs)</label>
-                    <input
-                        type="number"
-                        min="0"
-                        placeholder="e.g. 2"
-                        value={filterExperience}
-                        onChange={(e) => setFilterExperience(e.target.value)}
-                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
-                    />
-                </div>
-                {(filterPreference !== 'All' || (activePhase === 1 && filterStatus !== 'Interested') || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
-                    <button
-                        onClick={() => {
-                            setFilterPreference('All');
-                            if (activePhase === 1) setFilterStatus('Interested');
-                            else setFilterStatus('All');
-                            setFilterDecision('All');
-                            setFilterExperience('');
-                            setFilterInterviewStatus('All');
-                            setFilterRating('All');
-                            setFilterPulledBy('All');
-                            setFilterTransferred('All');
-                        }}
-                        className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
-                    >
-                        Clear Filters
-                    </button>
                 )}
             </div>
 
-            {/* Candidates Table */}
-            {candidates.length === 0 ? (
-                <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-                    <Upload className="mx-auto text-slate-300 mb-4" size={48} />
-                    <h3 className="text-lg font-semibold text-slate-700 mb-2">No Candidates Yet</h3>
-                    <p className="text-slate-500 mb-4">Start by uploading candidate resumes and filling their details</p>
-                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
-                        <button
-                            onClick={handleAddNew}
-                            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                        >
-                            Upload First Resume
-                        </button>
-                    )}
-                </div>
-            ) : (
-                <div className="bg-white rounded-xl border border-slate-200 mb-24">
-                    <div className="w-full overflow-x-auto">
-                        <div className="min-w-[1100px]">
-                            <table className="w-full">
-                                <thead className="bg-slate-50 border-b border-slate-200">
-                                    <tr key="header-row">
-                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
-                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>
-                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>
-                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Preference</th>
-                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>
-                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>
-                                        <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled By</th>
-                                        <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200">
-                                    {paginatedCandidates.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="8" className="px-4 py-8 text-center text-slate-500">
-                                                No candidates match the selected filters.
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        paginatedCandidates.map((candidate) => (
-                                            <tr key={candidate._id} className="hover:bg-slate-50 bg-white transition-colors border-b border-slate-100 last:border-0">
-                                                <td className="px-4 py-4 align-top">
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="text-[13px] font-bold text-slate-700 leading-tight">
-                                                            {candidate.candidateName.split(' ')[0]}<br />
-                                                            {candidate.candidateName.split(' ').slice(1).join(' ')}
-                                                        </span>
-                                                        {candidate.isTransferred && !isLegacyView && (
-                                                            <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded font-bold w-max uppercase tracking-wider mt-1 border border-blue-200" title="Moved from an older requisition">
-                                                                Transferred
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-4 align-top">
-                                                    <div className="flex flex-col gap-1 text-[12px]">
-                                                        <span className="text-slate-500 font-medium">{candidate.email}</span>
-                                                        <span className="text-slate-500 font-medium">{candidate.mobile}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-4 align-top">
-                                                    <span className="text-[13px] font-semibold text-slate-700">{candidate.totalExperience} yrs</span>
-                                                </td>
-                                                <td className="px-4 py-4 align-top">
-                                                    <div className="flex flex-col gap-0.5 text-[13px]">
-                                                        {candidate.preference ? (
-                                                            <>
-                                                                <span className="text-slate-700 font-medium">
-                                                                    {candidate.preference.split(' ')[0]}
-                                                                </span>
-                                                                <span className="text-slate-700 font-medium">
-                                                                    {candidate.preference.split(' ').slice(1).join(' ')}
-                                                                </span>
-                                                            </>
-                                                        ) : (
-                                                            <span className="text-slate-400 italic">-</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-4 align-top">
-                                                    {(() => {
-                                                        const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
-
-                                                        const summary = getInterviewStatusSummary(rounds);
-
-                                                        const hasFailed = rounds.some(r => r.status === 'Failed');
-                                                        const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                                                        let avgRating = null;
-
-                                                        if (!hasFailed && ratedRounds.length > 0) {
-                                                            const total = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0);
-                                                            // Format to 1 decimal place, or no decimals if whole number
-                                                            let calculatedAvg = total / ratedRounds.length;
-                                                            avgRating = Number.isInteger(calculatedAvg) ? calculatedAvg.toString() : calculatedAvg.toFixed(1);
-                                                        }
-
-                                                        return (
-                                                            <div className="flex flex-col gap-1.5 items-start">
-                                                                <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold tracking-wide ${summary.color}`}>
-                                                                    {summary.label}
-                                                                </span>
-                                                                <div className="flex flex-col gap-1">
-                                                                    <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
-                                                                        {rounds.length} rounds total
-                                                                    </span>
-                                                                    <div className="flex flex-wrap gap-1 mt-0.5">
-                                                                        {ratedRounds.length > 0 && ratedRounds.slice(0, 2).map((r, idx) => (
-                                                                            <span key={r._id || idx} title={r.roundName} className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                                                                                R{idx + 1}: {r.rating}/10
-                                                                            </span>
-                                                                        ))}
-                                                                        {ratedRounds.length > 2 && (
-                                                                            <span
-                                                                                className="text-[10px] font-bold text-amber-600 flex items-center justify-center bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors"
-                                                                                onClick={(e) => { e.stopPropagation(); handleView(candidate); }}
-                                                                                title="View all rounds"
-                                                                            >
-                                                                                ...
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )
-                                                    })()}
-                                                </td>
-                                                <td className="px-4 py-4 align-top">
-                                                    <div className="relative inline-block w-full max-w-[110px]">
-                                                        {activePhase === 1 ? (
-                                                            <select
-                                                                value={candidate.decision || 'None'}
-                                                                onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
-                                                                className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
-                                                            >
-                                                                <option value="None" className="text-slate-600">None</option>
-                                                                <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
-                                                                <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
-                                                                <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
-                                                            </select>
-                                                        ) : activePhase === 2 ? (
-                                                            <select
-                                                                value={candidate.phase2Decision || 'None'}
-                                                                onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
-                                                                className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
-                                                            >
-                                                                <option value="None" className="text-slate-600">None</option>
-                                                                <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
-                                                                <option value="Selected" className="text-purple-600 font-bold">Selected</option>
-                                                                <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
-                                                                <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
-                                                            </select>
-                                                        ) : (
-                                                            <select
-                                                                value={candidate.phase3Decision || 'None'}
-                                                                onChange={(e) => handlePhase3DecisionChange(candidate._id, e.target.value)}
-                                                                className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase3Decision || 'None')}`}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
-                                                            >
-                                                                <option value="None" className="text-slate-600">None</option>
-                                                                <option value="Offer Sent" className="text-blue-600 font-bold">Offer Sent</option>
-                                                                <option value="Offer Accepted" className="text-amber-600 font-bold">Offer Accepted</option>
-                                                                <option value="Joined" className="text-emerald-600 font-bold">Joined</option>
-                                                                <option value="No Show" className="text-rose-600 font-bold">No Show</option>
-                                                                <option value="Offer Declined" className="text-rose-600 font-bold">Offer Declined</option>
-                                                            </select>
-                                                        )}
-                                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
-                                                            <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                                                <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                                                            </svg>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-4 align-top">
-                                                    <div className="flex flex-col gap-0.5 text-[12px] text-slate-500 font-medium whitespace-nowrap">
-                                                        <span
-                                                            className="font-bold text-blue-600 mb-0.5 max-w-[120px] truncate cursor-pointer hover:underline"
-                                                            title={candidate.profilePulledBy || '-'}
-                                                            onClick={() => candidate.profilePulledBy && navigate(`/ta/user-dashboard/${encodeURIComponent(candidate.profilePulledBy)}`)}
-                                                        >
-                                                            {candidate.profilePulledBy || '-'}
-                                                        </span>
-                                                        <span>{format(new Date(candidate.uploadedAt), 'MMM dd, yyyy')}</span>
-                                                        <span className="text-[10px] mt-0.5">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-4 align-top text-center">
-                                                    <button
-                                                        onClick={(e) => toggleMenu(e, candidate._id)}
-                                                        className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors relative"
-                                                    >
-                                                        <MoreVertical size={18} />
-                                                    </button>
-
-                                                    {/* Dropdown Menu */}
-                                                    {activeMenu === candidate._id && typeof document !== 'undefined' && createPortal(
-                                                        <div
-                                                            className="fixed z-[9999] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
-                                                            style={menuPosition}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            <button
-                                                                onClick={() => {
-                                                                    handleView(candidate);
-                                                                    setActiveMenu(null);
-                                                                }}
-                                                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                                                            >
-                                                                <Eye size={16} className="text-slate-500" />
-                                                                View Details
-                                                            </button>
-
-                                                            <a
-                                                                href={candidate.resumeUrl}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                                                                onClick={() => setActiveMenu(null)}
-                                                            >
-                                                                <FileText size={16} className="text-slate-500" />
-                                                                View Resume
-                                                            </a>
-
-                                                            {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
-                                                                <button
-                                                                    onClick={() => {
-                                                                        handleEdit(candidate);
-                                                                        setActiveMenu(null);
-                                                                    }}
-                                                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                                                                >
-                                                                    <Edit size={16} className="text-slate-500" />
-                                                                    Edit Candidate
-                                                                </button>
-                                                            )}
-
-                                                            {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
-                                                                <button
-                                                                    onClick={() => {
-                                                                        handleTransfer(candidate._id);
-                                                                        setActiveMenu(null);
-                                                                    }}
-                                                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
-                                                                >
-                                                                    <Briefcase size={16} className="text-blue-500" />
-                                                                    Transfer to Active Requisition
-                                                                </button>
-                                                            )}
-
-                                                            {activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None' && !candidate.isTransferredToOnboarding && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
-                                                                <button
-                                                                    onClick={() => {
-                                                                        handleTransferToOnboarding(candidate._id);
-                                                                        setActiveMenu(null);
-                                                                    }}
-                                                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50 transition-colors text-left font-bold"
-                                                                >
-                                                                    <CheckCircle size={16} className="text-emerald-500" />
-                                                                    Transfer to Onboarding
-                                                                </button>
-                                                            )}
-
-                                                            <div className="border-t border-slate-100 my-1"></div>
-
-                                                            {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.delete')) && (
-                                                                <button
-                                                                    onClick={() => {
-                                                                        handleDelete(candidate._id);
-                                                                        setActiveMenu(null);
-                                                                    }}
-                                                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
-                                                                >
-                                                                    <Trash2 size={16} />
-                                                                    Delete Candidate
-                                                                </button>
-                                                            )}
-                                                        </div>,
-                                                        document.body
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    {/* Pagination Controls */}
-                    {!loading && filteredCandidates.length > 0 && (
-                        <div className="flex justify-end items-center mt-6 gap-4 pr-4 pb-4">
-                            <button
-                                onClick={() => setPage(p => Math.max(1, p - 1))}
-                                disabled={page === 1}
-                                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                            >
-                                Previous
-                            </button>
-                            <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
-                                Page {page} of {totalPages}
-                            </span>
-                            <button
-                                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                disabled={page === totalPages}
-                                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                            >
-                                Next
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
             {showBulkImport && (
                 <BulkCandidateImport
                     hiringRequestId={hiringRequestId}
