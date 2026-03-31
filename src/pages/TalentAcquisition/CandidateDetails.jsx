@@ -495,17 +495,30 @@ const CandidateDetails = () => {
                                         )}
                                     </div>
                                 </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Source</p>
                                     <p className="text-slate-700 font-medium">{candidate.source} {candidate.referralName && `(${candidate.referralName})`}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Called By</p>
+                                    <p className="text-slate-700 font-medium">{candidate.calledBy || 'N/A'}</p>
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Rate</p>
+                                    <p className="text-slate-700 font-medium">{candidate.rate !== undefined ? candidate.rate : 'N/A'}</p>
+                                </div>
+                                <div>
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Experience</p>
                                     <p className="text-slate-700 font-medium">{candidate.totalExperience !== undefined ? `${candidate.totalExperience} Years` : 'N/A'}</p>
                                 </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Qualification</p>
                                     <p className="text-slate-700 font-medium">{candidate.qualification || 'N/A'}</p>
@@ -586,7 +599,48 @@ const CandidateDetails = () => {
                             {candidate.remark && (
                                 <div>
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Remark</p>
-                                    <p className="text-slate-700 text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 whitespace-pre-wrap">{candidate.remark}</p>
+                                    <p className="text-slate-700 font-medium bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm italic">"{candidate.remark}"</p>
+                                </div>
+                            )}
+
+                            {/* Skill Experience Section */}
+                            {(candidate.mustHaveSkills?.length > 0 || candidate.niceToHaveSkills?.length > 0) && (
+                                <div className="space-y-4 pt-4 border-t border-slate-100 mt-4">
+                                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Skill Experience</h4>
+                                    
+                                    {candidate.mustHaveSkills?.length > 0 && (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest flex items-center gap-1.5">
+                                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+                                                Must-Have Skills
+                                            </p>
+                                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                                                {candidate.mustHaveSkills.map((s, i) => (
+                                                    <div key={i} className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex justify-between items-center shadow-sm">
+                                                        <span className="text-xs font-semibold text-slate-600 truncate mr-2" title={s.skill}>{s.skill}</span>
+                                                        <span className="text-xs font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 flex-shrink-0">{s.experience || '0'} yrs</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {candidate.niceToHaveSkills?.length > 0 && (
+                                        <div className="space-y-2 mt-4">
+                                            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest flex items-center gap-1.5">
+                                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                                                Nice-to-Have Skills
+                                            </p>
+                                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                                                {candidate.niceToHaveSkills.map((s, i) => (
+                                                    <div key={i} className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex justify-between items-center shadow-sm">
+                                                        <span className="text-xs font-semibold text-slate-600 truncate mr-2" title={s.skill}>{s.skill}</span>
+                                                        <span className="text-xs font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 flex-shrink-0">{s.experience || '0'} yrs</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

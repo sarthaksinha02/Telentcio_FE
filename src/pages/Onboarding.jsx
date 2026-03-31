@@ -277,7 +277,7 @@ const Onboarding = () => {
     e.preventDefault();
     try {
       await api.post('/onboarding/employees', formData);
-      toast.success('Employee added! Credentials sent via email.');
+      toast.success('Employee added! Select sections and Send Email to notify candidate.');
       setShowAddModal(false);
       setFormData({
         firstName: '', lastName: '', email: '', phone: '',
@@ -393,11 +393,11 @@ const Onboarding = () => {
       toast.success(
         (t) => (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <span style={{ fontWeight: 700 }}>Credentials Updated & Emailed!</span>
+            <span style={{ fontWeight: 700 }}>Credentials Regenerated!</span>
             <div style={{ fontSize: '13px' }}>
               <div><strong>ID:</strong> {res.data.tempEmployeeId}</div>
               <div><strong>Password:</strong> {res.data.tempPassword}</div>
-              <div style={{ color: '#059669', marginTop: '4px', fontSize: '11px' }}>An email has been sent to the candidate with these details.</div>
+              <div style={{ color: '#059669', marginTop: '4px', fontSize: '11px' }}>Select sections and click Send Email to notify the candidate.</div>
             </div>
           </div>
         ),

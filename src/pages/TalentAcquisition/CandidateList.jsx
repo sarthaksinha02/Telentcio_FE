@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import BulkCandidateImport from './BulkCandidateImport';
 
 const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) => {
     const { user } = useAuth();
@@ -34,6 +35,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
     // Menu State
     const [activeMenu, setActiveMenu] = useState(null);
     const [activePhase, setActivePhase] = useState(1);
+    const [showBulkImport, setShowBulkImport] = useState(false);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -402,16 +404,39 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
             const workbook = new ExcelJS.Workbook();
             const sheet = workbook.addWorksheet('Candidates');
 
-            sheet.columns = [
+            const dataToExport = activeList;
+
+            // 1. Collect all unique Must-Have skills from the data
+            const uniqueSkills = new Set();
+            dataToExport.forEach(candidate => {
+                (candidate.mustHaveSkills || []).forEach(s => {
+                    if (s.skill) uniqueSkills.add(s.skill);
+                });
+            });
+            const skillColumnsList = Array.from(uniqueSkills).sort();
+
+            // 2. Define headers dynamically
+            const columns = [
                 { header: 'Serial No.', key: 'slNo', width: 10 },
                 { header: 'Submission Date', key: 'submissionDate', width: 15 },
                 { header: 'Source', key: 'source', width: 15 },
-                { header: 'Profile Pulled By', key: 'pulledBy', width: 20 },
+                { header: 'Pulled By', key: 'pulledBy', width: 20 },
+                { header: 'Called By', key: 'calledBy', width: 20 },
+                { header: 'Rate', key: 'rate', width: 10 },
                 { header: 'Name of Candidate', key: 'name', width: 25 },
                 { header: 'TAT To Join', key: 'tatToJoin', width: 15 },
                 { header: 'Notice Period', key: 'noticePeriod', width: 15 },
                 { header: 'Status', key: 'status', width: 15 },
                 { header: 'Remark', key: 'remark', width: 25 },
+            ];
+
+            // Add dynamic skill columns
+            skillColumnsList.forEach(skill => {
+                columns.push({ header: skill, key: `skill_${skill}`, width: 15 });
+            });
+
+            // Add remaining columns (Note: Removed Nice-to-Have Skills)
+            columns.push(
                 { header: 'CTC', key: 'ctc', width: 15 },
                 { header: 'Expected CTC', key: 'expectedCtc', width: 15 },
                 { header: 'Total Experience', key: 'experience', width: 15 },
@@ -425,24 +450,26 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                 { header: 'Date Of Joining', key: 'dateOfJoining', width: 15 },
                 { header: 'Interview Details', key: 'interviewDetails', width: 30 },
                 { header: 'Interview Remark', key: 'interviewRemark', width: 30 }
-            ];
+            );
+
+            sheet.columns = columns;
 
             // Style headers
             sheet.getRow(1).font = { bold: true };
             sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
-
-            const dataToExport = activeList;
 
             dataToExport.forEach((candidate, index) => {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
                 const interviewDetails = rounds.map((r, i) => `R${i + 1} (${r.levelName}): ${r.status}${r.rating ? ` - ${r.rating}/10` : ''}`).join('\n');
                 const interviewRemark = rounds.map((r, i) => r.feedback ? `R${i + 1}: ${r.feedback}` : null).filter(Boolean).join('\n');
 
-                sheet.addRow({
+                const rowData = {
                     slNo: index + 1,
                     submissionDate: candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'dd-MMM-yyyy') : '-',
                     source: candidate.source || '-',
                     pulledBy: candidate.profilePulledBy || '-',
+                    calledBy: candidate.calledBy || '-',
+                    rate: candidate.rate !== undefined ? candidate.rate : '-',
                     name: candidate.candidateName || '-',
                     tatToJoin: candidate.tatToJoin ? `${candidate.tatToJoin} days` : '-',
                     noticePeriod: candidate.noticePeriod ? `${candidate.noticePeriod} days` : '-',
@@ -461,7 +488,15 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     dateOfJoining: candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : '-',
                     interviewDetails: interviewDetails || '-',
                     interviewRemark: interviewRemark || '-'
+                };
+
+                // Fill dynamic skill columns
+                skillColumnsList.forEach(skill => {
+                    const skillObj = (candidate.mustHaveSkills || []).find(s => s.skill === skill);
+                    rowData[`skill_${skill}`] = skillObj ? (skillObj.experience || 0) : '-';
                 });
+
+                sheet.addRow(rowData);
             });
 
             // Enable text wrapping for interview columns
@@ -679,6 +714,15 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         <Download size={18} />
                         Export Excel
                     </button>
+                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                        <button
+                            onClick={() => setShowBulkImport(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-medium transition-colors"
+                        >
+                            <Upload size={18} />
+                            Bulk Import
+                        </button>
+                    )}
                     {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
                         <button
                             onClick={handleAddNew}
@@ -1605,6 +1649,14 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         </div>
                     )}
                 </div>
+            )}
+            {showBulkImport && (
+                <BulkCandidateImport
+                    hiringRequestId={hiringRequestId}
+                    isOpen={showBulkImport}
+                    onClose={() => setShowBulkImport(false)}
+                    onImportSuccess={fetchCandidates}
+                />
             )}
         </div>
     );

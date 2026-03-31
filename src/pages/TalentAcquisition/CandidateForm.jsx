@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Upload, Loader, ArrowLeft, Plus, Trash } from 'lucide-react';
+import { X, Upload, Loader, ArrowLeft, Plus, Trash, CheckCircle, ChevronDown, Search } from 'lucide-react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
@@ -31,6 +31,8 @@ const CandidateForm = () => {
         source: 'Job Portal',
         referralName: '',
         profilePulledBy: '',
+        calledBy: '',
+        rate: '',
         currentCTC: '',
         expectedCTC: '',
         inHandOffer: false,
@@ -40,29 +42,51 @@ const CandidateForm = () => {
         totalExperience: '',
         qualification: '',
         currentCompany: '',
-        pastExperience: [{ companyName: '', experienceYears: '' }],
+        pastExperience: [{ companyName: '', experienceYears: '', role: '' }],
         currentLocation: '',
         preferredLocation: '',
         tatToJoin: '',
         noticePeriod: '',
         lastWorkingDay: '',
         status: 'Interested',
-        remark: ''
+        remark: '',
+        mustHaveSkills: [],
+        niceToHaveSkills: []
     });
 
     const [sourceOptions, setSourceOptions] = useState([]);
     const [users, setUsers] = useState([]);
+    const [showAddSource, setShowAddSource] = useState(false);
+    const [newSourceName, setNewSourceName] = useState('');
+    const [addingSource, setAddingSource] = useState(false);
+    const [showSourceDropdown, setShowSourceDropdown] = useState(false);
+    const [sourceSearch, setSourceSearch] = useState('');
+    const dropdownRef = useRef(null);
 
     // Duplicate detection state: { email: null | 'checking' | string, mobile: null | 'checking' | string }
     const [dupCheck, setDupCheck] = useState({ email: null, mobile: null });
+
+    // Handle click outside to close dropdown
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setShowSourceDropdown(false);
+                setSourceSearch('');
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         fetchSourceOptions();
         fetchUsers();
         if (candidateId) {
             fetchCandidateDetails();
+        } else if (hiringRequestId) {
+            fetchRequisitionSkills();
         }
-    }, [candidateId]);
+    }, [candidateId, hiringRequestId]);
 
     const fetchUsers = async () => {
         try {
@@ -102,13 +126,73 @@ const CandidateForm = () => {
         }
     };
 
+    const fetchRequisitionSkills = async () => {
+        try {
+            const res = await api.get(`/ta/hiring-request/${hiringRequestId}`);
+            let reqData = res.data;
+            if (res.data?.success) reqData = res.data.data;
+
+            if (reqData?.requirements) {
+                const { mustHaveSkills, niceToHaveSkills } = reqData.requirements;
+                setFormData(prev => ({
+                    ...prev,
+                    mustHaveSkills: (mustHaveSkills || []).map(s => ({ skill: s, experience: '' })),
+                    niceToHaveSkills: (niceToHaveSkills || []).map(s => ({ skill: s, experience: '' }))
+                }));
+            }
+        } catch (error) {
+            console.error('Failed to fetch requisition skills', error);
+        }
+    };
+
     const fetchSourceOptions = async () => {
         try {
             const res = await api.get('/ta/candidates/sources');
+            // Backend now returns [{ name, _id, isCustom }]
             setSourceOptions(res.data || []);
         } catch (error) {
             console.error('Failed to fetch source options', error);
-            setSourceOptions(['Job Portal', 'Referral', 'Other']);
+            setSourceOptions([
+                { name: 'Job Portal', isCustom: false },
+                { name: 'Referral', isCustom: false },
+                { name: 'Other', isCustom: false }
+            ]);
+        }
+    };
+
+    const handleAddSource = async () => {
+        if (!newSourceName.trim()) return;
+        try {
+            setAddingSource(true);
+            const res = await api.post('/ta/candidates/sources', { name: newSourceName.trim() });
+            if (res.data) {
+                toast.success('Source added successfully');
+                setNewSourceName('');
+                setShowAddSource(false);
+                fetchSourceOptions();
+                setFormData(prev => ({ ...prev, source: newSourceName.trim() }));
+                setShowSourceDropdown(false);
+                setSourceSearch('');
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to add source');
+        } finally {
+            setAddingSource(false);
+        }
+    };
+
+    const handleDeleteSource = async (id, e) => {
+        e.stopPropagation();
+        if (!window.confirm('Are you sure you want to delete this source?')) return;
+        try {
+            await api.delete(`/ta/candidates/sources/${id}`);
+            toast.success('Source deleted successfully');
+            fetchSourceOptions();
+            if (formData.source === sourceOptions.find(s => s._id === id)?.name) {
+                setFormData(prev => ({ ...prev, source: '' }));
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to delete source');
         }
     };
 
@@ -144,6 +228,8 @@ const CandidateForm = () => {
                     mobile: candidate.mobile || '',
                     source: candidate.source || 'Job Portal',
                     profilePulledBy: candidate.profilePulledBy || '',
+                    calledBy: candidate.calledBy || '',
+                    rate: candidate.rate || '',
                     currentCTC: candidate.currentCTC || '',
                     expectedCTC: candidate.expectedCTC || '',
                     inHandOffer: candidate.inHandOffer || false,
@@ -162,7 +248,9 @@ const CandidateForm = () => {
                     noticePeriod: candidate.noticePeriod || '',
                     lastWorkingDay: candidate.lastWorkingDay ? new Date(candidate.lastWorkingDay).toISOString().split('T')[0] : '',
                     status: candidate.status || 'Interested',
-                    remark: candidate.remark || ''
+                    remark: candidate.remark || '',
+                    mustHaveSkills: candidate.mustHaveSkills || [],
+                    niceToHaveSkills: candidate.niceToHaveSkills || []
                 });
                 setResumeUrl(candidate.resumeUrl || '');
                 setResumePublicId(candidate.resumePublicId || '');
@@ -297,6 +385,30 @@ const CandidateForm = () => {
         setFormData(prev => ({ ...prev, pastExperience: newExperience }));
     };
 
+    const handleSkillExperienceChange = (type, index, value) => {
+        const skills = [...formData[type]];
+        skills[index].experience = value;
+        setFormData(prev => ({ ...prev, [type]: skills }));
+    };
+
+    const handleSkillNameChange = (index, value) => {
+        const skills = [...formData.niceToHaveSkills];
+        skills[index].skill = value;
+        setFormData(prev => ({ ...prev, niceToHaveSkills: skills }));
+    };
+
+    const addNiceToHaveSkill = () => {
+        setFormData(prev => ({
+            ...prev,
+            niceToHaveSkills: [...prev.niceToHaveSkills, { skill: '', experience: '' }]
+        }));
+    };
+
+    const removeNiceToHaveSkill = (index) => {
+        const skills = formData.niceToHaveSkills.filter((_, i) => i !== index);
+        setFormData(prev => ({ ...prev, niceToHaveSkills: skills }));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -343,9 +455,13 @@ const CandidateForm = () => {
 
             const payload = {
                 ...formData,
+                mustHaveSkills: (formData.mustHaveSkills || []).filter(s => s.skill).map(s => ({ ...s, experience: s.experience ? Number(s.experience) : 0 })),
+                niceToHaveSkills: (formData.niceToHaveSkills || []).filter(s => s.skill).map(s => ({ ...s, experience: s.experience ? Number(s.experience) : 0 })),
                 hiringRequestId,
                 resumeUrl: uploadedResumeUrl,
                 resumePublicId: uploadedResumePublicId,
+                calledBy: formData.calledBy || undefined,
+                rate: formData.rate ? Number(formData.rate) : undefined,
                 currentCTC: formData.currentCTC ? Number(formData.currentCTC) : undefined,
                 expectedCTC: formData.expectedCTC ? Number(formData.expectedCTC) : undefined,
                 preference: formData.preference || undefined,
@@ -583,33 +699,122 @@ const CandidateForm = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 mb-1">Source *</label>
-                                    <div className="space-y-3">
-                                        <select
-                                            name="sourceSelect"
-                                            value={sourceOptions.includes(formData.source) ? formData.source : (formData.source ? 'Other' : '')}
-                                            onChange={(e) => {
-                                                const val = e.target.value;
-                                                if (val === 'Other') {
-                                                    setFormData(prev => ({ ...prev, source: 'Other' }));
-                                                } else {
-                                                    setFormData(prev => ({ ...prev, source: val }));
-                                                }
-                                            }}
-                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                                            required
-                                            disabled={isViewMode}
+                                    <div className="relative" ref={dropdownRef}>
+                                        <div
+                                            onClick={() => !isViewMode && setShowSourceDropdown(!showSourceDropdown)}
+                                            className={`w-full px-3 py-2 border rounded-lg flex items-center justify-between cursor-pointer transition-all ${
+                                                isViewMode ? 'bg-slate-50 cursor-not-allowed' : 'hover:border-blue-400 bg-white'
+                                            } ${showSourceDropdown ? 'ring-2 ring-blue-500 border-blue-500' : 'border-slate-300'}`}
                                         >
-                                            <option value="">Select Source</option>
-                                            {sourceOptions.map(opt => (
-                                                <option key={opt} value={opt}>{opt}</option>
-                                            ))}
-                                            <option value="LinkedIn">LinkedIn</option>
-                                            <option value="Consultancy">Consultancy</option>
-                                            <option value="Internal Database">Internal Database</option>
-                                            {!sourceOptions.includes('Other') && <option value="Other">Other</option>}
-                                        </select>
+                                            <span className={formData.source ? 'text-slate-800' : 'text-slate-400'}>
+                                                {formData.source || 'Select Source'}
+                                            </span>
+                                            <ChevronDown size={18} className={`text-slate-400 transition-transform ${showSourceDropdown ? 'rotate-180' : ''}`} />
+                                        </div>
 
-                                        {/* Referral Name Input */}
+                                        {showSourceDropdown && (
+                                            <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                                {/* Search Input */}
+                                                <div className="p-2 border-b border-slate-100 bg-slate-50">
+                                                    <div className="relative">
+                                                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                        <input
+                                                            type="text"
+                                                            value={sourceSearch}
+                                                            onChange={(e) => setSourceSearch(e.target.value)}
+                                                            placeholder="Search sources..."
+                                                            className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Options List */}
+                                                <div className="max-h-60 overflow-y-auto">
+                                                    {sourceOptions
+                                                        .filter(opt => opt.name.toLowerCase().includes(sourceSearch.toLowerCase()))
+                                                        .map(opt => (
+                                                            <div
+                                                                key={opt.name}
+                                                                onClick={() => {
+                                                                    setFormData(prev => ({ ...prev, source: opt.name }));
+                                                                    setShowSourceDropdown(false);
+                                                                    setSourceSearch('');
+                                                                }}
+                                                                className="px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 flex items-center justify-between group cursor-pointer"
+                                                            >
+                                                                <span>{opt.name}</span>
+                                                                {opt.isCustom && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => handleDeleteSource(opt._id, e)}
+                                                                        className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    >
+                                                                        <Trash size={14} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    
+                                                    <div
+                                                        onClick={() => {
+                                                            setFormData(prev => ({ ...prev, source: 'Other' }));
+                                                            setShowSourceDropdown(false);
+                                                            setSourceSearch('');
+                                                        }}
+                                                        className="px-3 py-2 text-sm text-slate-500 italic hover:bg-slate-50 border-t border-slate-50 cursor-pointer"
+                                                    >
+                                                        Other (Specify)
+                                                    </div>
+                                                </div>
+
+                                                {/* Add New Footer */}
+                                                <div className="p-2 border-t border-slate-100 bg-slate-50 mt-1">
+                                                    {showAddSource ? (
+                                                        <div className="flex gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={newSourceName}
+                                                                onChange={(e) => setNewSourceName(e.target.value)}
+                                                                placeholder="New Source Name"
+                                                                className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                autoFocus
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleAddSource}
+                                                                disabled={addingSource || !newSourceName.trim()}
+                                                                className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                                                            >
+                                                                {addingSource ? <Loader size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowAddSource(false)}
+                                                                className="p-1.5 bg-slate-200 text-slate-600 rounded hover:bg-slate-300"
+                                                            >
+                                                                <X size={12} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setShowAddSource(true);
+                                                            }}
+                                                            className="w-full py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-100/50 rounded flex items-center justify-center gap-1"
+                                                        >
+                                                            <Plus size={14} /> Add New Source
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Additional Inputs for Specific Sources */}
+                                    <div className="space-y-3 mt-3">
                                         {formData.source === 'Referral' && (
                                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                                                 <label className="block text-xs font-medium text-slate-500 mb-1">Referral Name *</label>
@@ -626,8 +831,7 @@ const CandidateForm = () => {
                                             </div>
                                         )}
 
-                                        {/* Other Source Input */}
-                                        {(formData.source === 'Other' || (!sourceOptions.includes(formData.source) && formData.source !== 'Referral' && formData.source !== 'LinkedIn' && formData.source !== 'Consultancy' && formData.source !== 'Internal Database' && formData.source !== '')) && (
+                                        {(formData.source === 'Other' || (formData.source && !sourceOptions.some(s => s.name === formData.source))) && (
                                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                                                 <label className="block text-xs font-medium text-slate-500 mb-1">Specify Source *</label>
                                                 <input
@@ -661,12 +865,131 @@ const CandidateForm = () => {
                                         ))}
                                     </select>
                                 </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1">Called By</label>
+                                    <select
+                                        name="calledBy"
+                                        value={formData.calledBy}
+                                        onChange={handleChange}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                        disabled={isViewMode}
+                                    >
+                                        <option value="">Select Recruiter</option>
+                                        {users.map(u => (
+                                            <option key={u._id} value={`${u.firstName || ''} ${u.lastName || ''}`.trim()}>
+                                                {u.firstName} {u.lastName}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1">Rate</label>
+                                    <input
+                                        type="number"
+                                        name="rate"
+                                        value={formData.rate}
+                                        onChange={handleChange}
+                                        min="0"
+                                        step="any"
+                                        placeholder="Enter rate"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                        disabled={isViewMode}
+                                    />
+                                </div>
                             </div>
                         </div>
 
-                        {/* Section 3: Professional Details */}
+                        {/* Section 3: Skill Experience */}
                         <div className="space-y-4 pt-6">
-                            <h3 className="text-base font-semibold text-slate-800 pb-2 border-b border-slate-200">3. Professional Details</h3>
+                            <h3 className="text-base font-semibold text-slate-800 pb-2 border-b border-slate-200">3. Skill Experience (Years)</h3>
+                            
+                            {/* Must-Have Skills */}
+                            <div className="space-y-4">
+                                <h4 className="text-sm font-bold text-slate-600 flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                                    Must-Have Skills
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {(formData.mustHaveSkills || []).map((skillObj, index) => (
+                                        <div key={`must-${index}`} className="flex flex-col gap-1.5 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">{skillObj.skill}</label>
+                                            <input
+                                                type="number"
+                                                value={skillObj.experience}
+                                                onChange={(e) => handleSkillExperienceChange('mustHaveSkills', index, e.target.value)}
+                                                placeholder="Exp (Years)"
+                                                min="0"
+                                                step="any"
+                                                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none text-sm"
+                                                disabled={isViewMode}
+                                            />
+                                        </div>
+                                    ))}
+                                    {(!formData.mustHaveSkills || formData.mustHaveSkills.length === 0) && (
+                                        <p className="text-sm text-slate-400 italic col-span-full">No must-have skills defined in requisition.</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Nice-to-Have Skills */}
+                            <div className="space-y-4 pt-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-sm font-bold text-slate-600 flex items-center gap-2">
+                                        <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                        Nice-to-Have Skills
+                                    </h4>
+                                    {!isViewMode && (
+                                        <button
+                                            type="button"
+                                            onClick={addNiceToHaveSkill}
+                                            className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800"
+                                        >
+                                            <Plus size={14} /> Add Skill
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {(formData.niceToHaveSkills || []).map((skillObj, index) => (
+                                        <div key={`nice-${index}`} className="flex flex-col gap-1.5 p-3 bg-slate-50 rounded-lg border border-slate-200 relative group">
+                                            {!isViewMode && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeNiceToHaveSkill(index)}
+                                                    className="absolute -top-2 -right-2 bg-white text-red-500 p-1 rounded-full border border-red-100 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            )}
+                                            <input
+                                                type="text"
+                                                value={skillObj.skill}
+                                                onChange={(e) => handleSkillNameChange(index, e.target.value)}
+                                                placeholder="Skill Name"
+                                                className="text-xs font-bold text-slate-700 bg-transparent border-b border-slate-200 pb-1 mb-1 outline-none focus:border-blue-400"
+                                                disabled={isViewMode}
+                                            />
+                                            <input
+                                                type="number"
+                                                value={skillObj.experience}
+                                                onChange={(e) => handleSkillExperienceChange('niceToHaveSkills', index, e.target.value)}
+                                                placeholder="Exp (Years)"
+                                                min="0"
+                                                step="any"
+                                                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none text-sm"
+                                                disabled={isViewMode}
+                                            />
+                                        </div>
+                                    ))}
+                                    {(!formData.niceToHaveSkills || formData.niceToHaveSkills.length === 0) && (
+                                        <p className="text-sm text-slate-400 italic col-span-full">No nice-to-have skills added.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Section 4: Professional Details */}
+                        <div className="space-y-4 pt-6">
+                            <h3 className="text-base font-semibold text-slate-800 pb-2 border-b border-slate-200">4. Professional Details</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 mb-1">Total Experience (years) *</label>
@@ -737,9 +1060,9 @@ const CandidateForm = () => {
                             </div>
                         </div>
 
-                        {/* Section 4: Offer & Availability */}
+                        {/* Section 5: Offer & Availability */}
                         <div className="space-y-4 pt-6">
-                            <h3 className="text-base font-semibold text-slate-800 pb-2 border-b border-slate-200">4. Offer & Availability</h3>
+                            <h3 className="text-base font-semibold text-slate-800 pb-2 border-b border-slate-200">5. Offer & Availability</h3>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 mb-1">Notice Period (days)</label>

@@ -113,7 +113,7 @@ function App() {
                 <Route path="/discussions" element={<Discussions />} />
 
                 {/* Onboarding */}
-                <Route path="/onboarding" element={<Onboarding />} />
+                <Route path="/onboarding" element={<OnboardingAccessWrapper />} />
 
                 {/* Project Management Routes */}
                 <Route element={<ModuleRoute moduleName="projectManagement" />}>
@@ -168,6 +168,17 @@ const UsersAccessWrapper = ({ Component = Users }) => {
   const canAccess = user.roles?.includes('Admin') ||
     user.permissions?.includes('user.read') ||
     user.directReportsCount > 0;
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const OnboardingAccessWrapper = ({ Component = Onboarding }) => {
+  const { user } = useAuth();
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('onboarding.manage');
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
 };

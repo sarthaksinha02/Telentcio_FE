@@ -34,7 +34,7 @@ const PreOnboardingPortal = () => {
     if (profile) {
       const { requestedSections, requestedDocuments } = profile;
       let filtered = ALL_STEPS;
-      
+
       if (requestedSections && (requestedSections.length > 0 || (requestedDocuments && requestedDocuments.length > 0))) {
         filtered = ALL_STEPS.filter(step => {
           if (requestedSections.includes(step.hrLabel)) return true;
@@ -408,8 +408,8 @@ const PreOnboardingPortal = () => {
                 <span style={{ fontSize: '13px', fontWeight: '600', color: deadlineInfo.color }}>{deadlineInfo.text}</span>
               </div>
               {!isReadOnly && (deadlineInfo.urgent || deadlineInfo.passed) && (
-                <button 
-                  onClick={() => setShowExtensionModal(true)} 
+                <button
+                  onClick={() => setShowExtensionModal(true)}
                   disabled={hasPendingExtension}
                   style={{ background: 'none', border: 'none', color: hasPendingExtension ? '#94a3b8' : '#3b82f6', fontSize: '11px', fontWeight: '600', cursor: hasPendingExtension ? 'not-allowed' : 'pointer', marginTop: '4px', textDecoration: 'underline' }}
                 >
@@ -457,9 +457,9 @@ const PreOnboardingPortal = () => {
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '24px' }}>
         {profile?.offerStatus !== 'Accepted' && (
-          !profile.requestedSections || 
-          profile.requestedSections.length === 0 || 
-          profile.requestedSections.includes('Offer Declaration') || 
+          !profile.requestedSections ||
+          profile.requestedSections.length === 0 ||
+          profile.requestedSections.includes('Offer Declaration') ||
           profile.requestedDocuments?.includes('Offer Letter')
         ) ? (
           <div style={{ background: '#fff', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '40px', textAlign: 'center' }}>
@@ -855,7 +855,7 @@ const PreOnboardingPortal = () => {
           <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '440px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: '18px', color: '#0f172a' }}>Request Deadline Extension</h3>
             <p style={{ margin: '0 0 20px', color: '#64748b', fontSize: '13px' }}>If you need more time to gather your documents, you can request an extension from HR.</p>
-            
+
             <form onSubmit={handleRequestExtension}>
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Reason for extension</label>

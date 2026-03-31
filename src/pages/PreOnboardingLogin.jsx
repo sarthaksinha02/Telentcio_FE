@@ -106,7 +106,7 @@ const PreOnboardingLogin = () => {
       localStorage.setItem('onboardingToken', res.data.token);
       const empData = JSON.parse(localStorage.getItem('onboardingEmployee') || '{}');
       localStorage.setItem('onboardingEmployee', JSON.stringify(empData));
-      toast.success('Password changed successfully!');
+      toast.success('Password changed successfully!', { duration: 2000 });
       navigate('/pre-onboarding/portal');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to change password');
@@ -249,7 +249,7 @@ const PreOnboardingLogin = () => {
           <div style={{ background: '#1e293b', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px', border: '1px solid rgba(148,163,184,0.1)' }}>
             <h3 style={{ color: '#f1f5f9', marginTop: 0, marginBottom: '16px', fontSize: '18px' }}>Request New Credentials</h3>
             <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '20px' }}>If your temporary password has expired or you've lost it, you can request HR to generate a new one.</p>
-            
+
             <form onSubmit={handleRequestRegen}>
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Your Employee ID</label>
