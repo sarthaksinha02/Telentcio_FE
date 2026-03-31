@@ -23,6 +23,7 @@ const CandidateForm = () => {
     const [resumeUrl, setResumeUrl] = useState('');
     const [resumePublicId, setResumePublicId] = useState('');
     const [uploading, setUploading] = useState(false);
+    const [isParsing, setIsParsing] = useState(false);
 
     const [formData, setFormData] = useState({
         candidateName: '',
@@ -287,6 +288,46 @@ const CandidateForm = () => {
         const objectUrl = URL.createObjectURL(file);
         setPreviewUrl(objectUrl);
         // Deferred upload: File is stored in state, upload happens on submit
+    };
+
+    const handleAutoFill = async () => {
+        if (!resumeFile) {
+            toast.error('Please select a resume file first');
+            return;
+        }
+
+        try {
+            setIsParsing(true);
+            const parseFormData = new FormData();
+            parseFormData.append('resume', resumeFile);
+
+            const response = await api.post('/ta/candidates/parse-resume', parseFormData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            if (response.data?.data) {
+                const parsed = response.data.data;
+                
+                // Update form data with parsed values
+                setFormData(prev => ({
+                    ...prev,
+                    candidateName: parsed.candidateName || prev.candidateName,
+                    email: parsed.email || prev.email,
+                    mobile: parsed.mobile || prev.mobile,
+                    totalExperience: parsed.totalExperience || prev.totalExperience,
+                    niceToHaveSkills: parsed.niceToHaveSkills?.length > 0 
+                        ? parsed.niceToHaveSkills.map(s => ({ skill: s.skill, experience: '' }))
+                        : prev.niceToHaveSkills
+                }));
+
+                toast.success('Information extracted from resume!');
+            }
+        } catch (error) {
+            console.error('Error auto-filling from resume:', error);
+            toast.error(error.response?.data?.message || 'Failed to extract information from resume.');
+        } finally {
+            setIsParsing(false);
+        }
     };
 
     // Cleanup preview URL to avoid memory leaks
@@ -571,6 +612,28 @@ const CandidateForm = () => {
                                         )}
                                         {uploading && <Loader className="animate-spin text-blue-600" size={20} />}
                                     </div>
+
+                                    {/* Auto-fill Button */}
+                                    {resumeFile && !isViewMode && (
+                                        <button
+                                            type="button"
+                                            onClick={handleAutoFill}
+                                            disabled={isParsing}
+                                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                                        >
+                                            {isParsing ? (
+                                                <>
+                                                    <Loader size={16} className="animate-spin" />
+                                                    <span>Parsing...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <CheckCircle size={16} />
+                                                    <span>Auto-fill from Resume</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    )}
 
                                     {/* Show existing resume link right in the upload box when editing */}
                                     {isEditMode && resumeUrl && !resumeFile && (
