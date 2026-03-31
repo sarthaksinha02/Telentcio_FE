@@ -428,6 +428,8 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                 { header: 'Notice Period', key: 'noticePeriod', width: 15 },
                 { header: 'Status', key: 'status', width: 15 },
                 { header: 'Remark', key: 'remark', width: 25 },
+                { header: 'Comprehensive Skill Assessment', key: 'compSkillAssessment', width: 30 },
+                { header: 'Interviewer Name', key: 'interviewerName', width: 25 },
             ];
 
             // Add dynamic skill columns
@@ -487,7 +489,19 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     offerCompany: candidate.inHandOffer ? (candidate.offerCompany || 'Yes') : 'No',
                     dateOfJoining: candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : '-',
                     interviewDetails: interviewDetails || '-',
-                    interviewRemark: interviewRemark || '-'
+                    interviewRemark: interviewRemark || '-',
+                    compSkillAssessment: rounds.map((r, i) => {
+                        let text = r.rating ? `R${i + 1}: ${r.rating}/10` : `R${i + 1}: -`;
+                        if (r.skillRatings && r.skillRatings.length > 0) {
+                            const filterSkills = r.skillRatings.filter(sr => sr.rating > 0);
+                            if (filterSkills.length > 0) {
+                                const skillsInfo = filterSkills.map(sr => `${sr.skill}: ${sr.rating}/10`).join(', ');
+                                text += ` (${skillsInfo})`;
+                            }
+                        }
+                        return text;
+                    }).join('\n') || '-',
+                    interviewerName: rounds.map((r, i) => r.evaluatedBy ? `R${i + 1}: ${r.evaluatedBy.firstName} ${r.evaluatedBy.lastName}` : null).filter(Boolean).join('\n') || '-'
                 };
 
                 // Fill dynamic skill columns
@@ -502,6 +516,8 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
             // Enable text wrapping for interview columns
             sheet.getColumn('interviewDetails').alignment = { wrapText: true, vertical: 'top' };
             sheet.getColumn('interviewRemark').alignment = { wrapText: true, vertical: 'top' };
+            sheet.getColumn('compSkillAssessment').alignment = { wrapText: true, vertical: 'top' };
+            sheet.getColumn('interviewerName').alignment = { wrapText: true, vertical: 'top' };
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

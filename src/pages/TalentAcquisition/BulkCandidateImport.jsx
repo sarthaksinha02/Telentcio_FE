@@ -12,8 +12,31 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
     const [progress, setProgress] = useState({ current: 0, total: 0, success: 0, failed: 0 });
     const [importResults, setImportResults] = useState(null);
     const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'preview', 'summary'
+    const [users, setUsers] = useState([]);
+    const [existingCandidates, setExistingCandidates] = useState([]);
     
     const fileInputRef = useRef(null);
+    const [hiringRequest, setHiringRequest] = useState(null);
+
+    React.useEffect(() => {
+        if (isOpen) {
+            const fetchData = async () => {
+                try {
+                    const [usersRes, hrRes, candidatesRes] = await Promise.all([
+                        api.get('/users'),
+                        api.get(`/ta/hiring-requests/${hiringRequestId}`),
+                        api.get(`/ta/candidates/${hiringRequestId}`)
+                    ]);
+                    setUsers(usersRes.data);
+                    setHiringRequest(hrRes.data);
+                    setExistingCandidates(candidatesRes.data);
+                } catch (error) {
+                    console.error('Error fetching import data:', error);
+                }
+            };
+            fetchData();
+        }
+    }, [isOpen, hiringRequestId]);
 
     const handleDragOver = (e) => {
         e.preventDefault();
@@ -69,6 +92,18 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         setIsParsing(true);
         setFile(file);
         try {
+            // Load users immediately if they haven't yet
+            let currentUsers = users;
+            if (currentUsers.length === 0) {
+                try {
+                    const res = await api.get('/users');
+                    currentUsers = res.data;
+                    setUsers(currentUsers);
+                } catch (e) {
+                    console.error('Failed to load users for import', e);
+                }
+            }
+
             const workbook = new ExcelJS.Workbook();
             const arrayBuffer = await file.arrayBuffer();
             await workbook.xlsx.load(arrayBuffer);
@@ -105,7 +140,13 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 tatToJoin: ['tat', 'tat to join'],
                 inHandOffer: ['any offer in hand', 'offer in hand', 'counter offer'],
                 status: ['round 1', 'status', 'initial status'],
-                remark: ['remarks', 'remark', 'comments']
+                remark: ['remarks', 'remark', 'comments'],
+                offerCompany: ['offer company', 'company offered'],
+                lastWorkingDay: ['date of joining', 'last working day', 'doj', 'lwd'],
+                interviewDetails: ['interview details', 'interviews'],
+                interviewRemark: ['interview remark', 'evaluator feedback', 'interview summary'],
+                compSkillAssessment: ['comprehensive skill assessment', 'skill assessment', 'detailed ratings'],
+                interviewerName: ['interviewer name', 'panel name', 'evaluated by']
             };
 
             worksheet.eachRow((row, rowNumber) => {
@@ -160,22 +201,142 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     inHandOffer: getCellValue(columnMapping.inHandOffer)?.toString().toLowerCase() === 'yes',
                     status: mapStatus(getCellValue(columnMapping.status)),
                     remark: getCellValue(columnMapping.remark),
+                    offerCompany: getCellValue(columnMapping.offerCompany),
+                    lastWorkingDay: getCellValue(columnMapping.lastWorkingDay),
                     hiringRequestId: hiringRequestId,
                     resumeUrl: 'bulk-imported-placeholder',
-                    resumePublicId: 'bulk-imported-placeholder'
+                    resumePublicId: 'bulk-imported-placeholder',
+                    mustHaveSkills: [],
+                    interviewRounds: []
                 };
+
+                // Parse Date of Joining
+                if (mappedRow.lastWorkingDay) {
+                    try {
+                        const dateVal = mappedRow.lastWorkingDay;
+                        if (dateVal instanceof Date) {
+                            mappedRow.lastWorkingDay = dateVal;
+                        } else if (typeof dateVal === 'string') {
+                            mappedRow.lastWorkingDay = new Date(dateVal);
+                        } else if (typeof dateVal === 'number') {
+                            // Excel serial date handle
+                            const excelEpoch = new Date(1899, 11, 30);
+                            mappedRow.lastWorkingDay = new Date(excelEpoch.getTime() + dateVal * 86400000);
+                        }
+                    } catch (e) {
+                        mappedRow.lastWorkingDay = null;
+                    }
+                }
+
+                // Identify and Parse Must-Have Skills
+                const standardHeaders = [].concat(...Object.values(columnMapping), 'sl no', 'serial no.', 'serial no', 'slno', 'submission date', 'date');
+                Object.keys(headers).forEach(header => {
+                    const h = header.toLowerCase();
+                    if (!standardHeaders.includes(h)) {
+                        const val = row.getCell(headers[header]).value;
+                        if (val !== undefined && val !== null && val !== '') {
+                            mappedRow.mustHaveSkills.push({
+                                skill: header,
+                                experience: extractNumeric(val)
+                            });
+                        }
+                    }
+                });
+
+                // Parse Interview Rounds (the hard part)
+                const rawDetails = getCellValue(columnMapping.interviewDetails)?.toString() || '';
+                const rawRemarks = getCellValue(columnMapping.interviewRemark)?.toString() || '';
+                const rawAssessment = getCellValue(columnMapping.compSkillAssessment)?.toString() || '';
+                const rawInterviewers = getCellValue(columnMapping.interviewerName)?.toString() || '';
+
+                if (rawDetails || rawRemarks || rawAssessment || rawInterviewers) {
+                    // Extract rounds by splitting on R1:, R2:, etc. if they exist, or just use newlines
+                    // This is a naive attempt to reconstruct structured data from strings
+                    // We'll prioritize the 'Interview Details' as the anchor for rounds
+                    // Extra robust split for rounds and interviewers
+                    const splitRegex = /\r?\n|R\d+[:\s]+|Round\s*\d+[:\s]*/i;
+                    const roundLines = rawDetails.split(splitRegex).map(l => l.trim()).filter(l => l.length > 3);
+                    const remarkLines = rawRemarks.split(splitRegex).map(l => l.trim()).filter(l => l.length > 0);
+                    const assessmentLines = rawAssessment.split(splitRegex).map(l => l.trim()).filter(l => l.length > 0);
+                    const interviewerLines = rawInterviewers.split(splitRegex).map(l => l.trim()).filter(l => l.length > 0);
+
+                    const maxRounds = Math.max(roundLines.length, remarkLines.length, assessmentLines.length, interviewerLines.length);
+
+                    for (let i = 0; i < maxRounds; i++) {
+                        const roundObj = {
+                            levelName: `Round ${i + 1}`,
+                            status: 'Passed', // Default if we found data
+                            phase: 1,
+                            feedback: remarkLines[i]?.trim() || '',
+                            rating: null,
+                            skillRatings: []
+                        };
+
+                        // Parse Details Line: "R1 (L1 - Technical): Passed - 9/10"
+                        if (roundLines[i]) {
+                            const line = roundLines[i];
+                            const levelMatch = line.match(/\(([^)]+)\)/);
+                            if (levelMatch) roundObj.levelName = levelMatch[1];
+
+                            const statusMatch = line.match(/:\s*([^-:\n]+)/);
+                            if (statusMatch) {
+                                const s = statusMatch[1].trim();
+                                if (['Passed', 'Failed', 'Scheduled', 'Pending'].includes(s)) roundObj.status = s;
+                            }
+
+                            const ratingMatch = line.match(/(\d+)\/10/);
+                            if (ratingMatch) roundObj.rating = parseInt(ratingMatch[1]);
+                        }
+
+                        // Parse Assessment Line: "R1: 9/10 (DSA: 8/10, C++: 8/10)"
+                        if (assessmentLines[i]) {
+                            const line = assessmentLines[i];
+                            const overallMatch = line.match(/(\d+)\/10/);
+                            if (overallMatch && !roundObj.rating) roundObj.rating = parseInt(overallMatch[1]);
+
+                            const skillMatch = line.match(/\(([^)]+)\)/);
+                            if (skillMatch) {
+                                const skills = skillMatch[1].split(',');
+                                skills.forEach(s => {
+                                    const parts = s.split(':');
+                                    if (parts.length === 2) {
+                                        const rMatch = parts[1].match(/(\d+)\/10/);
+                                        roundObj.skillRatings.push({
+                                            skill: parts[0].trim(),
+                                            rating: rMatch ? parseInt(rMatch[1]) : extractNumeric(parts[1]),
+                                            category: 'Must-Have'
+                                        });
+                                    }
+                                });
+                            }
+                        }
+
+                        // Store raw interviewer name for resolution at import time
+                        if (interviewerLines[i]) {
+                            roundObj.rawInterviewer = interviewerLines[i].replace(/^R\d+:\s*/i, '').trim();
+                        }
+
+                        mappedRow.interviewRounds.push(roundObj);
+                    }
+                }
 
                 // Basic Validation
                 const errors = [];
                 if (!mappedRow.candidateName) errors.push('Name missing');
                 if (!mappedRow.email) errors.push('Email missing');
-                else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mappedRow.email)) errors.push('Invalid Email');
+                else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mappedRow.email)) errors.push('Invalid Email Format');
                 if (!mappedRow.mobile) errors.push('Mobile missing');
-                if (mappedRow.totalExperience === 0 && !getCellValue(columnMapping.totalExperience)) errors.push('Experience missing');
+                // Removed Experience check - defaults to 0 if missing
+
+                const isExisting = existingCandidates.some(c => 
+                    (mappedRow.email && c.email.toLowerCase() === mappedRow.email?.toLowerCase()) || 
+                    (mappedRow.mobile && c.mobile === mappedRow.mobile)
+                );
 
                 rows.push({
                     data: mappedRow,
                     isValid: errors.length === 0,
+                    isExisting: isExisting,
                     errors: errors,
                     rowNumber: rowNumber
                 });
@@ -206,13 +367,37 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         for (let i = 0; i < validRows.length; i++) {
             const row = validRows[i];
             try {
-                // Add a small 100ms delay between requests to prevent blocking the event loop
-                if (i > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                }
+                // Resolve interviewers right before import using latest users list
+                const processedRounds = (row.data.interviewRounds || []).map(round => {
+                    if (round.rawInterviewer && users.length > 0) {
+                        const normalize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const searchName = normalize(round.rawInterviewer);
+                        
+                        const foundUser = users.find(u => {
+                            const f = normalize(u.firstName);
+                            const l = normalize(u.lastName);
+                            const full = f + l;
+                            const email = normalize(u.email);
+                            
+                            // Try matching full name, first name, last name, or email (alphanumeric only)
+                            return full === searchName || f === searchName || l === searchName || email === searchName;
+                        });
+                        
+                        if (foundUser) {
+                            return { ...round, evaluatedBy: foundUser._id, assignedTo: [foundUser._id] };
+                        }
+                    }
+                    return round;
+                });
+
+                const importPayload = { ...row.data, interviewRounds: processedRounds };
                 
-                await api.post('/ta/candidates', row.data);
-                results.imported.push(row);
+                const response = await api.post('/ta/candidates', importPayload);
+                results.imported.push({ 
+                    ...row, 
+                    isUpdate: response.data.isUpdate,
+                    updatedFields: response.data.updatedFields || []
+                });
                 setProgress(prev => ({ ...prev, current: i + 1, success: prev.success + 1 }));
             } catch (error) {
                 console.error(`Failed to import row ${row.rowNumber}:`, error);
@@ -227,9 +412,13 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         setImportResults(results);
         setImporting(false);
         setActiveTab('summary');
-        if (results.imported.length > 0) {
+    };
+
+    const handleDone = () => {
+        if (importResults?.imported?.length > 0) {
             onImportSuccess();
         }
+        onClose();
     };
 
     if (!isOpen) return null;
@@ -324,17 +513,28 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                         <thead className="sticky top-0 bg-slate-100 z-10">
                                             <tr>
                                                 <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Row</th>
+                                                <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Type</th>
                                                 <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Status</th>
                                                 <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Candidate Name</th>
                                                 <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Email</th>
                                                 <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Mobile</th>
                                                 <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Experience</th>
+                                                <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Skills</th>
+                                                <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Interviewer</th>
+                                                <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Offer Co.</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
                                             {previewData.map((row, idx) => (
                                                 <tr key={idx} className={row.isValid ? 'hover:bg-slate-50' : 'bg-red-50/50'}>
                                                     <td className="px-4 py-3 text-sm text-slate-600">{row.rowNumber}</td>
+                                                    <td className="px-4 py-3">
+                                                        {row.isExisting ? (
+                                                            <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded text-[10px]">UPDATE</span>
+                                                        ) : (
+                                                            <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded text-[10px]">NEW</span>
+                                                        )}
+                                                    </td>
                                                     <td className="px-4 py-3">
                                                         {row.isValid ? (
                                                             <span className="flex items-center gap-1 text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full w-fit">
@@ -353,6 +553,21 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                                     <td className="px-4 py-3 text-sm text-slate-600">{row.data.email || <span className="text-red-400 italic">Missing</span>}</td>
                                                     <td className="px-4 py-3 text-sm text-slate-600">{row.data.mobile || <span className="text-red-400 italic">Missing</span>}</td>
                                                     <td className="px-4 py-3 text-sm text-slate-600">{row.data.totalExperience} yrs</td>
+                                                    <td className="px-4 py-3 text-sm text-slate-600">
+                                                        {row.data.mustHaveSkills.length > 0 ? (
+                                                            <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-xs font-medium">
+                                                                {row.data.mustHaveSkills.length} Skills
+                                                            </span>
+                                                        ) : '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-slate-600">
+                                                        {row.data.interviewRounds.some(r => r.evaluatedBy) ? (
+                                                            <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded text-xs font-medium">
+                                                                {row.data.interviewRounds.filter(r => r.evaluatedBy).length} Linked
+                                                            </span>
+                                                        ) : '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-slate-600 truncate max-w-[120px]">{row.data.offerCompany || '-'}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -362,23 +577,79 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                         </div>
                     )}
 
-                    {activeTab === 'summary' && importResults && (
+                    {activeTab === 'summary' && (
                         <div className="space-y-6 py-8 flex flex-col items-center">
                             <div className="p-6 bg-emerald-50 rounded-full mb-2">
                                 <CheckCircle size={64} className="text-emerald-500" />
                             </div>
                             <h3 className="text-2xl font-bold text-slate-800">Import Completed!</h3>
                             
-                            <div className="grid grid-cols-2 gap-8 w-full max-w-md">
+                            <div className="grid grid-cols-3 gap-6 w-full max-w-2xl">
                                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 text-center">
-                                    <div className="text-4xl font-black text-green-600 mb-1">{importResults.imported.length}</div>
-                                    <div className="text-sm font-bold text-slate-500 uppercase tracking-wider">Imported</div>
+                                    <div className="text-3xl font-black text-emerald-600 mb-1">
+                                        {importResults.imported.filter(r => !r.isUpdate).length}
+                                    </div>
+                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Newly Added</div>
                                 </div>
                                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 text-center">
-                                    <div className="text-4xl font-black text-red-600 mb-1">{importResults.failed.length}</div>
-                                    <div className="text-sm font-bold text-slate-500 uppercase tracking-wider">Failed</div>
+                                    <div className="text-3xl font-black text-blue-600 mb-1">
+                                        {importResults.imported.filter(r => r.isUpdate).length}
+                                    </div>
+                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Updated</div>
+                                </div>
+                                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 text-center">
+                                    <div className="text-3xl font-black text-red-600 mb-1">{importResults.failed.length}</div>
+                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Failed</div>
                                 </div>
                             </div>
+
+                            {importResults.imported.length > 0 && (
+                                <div className="w-full mt-4 max-h-40 overflow-y-auto">
+                                    <h4 className="font-bold text-slate-700 mb-2">Imported Candidates Detail</h4>
+                                    <div className="border border-emerald-100 rounded-xl overflow-hidden shadow-sm">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-emerald-50 text-xs font-bold text-emerald-600 uppercase">
+                                                <tr>
+                                                    <th className="px-4 py-2">Row</th>
+                                                    <th className="px-4 py-2">Candidate</th>
+                                                    <th className="px-4 py-2">Action</th>
+                                                    <th className="px-4 py-2">Specific Changes</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-emerald-50 text-sm">
+                                                {importResults.imported.map((row, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="px-4 py-2 font-medium text-slate-600">{row.rowNumber}</td>
+                                                        <td className="px-4 py-2 text-slate-600">{row.data.candidateName}</td>
+                                                        <td className="px-4 py-2">
+                                                            {row.isUpdate ? (
+                                                                <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded text-[10px]">UPDATED</span>
+                                                            ) : (
+                                                                <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded text-[10px]">ADDED</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-2 text-[11px] text-slate-500">
+                                                            {!row.isUpdate ? (
+                                                                <span className="italic font-medium text-slate-400 font-mono">Full Record Created</span>
+                                                            ) : row.updatedFields.length > 0 ? (
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {row.updatedFields.map((f, i) => (
+                                                                        <span key={i} className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                                                                            {f}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="italic text-slate-400">Values matched exactly (No sub-field changes)</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
 
                             {importResults.failed.length > 0 && (
                                 <div className="w-full mt-4">
@@ -407,9 +678,10 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                             )}
 
                             <button 
-                                onClick={onClose}
-                                className="mt-8 flex items-center gap-2 px-10 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold transition-all shadow-lg"
+                                onClick={handleDone}
+                                className="mt-8 flex items-center gap-2 px-10 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-lg hover:scale-105 active:scale-95"
                             >
+                                <CheckCircle size={20} />
                                 Done & Close
                             </button>
                         </div>
