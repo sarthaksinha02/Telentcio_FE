@@ -610,11 +610,31 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                     Open in full screen
                                 </a>
                             </div>
-                            <iframe 
-                                src={`${candidate.resumeUrl}#toolbar=0`}
-                                className="w-full flex-1 bg-slate-100/50"
-                                title="Resume Preview"
-                            />
+                            <object
+                                data={String(candidate.resumeUrl).replace('http://', 'https://')}
+                                type="application/pdf"
+                                className="w-full flex-1"
+                            >
+                                <iframe 
+                                    src={String(candidate.resumeUrl).replace('http://', 'https://')}
+                                    className="w-full flex-1 bg-white"
+                                    title="Resume Preview"
+                                    frameBorder="0"
+                                >
+                                    <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50">
+                                        <FileText size={48} className="text-slate-300 mb-4" />
+                                        <p className="text-slate-600 font-medium mb-2">Resume preview not available in browser</p>
+                                        <a 
+                                            href={candidate.resumeUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            className="text-blue-600 font-bold hover:underline"
+                                        >
+                                            View / Download Resume
+                                        </a>
+                                    </div>
+                                </iframe>
+                            </object>
                         </div>
                     )}
                 </div>

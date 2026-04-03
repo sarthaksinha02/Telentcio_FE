@@ -529,13 +529,15 @@ const Attendance = () => {
                         });
                     },
                     (error) => {
-                        console.log('Location access denied or failed, proceeding with default clock-in');
-                        executeClockIn();
+                        console.log('Location access denied or failed.');
+                        toast.error('Please enable location permission in your browser to clock in.');
+                        setLoadingLocation(false);
                     },
-                    { timeout: 5000 }
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                 );
             } else {
-                executeClockIn();
+                toast.error('Geolocation is not supported by your browser.');
+                setLoadingLocation(false);
             }
             return;
         }
@@ -549,13 +551,6 @@ const Attendance = () => {
         setLoadingLocation(true);
         navigator.geolocation.getCurrentPosition(
             (position) => {
-                const isCached = (Date.now() - position.timestamp) > 60000;
-                if (!position.coords.accuracy || position.coords.accuracy > 300 || isCached) {
-                    toast.error('Please Enable location for accurate verification');
-                    setLoadingLocation(false);
-                    return;
-                }
-
                 executeClockIn({
                     lat: position.coords.latitude,
                     lng: position.coords.longitude,
@@ -633,11 +628,15 @@ const Attendance = () => {
                                             lng: position.coords.longitude,
                                             accuracy: position.coords.accuracy
                                         }),
-                                        () => executeClockOut(),
-                                        { timeout: 5000 }
+                                        (error) => {
+                                            toast.error('Please enable location permission in your browser to checkout.');
+                                            setLoadingLocation(false);
+                                        },
+                                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                                     );
                                 } else {
-                                    executeClockOut();
+                                    toast.error('Geolocation is not supported by your browser.');
+                                    setLoadingLocation(false);
                                 }
                                 return;
                             }
@@ -650,13 +649,6 @@ const Attendance = () => {
                             setLoadingLocation(true);
                             navigator.geolocation.getCurrentPosition(
                                 (position) => {
-                                    const isCached = (Date.now() - position.timestamp) > 60000;
-                                    if (!position.coords.accuracy || position.coords.accuracy > 300 || isCached) {
-                                        toast.error('Please Enable location for accurate verification');
-                                        setLoadingLocation(false);
-                                        return;
-                                    }
-
                                     executeClockOut({
                                         lat: position.coords.latitude,
                                         lng: position.coords.longitude,

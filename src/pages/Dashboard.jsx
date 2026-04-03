@@ -30,18 +30,23 @@ const LocationLink = ({ location }) => {
 
         const fetchCity = async () => {
             try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=10&addressdetails=1`);
+                // Nominatim allows 1 req/sec. Adding a small delay or generic headers can help prevent 403.
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=10&addressdetails=1`, {
+                    headers: {
+                        'Accept-Language': 'en-US,en;q=0.9',
+                    }
+                });
                 const data = await res.json();
                 if (data && data.address) {
                     const city = data.address.city || data.address.town || data.address.village || data.address.county || data.address.state_district || 'Map';
                     locationCache[coordsKey] = city; // Store in cache
                     setCityName(city);
                 } else {
-                    setCityName('Map');
+                    setCityName('Map view');
                 }
             } catch (error) {
                 console.error("Error fetching city name", error);
-                setCityName('Map');
+                setCityName('Map view');
             }
         };
 

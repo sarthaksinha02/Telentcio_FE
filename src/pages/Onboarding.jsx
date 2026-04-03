@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, UploadCloud, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle } from 'lucide-react';
@@ -45,6 +46,44 @@ const Onboarding = () => {
   const [checkedSections, setCheckedSections] = useState(new Set());
   const [checkedDocuments, setCheckedDocuments] = useState(new Set());
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailDeadline, setEmailDeadline] = useState('');
+  const [activeMenu, setActiveMenu] = useState(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
+
+  // Close menu when clicking outside or scrolling
+  useEffect(() => {
+    const handleClose = () => setActiveMenu(null);
+    document.addEventListener('click', handleClose);
+    window.addEventListener('scroll', handleClose, true);
+    return () => {
+      document.removeEventListener('click', handleClose);
+      window.removeEventListener('scroll', handleClose, true);
+    };
+  }, []);
+
+  const toggleMenu = useCallback((e, employeeId) => {
+    e.stopPropagation();
+    if (activeMenu === employeeId) {
+      setActiveMenu(null);
+    } else {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const menuHeight = 200; // estimated
+
+      let positionStyles = {
+        right: window.innerWidth - rect.right
+      };
+
+      if (spaceBelow < menuHeight && rect.top > menuHeight) {
+        positionStyles.bottom = window.innerHeight - rect.top + 5;
+      } else {
+        positionStyles.top = rect.bottom + 5;
+      }
+
+      setMenuPosition(positionStyles);
+      setActiveMenu(employeeId);
+    }
+  }, [activeMenu]);
 
   const toggleSection = (id) => setExpandedSections(p => ({ ...p, [id]: !p[id] }));
 
@@ -71,15 +110,20 @@ const Onboarding = () => {
     }
     try {
       setSendingEmail(true);
-      await api.post(`/onboarding/employees/${selectedEmployee._id}/send-onboarding-email`, {
+      const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/send-onboarding-email`, {
         sections: [...checkedSections],
-        documents: [...checkedDocuments]
+        documents: [...checkedDocuments],
+        submissionDeadline: emailDeadline
       });
       toast.success('Pre-onboarding email sent successfully!');
       setCheckedSections(new Set());
       setCheckedDocuments(new Set());
-      // Refresh to update audit log
-      openDetail({ _id: selectedEmployee._id });
+
+      // Update local state instead of full openDetail refresh
+      if (res.data.employee) {
+        setSelectedEmployee(res.data.employee);
+        setEmployees(prev => prev.map(e => e._id === selectedEmployee._id ? { ...e, status: res.data.employee.status } : e));
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to send email');
     } finally {
@@ -298,6 +342,7 @@ const Onboarding = () => {
       fetchSettings(); // Refresh settings to show latest templates/policies in selection
       const res = await api.get(`/onboarding/employees/${emp._id}`);
       setSelectedEmployee(res.data);
+      setEmailDeadline(res.data.documentDeadline ? res.data.documentDeadline.split('T')[0] : '');
     } catch (err) {
       toast.error('Failed to load details');
     } finally {
@@ -309,10 +354,15 @@ const Onboarding = () => {
     const reason = prompt('Enter reason for re-upload:');
     if (!reason) return;
     try {
-      await api.patch(`/onboarding/employees/${empId}/documents/${docId}/flag`, { reason });
+      const res = await api.patch(`/onboarding/employees/${empId}/documents/${docId}/flag`, { reason });
       toast.success('Document flagged');
-      openDetail({ _id: empId });
-      fetchEmployees();
+
+      // Update local state instantly without full refresh
+      const updatedEmp = res.data.employee;
+      if (updatedEmp) {
+        setSelectedEmployee(updatedEmp);
+        setEmployees(prev => prev.map(e => e._id === empId ? { ...e, status: updatedEmp.status } : e));
+      }
     } catch (err) {
       toast.error('Failed to flag');
     }
@@ -320,10 +370,15 @@ const Onboarding = () => {
 
   const handleApproveDoc = async (empId, docId) => {
     try {
-      await api.patch(`/onboarding/employees/${empId}/documents/${docId}/approve`);
+      const res = await api.patch(`/onboarding/employees/${empId}/documents/${docId}/approve`);
       toast.success('Document approved');
-      openDetail({ _id: empId });
-      fetchEmployees();
+
+      // Update local state instantly without full refresh
+      const updatedEmp = res.data.employee;
+      if (updatedEmp) {
+        setSelectedEmployee(updatedEmp);
+        setEmployees(prev => prev.map(e => e._id === empId ? { ...e, status: updatedEmp.status } : e));
+      }
     } catch (err) {
       toast.error('Failed to approve');
     }
@@ -444,7 +499,8 @@ const Onboarding = () => {
     'Mail Sent': { bg: '#fef3c7', text: '#92400e' },
     Uploaded: { bg: '#dbeafe', text: '#1d4ed8' },
     Approved: { bg: '#d1fae5', text: '#059669' },
-    'Re-upload Required': { bg: '#fee2e2', text: '#dc2626' }
+    'Re-upload Required': { bg: '#fee2e2', text: '#dc2626' },
+    Policy: { bg: '#f1f5f9', text: '#64748b' }
   };
 
   const handleTransferToActive = async (empId) => {
@@ -557,7 +613,13 @@ const Onboarding = () => {
                     const progress = getProgressPercent(emp);
                     const sc = STATUS_COLORS[emp.status] || STATUS_COLORS.Pending;
                     return (
-                      <tr key={emp._id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = ''}>
+                      <tr 
+                        key={emp._id} 
+                        onClick={() => openDetail(emp)}
+                        style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s', cursor: 'pointer' }} 
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} 
+                        onMouseLeave={(e) => e.currentTarget.style.background = ''}
+                      >
                         <td style={{ padding: '14px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {emp.sourcedFromTA && (
@@ -590,11 +652,81 @@ const Onboarding = () => {
                           </span>
                         </td>
                         <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                            <button onClick={() => openDetail(emp)} title="View Details" style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#3b82f6', display: 'flex', alignItems: 'center' }}><Eye size={16} /></button>
-                            <button onClick={() => handleEditEmployee(emp)} title="Edit Details" style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#059669', display: 'flex', alignItems: 'center' }}><Edit2 size={16} /></button>
-                            <button onClick={() => handleRegenerateCredentials(emp._id)} title="Regenerate Credentials" style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#f59e0b', display: 'flex', alignItems: 'center' }}><Key size={16} /></button>
-                            <button onClick={() => handleDownloadZip(emp)} title="Download Documents" style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#8b5cf6', display: 'flex', alignItems: 'center' }}><Download size={16} /></button>
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <button
+                              onClick={(e) => toggleMenu(e, emp._id)}
+                              style={{
+                                padding: '8px',
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
+                                background: activeMenu === emp._id ? '#f1f5f9' : '#fff',
+                                cursor: 'pointer',
+                                color: '#64748b',
+                                display: 'flex',
+                                alignItems: 'center',
+                                transition: 'all 0.2s'
+                              }}
+                              title="Actions"
+                            >
+                              <MoreVertical size={18} />
+                            </button>
+
+                            {/* Action Menu Portal */}
+                            {activeMenu === emp._id && createPortal(
+                              <div
+                                style={{
+                                  position: 'fixed',
+                                  zIndex: 9999,
+                                  width: '200px',
+                                  background: '#fff',
+                                  borderRadius: '12px',
+                                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                                  border: '1px solid #e2e8f0',
+                                  padding: '4px',
+                                  ...menuPosition
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  onClick={() => { openDetail(emp); setActiveMenu(null); }}
+                                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#1e293b', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                                >
+                                  <Eye size={16} style={{ color: '#3b82f6' }} /> View Details
+                                </button>
+
+                                <button
+                                  onClick={() => { handleEditEmployee(emp); setActiveMenu(null); }}
+                                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#1e293b', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                                >
+                                  <Edit2 size={16} style={{ color: '#059669' }} /> Edit Details
+                                </button>
+
+                                <button
+                                  onClick={() => { handleRegenerateCredentials(emp._id); setActiveMenu(null); }}
+                                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#1e293b', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                                >
+                                  <Key size={16} style={{ color: '#f59e0b' }} /> Credentials
+                                </button>
+
+                                <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 8px' }} />
+
+                                <button
+                                  onClick={() => { handleDownloadZip(emp); setActiveMenu(null); }}
+                                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#1e293b', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                                >
+                                  <Download size={16} style={{ color: '#8b5cf6' }} /> Export Docs
+                                </button>
+                              </div>,
+                              document.body
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -775,10 +907,7 @@ const Onboarding = () => {
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Joining Date</label>
                   <input type="date" value={formData.joiningDate} onChange={(e) => setFormData({ ...formData, joiningDate: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
                 </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Document Submission Deadline</label>
-                  <input type="date" value={formData.documentDeadline} onChange={(e) => setFormData({ ...formData, documentDeadline: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
+
 
                 <div style={{ gridColumn: '1 / -1', marginTop: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
                   <h3 style={{ margin: 0, fontSize: '15px', color: '#0f172a' }}>Employment Details</h3>
@@ -876,10 +1005,7 @@ const Onboarding = () => {
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Joining Date</label>
                   <input type="date" value={formData.joiningDate} onChange={(e) => setFormData({ ...formData, joiningDate: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
                 </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Document Submission Deadline</label>
-                  <input type="date" value={formData.documentDeadline} onChange={(e) => setFormData({ ...formData, documentDeadline: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
+
 
                 <div style={{ gridColumn: '1 / -1', marginTop: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
                   <h3 style={{ margin: 0, fontSize: '15px', color: '#0f172a' }}>Employment Details</h3>
@@ -968,14 +1094,7 @@ const Onboarding = () => {
                     <div><span style={{ color: '#94a3b8' }}>Deadline:</span> <strong>{selectedEmployee.documentDeadline ? new Date(selectedEmployee.documentDeadline).toLocaleDateString('en-IN') : '—'}</strong></div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                    <button onClick={() => handleDownloadDocx(selectedEmployee._id, 'offer-letter')} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #3b82f6', background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: '600', fontSize: '13px', transition: 'all 0.2s' }}>
-                      <FileText size={16} /> Generate Offer Letter
-                    </button>
-                    <button onClick={() => handleDownloadDocx(selectedEmployee._id, 'declaration')} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #8b5cf6', background: '#f5f3ff', color: '#5b21b6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: '600', fontSize: '13px', transition: 'all 0.2s' }}>
-                      <FileText size={16} /> Generate Declaration
-                    </button>
-                  </div>
+
                 </div>
 
                 {/* Deadline & Expiry Alerts */}
@@ -1006,7 +1125,7 @@ const Onboarding = () => {
                           toast.success('Extension rejected');
                           fetchEmployees();
                           setSelectedEmployee(prev => ({ ...prev, extensionRequests: prev.extensionRequests.map(r => r._id === ext._id ? { ...r, status: 'Rejected' } : r) }));
-                        } catch(e) { toast.error('Failed to reject extension'); }
+                        } catch (e) { toast.error('Failed to reject extension'); }
                       }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#1d4ed8', background: 'none', border: '1px solid #1d4ed8', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
                       <button onClick={() => {
                         // Open edit modal to let HR extend deadline, then we resolve it.
@@ -1018,8 +1137,8 @@ const Onboarding = () => {
                             toast.success(`Extension approved. New deadline: ${currentDeadline.toLocaleDateString()}`);
                             fetchEmployees();
                             const updatedExt = { ...ext, status: 'Approved' };
-                            setSelectedEmployee(prev => ({ 
-                              ...prev, 
+                            setSelectedEmployee(prev => ({
+                              ...prev,
                               documentDeadline: currentDeadline.toISOString(),
                               extensionRequests: prev.extensionRequests.map(r => r._id === ext._id ? updatedExt : r)
                             }));
@@ -1053,122 +1172,183 @@ const Onboarding = () => {
                     { id: 'bank', label: 'Bank Details', done: selectedEmployee.bankDetails?.isComplete, data: selectedEmployee.bankDetails },
                     { id: 'offer', label: 'Offer Declaration', done: selectedEmployee.offerDeclaration?.isComplete, data: selectedEmployee.offerDeclaration }
                   ].map((s) => {
-                    const isRequested = selectedEmployee.requestedSections?.includes(s.label);
+                    const isRequested = Array.isArray(selectedEmployee.requestedSections) && selectedEmployee.requestedSections.find(rs => (typeof rs === 'string' ? rs === s.label : rs.label === s.label));
                     const isComplete = s.done;
-                    let statusText = isComplete ? 'Complete' : (isRequested && selectedEmployee.emailSentAt ? 'Mail Sent' : 'Pending');
+                    const sentDate = isRequested?.emailSentAt;
+                    let statusText = isComplete ? 'Complete' : (sentDate ? 'Mail Sent' : 'Pending');
                     let badgeBg = isComplete ? '#dcfce7' : (statusText === 'Mail Sent' ? '#fef3c7' : '#f1f5f9');
                     let badgeColor = isComplete ? '#16a34a' : (statusText === 'Mail Sent' ? '#d97706' : '#64748b');
                     let iconColor = isComplete ? '#22c55e' : (statusText === 'Mail Sent' ? '#f59e0b' : '#94a3b8');
 
                     return (
-                    <div key={s.id} style={{ borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', cursor: 'pointer', background: s.done ? '#f0fdf4' : '#fefce8' }}>
-                        <div onClick={(e) => { e.stopPropagation(); toggleCheckedSection(s.label); }} style={{ cursor: 'pointer', flexShrink: 0 }}>
-                          {checkedSections.has(s.label) ? <CheckSquare size={18} color="#2563eb" /> : <Square size={18} color="#94a3b8" />}
+                      <div key={s.id} style={{ borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', cursor: 'pointer', background: s.done ? '#f0fdf4' : '#fefce8' }}>
+                          <div onClick={(e) => { e.stopPropagation(); toggleCheckedSection(s.label); }} style={{ cursor: 'pointer', flexShrink: 0 }}>
+                            {checkedSections.has(s.label) ? <CheckSquare size={18} color="#2563eb" /> : <Square size={18} color="#94a3b8" />}
+                          </div>
+                          <div onClick={() => toggleSection(s.id)} style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                            {s.done ? <CheckCircle size={16} style={{ color: iconColor }} /> : <Clock size={16} style={{ color: iconColor }} />}
+                            <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{s.label}</span>
+                            <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                              <span style={{ fontSize: '11px', fontWeight: '600', color: badgeColor, background: badgeBg, padding: '2px 8px', borderRadius: '4px' }}>{statusText}</span>
+                              {statusText === 'Mail Sent' && sentDate && <span style={{ fontSize: '10px', color: '#92400e', marginTop: '2px' }}>📧 Sent: {new Date(sentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>}
+                            </div>
+                            <ChevronDown size={16} style={{ color: '#94a3b8', transform: expandedSections[s.id] ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }} />
+                          </div>
                         </div>
-                        <div onClick={() => toggleSection(s.id)} style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                          {s.done ? <CheckCircle size={16} style={{ color: iconColor }} /> : <Clock size={16} style={{ color: iconColor }} />}
-                          <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{s.label}</span>
-                          <span style={{ marginLeft: 'auto', fontSize: '11px', fontWeight: '600', color: badgeColor, background: badgeBg, padding: '2px 8px', borderRadius: '4px' }}>{statusText}</span>
-                          <ChevronDown size={16} style={{ color: '#94a3b8', transform: expandedSections[s.id] ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }} />
-                        </div>
-                      </div>
 
-                      {expandedSections[s.id] && (
-                        <div style={{ padding: '16px', borderTop: '1px solid #e2e8f0', background: '#fff', fontSize: '13px' }}>
-                          {s.id === 'personal' && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                              <div><span style={{ color: '#94a3b8' }}>Full Name:</span> <br /> <strong>{s.data?.fullName || '—'}</strong></div>
-                              <div><span style={{ color: '#94a3b8' }}>DOB:</span> <br /> <strong>{s.data?.dateOfBirth ? new Date(s.data.dateOfBirth).toLocaleDateString('en-IN') : '—'}</strong></div>
-                              <div><span style={{ color: '#94a3b8' }}>Gender:</span> <br /> <strong>{s.data?.gender || '—'}</strong></div>
-                              <div><span style={{ color: '#94a3b8' }}>Blood Group:</span> <br /> <strong>{s.data?.bloodGroup || '—'}</strong></div>
-                              <div><span style={{ color: '#94a3b8' }}>Email:</span> <br /> <strong>{s.data?.personalEmail || '—'}</strong></div>
-                              <div><span style={{ color: '#94a3b8' }}>Mobile:</span> <br /> <strong>{s.data?.personalMobile || '—'}</strong></div>
-                              <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>Current Address:</span> <br /> <strong>{s.data?.currentAddress && s.data.currentAddress.line1 ? `${s.data.currentAddress.line1}, ${s.data.currentAddress.city}, ${s.data.currentAddress.state} - ${s.data.currentAddress.pincode}` : (selectedEmployee.address || '—')}</strong></div>
-                              {s.data?.linkedinUrl && <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>LinkedIn:</span> <br /> <a href={s.data.linkedinUrl} target="_blank" rel="noreferrer" style={{ color: '#3b82f6' }}>{s.data.linkedinUrl}</a></div>}
-                            </div>
-                          )}
-                          {s.id === 'emergency' && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                              <div><span style={{ color: '#94a3b8' }}>Name:</span> <br /> <strong>{s.data?.contactName || '—'}</strong></div>
-                              <div><span style={{ color: '#94a3b8' }}>Relationship:</span> <br /> <strong>{s.data?.relationship || '—'}</strong></div>
-                              <div><span style={{ color: '#94a3b8' }}>Phone:</span> <br /> <strong>{s.data?.phoneNumber || '—'}</strong></div>
-                              <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>Address:</span> <br /> <strong>{s.data?.address || '—'}</strong></div>
-                            </div>
-                          )}
-                          {s.id === 'bank' && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                              <div><span style={{ color: '#94a3b8' }}>Bank Name:</span> <br /> <strong>{s.data?.bankName || '—'}</strong></div>
-                              <div><span style={{ color: '#94a3b8' }}>A/C Number:</span> <br /> <strong>{s.data?.accountNumber || '—'}</strong></div>
-                              <div><span style={{ color: '#94a3b8' }}>IFSC Code:</span> <br /> <strong>{s.data?.ifscCode || '—'}</strong></div>
-                              <div><span style={{ color: '#94a3b8' }}>Type:</span> <br /> <strong>{s.data?.accountType || '—'}</strong></div>
-                              {s.data?.cancelledChequeUrl && <div style={{ gridColumn: '1 / -1' }}><a href={s.data.cancelledChequeUrl} target="_blank" rel="noreferrer" style={{ color: '#3b82f6', fontWeight: '600' }}>View Cancelled Cheque ↗</a></div>}
-                            </div>
-                          )}
-                          {s.id === 'offer' && (
-                            <div style={{ display: 'grid', gap: '8px' }}>
-                              <div style={{ display: 'flex', gap: '8px' }}>{s.data?.hasReadOfferLetter ? <Check size={14} color="#22c55e" /> : <X size={14} color="#ef4444" />} <span>Read Offer Letter</span></div>
-                              <div style={{ display: 'flex', gap: '8px' }}>{s.data?.hasProvidedTrueInfo ? <Check size={14} color="#22c55e" /> : <X size={14} color="#ef4444" />} <span>Provided True Info</span></div>
-                              <div style={{ display: 'flex', gap: '8px' }}>{s.data?.agreesToOriginalVerification ? <Check size={14} color="#22c55e" /> : <X size={14} color="#ef4444" />} <span>Agrees to Verification</span></div>
-                              <div style={{ marginTop: '8px', borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
-                                <span style={{ color: '#94a3b8' }}>E-Signature:</span> <br />
-                                <strong>{s.data?.eSignName}</strong> <br />
-                                <span style={{ fontSize: '11px', color: '#64748b' }}>Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleDateString('en-IN') : '—'}</span>
+                        {expandedSections[s.id] && (
+                          <div style={{ padding: '16px', borderTop: '1px solid #e2e8f0', background: '#fff', fontSize: '13px' }}>
+                            {s.id === 'personal' && (
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div><span style={{ color: '#94a3b8' }}>Full Name:</span> <br /> <strong>{s.data?.fullName || '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>DOB:</span> <br /> <strong>{s.data?.dateOfBirth ? new Date(s.data.dateOfBirth).toLocaleDateString('en-IN') : '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>Gender:</span> <br /> <strong>{s.data?.gender || '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>Blood Group:</span> <br /> <strong>{s.data?.bloodGroup || '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>Email:</span> <br /> <strong>{s.data?.personalEmail || '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>Mobile:</span> <br /> <strong>{s.data?.personalMobile || '—'}</strong></div>
+                                <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>Current Address:</span> <br /> <strong>{s.data?.currentAddress && s.data.currentAddress.line1 ? `${s.data.currentAddress.line1}, ${s.data.currentAddress.city}, ${s.data.currentAddress.state} - ${s.data.currentAddress.pincode}` : (selectedEmployee.address || '—')}</strong></div>
+                                {s.data?.linkedinUrl && <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>LinkedIn:</span> <br /> <a href={s.data.linkedinUrl} target="_blank" rel="noreferrer" style={{ color: '#3b82f6' }}>{s.data.linkedinUrl}</a></div>}
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                            )}
+                            {s.id === 'emergency' && (
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div><span style={{ color: '#94a3b8' }}>Name:</span> <br /> <strong>{s.data?.contactName || '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>Relationship:</span> <br /> <strong>{s.data?.relationship || '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>Phone:</span> <br /> <strong>{s.data?.phoneNumber || '—'}</strong></div>
+                                <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>Address:</span> <br /> <strong>{s.data?.address || '—'}</strong></div>
+                              </div>
+                            )}
+                            {s.id === 'bank' && (
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div><span style={{ color: '#94a3b8' }}>Bank Name:</span> <br /> <strong>{s.data?.bankName || '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>A/C Number:</span> <br /> <strong>{s.data?.accountNumber || '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>IFSC Code:</span> <br /> <strong>{s.data?.ifscCode || '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>Type:</span> <br /> <strong>{s.data?.accountType || '—'}</strong></div>
+                                {s.data?.cancelledChequeUrl && <div style={{ gridColumn: '1 / -1' }}><a href={s.data.cancelledChequeUrl} target="_blank" rel="noreferrer" style={{ color: '#3b82f6', fontWeight: '600' }}>View Cancelled Cheque ↗</a></div>}
+                              </div>
+                            )}
+                            {s.id === 'offer' && (
+                              <div style={{ display: 'grid', gap: '8px' }}>
+                                <div style={{ display: 'flex', gap: '8px' }}>{s.data?.hasReadOfferLetter ? <Check size={14} color="#22c55e" /> : <X size={14} color="#ef4444" />} <span>Read Offer Letter</span></div>
+                                <div style={{ display: 'flex', gap: '8px' }}>{s.data?.hasProvidedTrueInfo ? <Check size={14} color="#22c55e" /> : <X size={14} color="#ef4444" />} <span>Provided True Info</span></div>
+                                <div style={{ display: 'flex', gap: '8px' }}>{s.data?.agreesToOriginalVerification ? <Check size={14} color="#22c55e" /> : <X size={14} color="#ef4444" />} <span>Agrees to Verification</span></div>
+                                <div style={{ marginTop: '8px', borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
+                                  <span style={{ color: '#94a3b8' }}>E-Signature:</span> <br />
+                                  <strong>{s.data?.eSignName}</strong> <br />
+                                  <span style={{ fontSize: '11px', color: '#64748b' }}>Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleDateString('en-IN') : '—'}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
 
-                 {/* Documents */}
-                 <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>Documents & Requirements</h4>
-                 <div style={{ display: 'grid', gap: '8px' }}>
-                   {[
-                     ...(selectedEmployee.documents || []).map(d => ({ ...d, itemType: 'document' })),
-                     ...(onboardingSettings.policies || []).map(p => ({ label: p.name, status: 'Policy', itemType: 'policy', _id: p._id })),
-                     ...(onboardingSettings.dynamicTemplates || []).map(t => ({ label: t.name, status: 'Template', itemType: 'template', _id: t._id })),
-                     ...(onboardingSettings.offerLetterTemplateUrl ? [{ label: 'Offer Letter', status: 'Template', itemType: 'template', _id: 'offer-letter-default' }] : [])
-                   ].map((item, idx) => {
-                     const isDoc = item.itemType === 'document';
-                     const badge = isDoc ? (DOC_BADGE[item.status] || DOC_BADGE.Pending) : { bg: '#f0fdf4', text: '#16a34a' };
-                     return (
-                       <div key={item._id || idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', flexWrap: 'wrap' }}>
-                         <div onClick={() => toggleCheckedDocument(item.label)} style={{ cursor: 'pointer', flexShrink: 0 }}>
-                           {checkedDocuments.has(item.label) ? <CheckSquare size={18} color="#2563eb" /> : <Square size={18} color="#94a3b8" />}
-                         </div>
-                         {item.itemType === 'policy' ? <ScrollText size={16} style={{ color: '#059669', flexShrink: 0 }} /> : 
-                          item.itemType === 'template' ? <FileSignature size={16} style={{ color: '#7c3aed', flexShrink: 0 }} /> :
-                          <FileText size={16} style={{ color: '#64748b', flexShrink: 0 }} />}
-                         
-                         <div style={{ flex: 1, minWidth: '120px' }}>
-                           <div style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>{item.label}</div>
-                           {item.rejectionReason && <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>⚠️ {item.rejectionReason}</div>}
-                           {isDoc && item.emailSentAt && <div style={{ fontSize: '11px', color: '#92400e', marginTop: '2px' }}>📧 Sent: {new Date(item.emailSentAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>}
-                           {isDoc && item.uploadedAt && <div style={{ fontSize: '11px', color: '#1d4ed8', marginTop: '2px' }}>📤 Uploaded: {new Date(item.uploadedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>}
-                         </div>
-                         <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: badge.bg, color: badge.text, whiteSpace: 'nowrap' }}>{item.status}</span>
-                         
-                         {isDoc && (
-                           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                             {item.url && (
-                               <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#3b82f6', fontSize: '12px', textDecoration: 'none', fontWeight: '600', transition: 'all 0.2s' }}>View</a>
-                             )}
-                             {item.status === 'Uploaded' && (
-                               <>
-                                 <button onClick={() => handleApproveDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #dcfce7, #d1fae5)', color: '#15803d', fontSize: '12px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>✓ Approve</button>
-                                 <button onClick={() => handleFlagDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #fee2e2, #fecaca)', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>✕ Flag</button>
-                               </>
-                             )}
-                           </div>
-                         )}
-                       </div>
-                     );
-                   })}
-                 </div>
+                {/* Documents */}
+                <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>Documents & Requirements</h4>
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {[
+                    ...(selectedEmployee.documents || []).map(d => ({ ...d, itemType: 'document' })),
+                    ...(onboardingSettings.policies || [])
+                      .filter(p => (selectedEmployee.requestedDocuments || []).some(rd => rd.label === p.name))
+                      .map(p => {
+                        const req = (selectedEmployee.requestedDocuments || []).find(rd => rd.label === p.name);
+                        return {
+                          label: p.name,
+                          status: 'Policy',
+                          itemType: 'policy',
+                          _id: p._id,
+                          isAccepted: (selectedEmployee.offerDeclaration?.acceptedPolicies || []).some(ap => ap.policyId === p._id),
+                          emailSentAt: req?.emailSentAt
+                        };
+                      }),
+                    ...(onboardingSettings.dynamicTemplates || []).map(t => {
+                      const req = (selectedEmployee.requestedDocuments || []).find(rd => rd.label === t.name);
+                      return {
+                        label: t.name,
+                        status: 'Template',
+                        itemType: 'template',
+                        _id: t._id,
+                        isAccepted: (selectedEmployee.offerDeclaration?.acceptedTemplates || []).some(at => at.templateId === t._id),
+                        emailSentAt: req?.emailSentAt
+                      };
+                    }),
+                    ...(onboardingSettings.offerLetterTemplateUrl ? (() => {
+                      const req = (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Offer Letter');
+                      return [{
+                        label: 'Offer Letter',
+                        status: 'Template',
+                        itemType: 'template',
+                        _id: 'offer-letter-default',
+                        isAccepted: selectedEmployee.offerDeclaration?.hasReadOfferLetter,
+                        emailSentAt: req?.emailSentAt
+                      }];
+                    })() : [])
+                  ].map((item, idx) => {
+                    const isDoc = item.itemType === 'document';
+                    const badge = isDoc ? (DOC_BADGE[item.status] || DOC_BADGE.Pending) : { bg: '#f0fdf4', text: '#16a34a' };
+                    return (
+                      <div key={item._id || idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', flexWrap: 'wrap' }}>
+                        <div onClick={() => toggleCheckedDocument(item.label)} style={{ cursor: 'pointer', flexShrink: 0 }}>
+                          {checkedDocuments.has(item.label) ? <CheckSquare size={18} color="#2563eb" /> : <Square size={18} color="#94a3b8" />}
+                        </div>
+                        {item.itemType === 'policy' ? <ScrollText size={16} style={{ color: item.isAccepted ? '#059669' : '#f59e0b', flexShrink: 0 }} /> :
+                          item.itemType === 'template' ? <FileSignature size={16} style={{ color: item.isAccepted ? '#059669' : '#f59e0b', flexShrink: 0 }} /> :
+                            <FileText size={16} style={{ color: '#64748b', flexShrink: 0 }} />}
+
+                        <div style={{ flex: 1, minWidth: '120px' }}>
+                          <div style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>{item.label}</div>
+                          {item.rejectionReason && <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>⚠️ {item.rejectionReason}</div>}
+                          {(item.itemType === 'policy' || item.itemType === 'template') && !item.isAccepted && (
+                            <div style={{ fontSize: '11px', color: item.emailSentAt ? '#92400e' : '#d97706', marginTop: '2px' }}>
+                              {item.emailSentAt ? 'Awaiting candidate acceptance' : 'Pending selection'}
+                            </div>
+                          )}
+                          {item.emailSentAt && <div style={{ fontSize: '11px', color: '#92400e', marginTop: '2px' }}>📧 Sent: {new Date(item.emailSentAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>}
+                          {isDoc && item.uploadedAt && <div style={{ fontSize: '11px', color: '#1d4ed8', marginTop: '2px' }}>📤 Uploaded: {new Date(item.uploadedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>}
+                        </div>
+                        {item.itemType === 'policy' || item.itemType === 'template' ? (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: item.isAccepted ? '#dcfce7' : (item.emailSentAt ? '#fef3c7' : '#f1f5f9'), color: item.isAccepted ? '#15803d' : (item.emailSentAt ? '#92400e' : '#64748b'), whiteSpace: 'nowrap' }}>
+                            {item.isAccepted ? <><Check size={12} /> Accepted</> : item.emailSentAt ? <><Send size={12} /> Mail Sent</> : <><Clock size={12} /> Pending</>}
+                          </span>
+                        ) : (
+                          <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: badge.bg, color: badge.text, whiteSpace: 'nowrap' }}>{item.status}</span>
+                        )}
+
+                        {isDoc && (
+                          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                            {item.url && (
+                              <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#3b82f6', fontSize: '12px', textDecoration: 'none', fontWeight: '600', transition: 'all 0.2s' }}>View</a>
+                            )}
+                            {item.status === 'Uploaded' && (
+                              <>
+                                <button onClick={() => handleApproveDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #dcfce7, #d1fae5)', color: '#15803d', fontSize: '12px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>✓ Approve</button>
+                                <button onClick={() => handleFlagDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #fee2e2, #fecaca)', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>✕ Flag</button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Submission Deadline Selection */}
+                <div style={{ marginTop: '24px', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Clock size={16} style={{ color: '#3b82f6' }} /> Submission Deadline for Candidate
+                  </label>
+                  <input
+                    type="date"
+                    value={emailDeadline}
+                    onChange={(e) => setEmailDeadline(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff' }}
+                  />
+                  <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>The candidate's portal access and deadline in the email will be updated to this date.</p>
+                </div>
 
                 {/* Send Pre-Onboarding Email Button */}
                 <div style={{ marginTop: '24px', marginBottom: '24px' }}>

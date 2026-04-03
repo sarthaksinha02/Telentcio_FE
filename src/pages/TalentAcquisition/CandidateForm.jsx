@@ -302,9 +302,7 @@ const CandidateForm = () => {
             const parseFormData = new FormData();
             parseFormData.append('resume', resumeFile);
 
-            const response = await api.post('/ta/candidates/parse-resume', parseFormData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            const response = await api.post('/ta/candidates/parse-resume', parseFormData);
 
             if (response.data?.data) {
                 const parsed = response.data.data;
@@ -346,9 +344,7 @@ const CandidateForm = () => {
             const formData = new FormData();
             formData.append('resume', file);
 
-            const response = await api.post(`/ta/candidates/upload-resume/${hiringRequestId}`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            const response = await api.post(`/ta/candidates/upload-resume/${hiringRequestId}`, formData);
 
             return {
                 resumeUrl: response.data.resumeUrl,
@@ -930,8 +926,10 @@ const CandidateForm = () => {
                                     </div>
                                 </div>
                                 <iframe
-                                    src={`${previewUrl || resumeUrl}#toolbar=0&navpanes=0`}
-                                    className="w-full h-full relative z-10 border-none"
+                                    src={(previewUrl || resumeUrl)?.startsWith('blob:') 
+                                        ? (previewUrl || resumeUrl) 
+                                        : (previewUrl || resumeUrl)?.replace('http://', 'https://')}
+                                    className="w-full h-full relative z-10 border-none bg-white"
                                     title="Resume Preview"
                                 />
                             </div>

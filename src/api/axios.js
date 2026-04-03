@@ -15,6 +15,11 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
+    // Automatically remove Content-Type for FormData so Axios can infer the correct boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
+
     // Tenant Identification (Strictly URL-based)
     const hostname = window.location.hostname;
     const urlParams = new URLSearchParams(window.location.search);
