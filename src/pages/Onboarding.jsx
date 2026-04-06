@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/axios';
+import axios from 'axios';
 import toast from 'react-hot-toast';
 import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, UploadCloud, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
@@ -43,12 +44,16 @@ const Onboarding = () => {
   const [previewWithData, setPreviewWithData] = useState(true);
   const [previewBlob, setPreviewBlob] = useState(null);
   const previewContainerRef = useRef(null);
+  const fileInputRefs = useRef({ offerLetter: null, declaration: null });
   const [checkedSections, setCheckedSections] = useState(new Set());
   const [checkedDocuments, setCheckedDocuments] = useState(new Set());
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailDeadline, setEmailDeadline] = useState('');
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
+  const [sendingCustomFile, setSendingCustomFile] = useState(false);
+  const [customFile, setCustomFile] = useState(null);
+  const customFileInputRef = useRef(null);
 
   // Close menu when clicking outside or scrolling
   useEffect(() => {
@@ -131,12 +136,45 @@ const Onboarding = () => {
     }
   };
 
-  const [formData, setFormData] = useState({
+  const handleSendCustomFile = async () => {
+    if (!customFile) {
+      toast.error('Please select a file first');
+      return;
+    }
+
+    try {
+      setSendingCustomFile(true);
+      const formData = new FormData();
+      formData.append('document', customFile);
+
+      const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/send-custom-file`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      toast.success(res.data.message || 'File sent to candidate email!');
+      setCustomFile(null);
+      if (customFileInputRef.current) customFileInputRef.current.value = '';
+
+      // Refresh employee to see audit log update
+      const empDetail = await api.get(`/onboarding/employees/${selectedEmployee._id}`);
+      setSelectedEmployee(empDetail.data);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send file');
+    } finally {
+      setSendingCustomFile(false);
+    }
+  };
+
+  const INITIAL_FORM_DATA = {
     firstName: '', lastName: '', email: '', phone: '',
-    designation: '', department: '', joiningDate: '', documentDeadline: '',
+    designation: '', department: '', joiningDate: '', offerDate: '', documentDeadline: '',
     workLocation: '', address: '', probationPeriod: '6 months',
     salary: { annualCTC: '', basic: '', hra: '', specialAllowance: '', monthlyGross: '', monthlyCTC: '' }
-  });
+  };
+
+  const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -271,7 +309,6 @@ const Onboarding = () => {
       setPreviewType(type);
       setPreviewWithData(withData);
       setShowPreviewModal(true);
-      // Clean up previous blob URL if exists
       if (previewBlob) setPreviewBlob(null);
 
       const res = await api.get(`/onboarding/settings/templates/${type}/preview?withData=${withData}`, { responseType: 'blob' });
@@ -285,36 +322,97 @@ const Onboarding = () => {
     }
   };
 
+  const handleFilePreview = async (url, type = 'file') => {
+    try {
+      setPreviewLoading(true);
+      setPreviewType(type);
+      setShowPreviewModal(true);
+      setPreviewWithData(false);
+      if (previewBlob) setPreviewBlob(null);
+
+      // Using raw axios for external URLs like Cloudinary to avoid base API interceptors
+      const res = await axios.get(url, { responseType: 'blob' });
+      setPreviewBlob(res.data);
+    } catch (err) {
+      console.error('File preview error:', err);
+      toast.error('Failed to load file preview');
+      setShowPreviewModal(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (previewBlob && previewContainerRef.current) {
       previewContainerRef.current.innerHTML = '';
-      renderAsync(previewBlob, previewContainerRef.current, null, {
-        className: "docx-content",
-        inWrapper: false, // Don't allow docx-preview to create its own wrapper/shadows
-        breakPages: false,
-        ignoreWidth: true, // Let our container handle width
-        ignoreHeight: true,
-        debug: false
-      }).catch(err => console.error('Docx-preview error:', err));
+      if (previewBlob.type === 'application/pdf') {
+        const url = URL.createObjectURL(previewBlob);
+        previewContainerRef.current.innerHTML = `<iframe src="${url}" style="width:100%; height:800px; border:none; border-radius:12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);"></iframe>`;
+      } else {
+        renderAsync(previewBlob, previewContainerRef.current, null, {
+          className: "docx-content",
+          inWrapper: false,
+          breakPages: false,
+          ignoreWidth: true,
+          ignoreHeight: true,
+          debug: false
+        }).catch(err => console.error('Docx-preview error:', err));
+      }
     }
   }, [previewBlob, showPreviewModal]);
+
+  const handleDownloadCurrent = () => {
+    if (!previewBlob) return;
+    const url = window.URL.createObjectURL(previewBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    const extension = previewBlob.type === 'application/pdf' ? 'pdf' : 'docx';
+    a.download = `Preview_${new Date().getTime()}.${extension}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
 
   const handleDownloadTemplate = async (type) => {
     try {
       toast.loading('Preparing download...', { id: 'dl' });
       const res = await api.get(`/onboarding/settings/templates/${type}/download`, { responseType: 'blob' });
-      const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
+      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
       const filename = `${type === 'offerLetter' ? 'OfferLetter' : 'Declaration'}_Template.docx`;
       link.download = filename;
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
       toast.success('Downloaded successfully!', { id: 'dl' });
     } catch (err) {
       console.error('Download error:', err);
       toast.error('Download failed', { id: 'dl' });
     }
+  };
+
+  const handleDeleteBaseTemplate = async (type) => {
+    if (!window.confirm(`Are you sure you want to delete the custom ${type === 'offerLetter' ? 'Offer Letter' : 'Declaration'} template? It will revert to the default template.`)) return;
+    try {
+      await api.delete(`/onboarding/settings/templates/${type}`);
+      toast.success('Template deleted successfully');
+      fetchSettings();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete template');
+    }
+  };
+
+  const handleOpenAddModal = () => {
+    setFormData({
+      ...INITIAL_FORM_DATA,
+      offerDate: new Date().toISOString().split('T')[0], // Default to today
+      salary: { ...INITIAL_FORM_DATA.salary }
+    });
+    setShowAddModal(true);
   };
 
   const handleAddEmployee = async (e) => {
@@ -324,10 +422,8 @@ const Onboarding = () => {
       toast.success('Employee added! Select sections and Send Email to notify candidate.');
       setShowAddModal(false);
       setFormData({
-        firstName: '', lastName: '', email: '', phone: '',
-        designation: '', department: '', joiningDate: '', documentDeadline: '',
-        workLocation: '', address: '', probationPeriod: '6 months',
-        salary: { annualCTC: '', basic: '', hra: '', specialAllowance: '', monthlyGross: '', monthlyCTC: '' }
+        ...INITIAL_FORM_DATA,
+        salary: { ...INITIAL_FORM_DATA.salary }
       });
       fetchEmployees();
     } catch (err) {
@@ -411,6 +507,7 @@ const Onboarding = () => {
       designation: emp.designation || '',
       department: emp.department || '',
       joiningDate: emp.joiningDate ? emp.joiningDate.split('T')[0] : '',
+      offerDate: emp.offerDate ? emp.offerDate.split('T')[0] : '',
       documentDeadline: emp.documentDeadline ? emp.documentDeadline.split('T')[0] : '',
       workLocation: emp.workLocation || '',
       address: emp.address || emp.personalDetails?.currentAddress?.line1 || '',
@@ -434,6 +531,10 @@ const Onboarding = () => {
       await api.patch(`/onboarding/employees/${selectedEmployee._id}`, formData);
       toast.success('Employee updated successfully!');
       setShowEditModal(false);
+      setFormData({
+        ...INITIAL_FORM_DATA,
+        salary: { ...INITIAL_FORM_DATA.salary }
+      });
       setSelectedEmployee(null);
       fetchEmployees();
     } catch (err) {
@@ -538,7 +639,7 @@ const Onboarding = () => {
           <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Pre-Onboarding Portal</h1>
           <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>Manage new hire pre-onboarding and document collection</p>
         </div>
-        <button onClick={() => setShowAddModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', fontSize: '14px', boxShadow: '0 4px 14px rgba(37,99,235,0.3)' }}>
+        <button onClick={handleOpenAddModal} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', fontSize: '14px', boxShadow: '0 4px 14px rgba(37,99,235,0.3)' }}>
           <UserPlus size={18} /> Add Employee
         </button>
       </div>
@@ -774,7 +875,7 @@ const Onboarding = () => {
                   <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '14px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #e2e8f0' }}>No dynamic templates uploaded yet.</div>
                 ) : (
                   <div style={{ display: 'grid', gap: '8px' }}>
-                    {onboardingSettings.offerLetterTemplateUrl && (
+                    {onboardingSettings.offerLetterTemplateUrl ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px' }}>
                         <FileText size={20} style={{ color: '#0369a1' }} />
                         <div style={{ flex: 1 }}>
@@ -782,10 +883,40 @@ const Onboarding = () => {
                           <div style={{ fontSize: '11px', color: '#0369a1' }}>Standard system-generated document</div>
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => handlePreview('offerLetter')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #bae6fd', background: '#fff', color: '#0369a1', display: 'flex' }} title="Preview"><Eye size={16} /></button>
-                          <button onClick={() => handleDownloadTemplate('offerLetter')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #bae6fd', background: '#fff', color: '#0369a1', display: 'flex' }} title="Download Template"><Download size={16} /></button>
+                          <button onClick={() => handlePreview('offerLetter')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #bae6fd', background: '#fff', color: '#0369a1', display: 'flex', cursor: 'pointer' }} title="Preview"><Eye size={16} /></button>
+                          <button onClick={() => handleDownloadTemplate('offerLetter')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #bae6fd', background: '#fff', color: '#0369a1', display: 'flex', cursor: 'pointer' }} title="Download Template"><Download size={16} /></button>
+                          <button onClick={() => fileInputRefs.current.offerLetter.click()} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #bae6fd', background: '#fff', color: '#d97706', display: 'flex', cursor: 'pointer' }} title="Replace Template"><RefreshCw size={16} /></button>
+                          <button onClick={() => handleDeleteBaseTemplate('offerLetter')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex', cursor: 'pointer' }} title="Delete Template"><Trash2 size={16} /></button>
+                          <input type="file" ref={el => fileInputRefs.current.offerLetter = el} accept=".docx" onChange={(e) => handleTemplateUpload(e, 'offerLetter')} style={{ display: 'none' }} />
                         </div>
                       </div>
+                    ) : (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f0f9ff', color: '#0369a1', padding: '12px 16px', borderRadius: '12px', border: '1px dashed #bae6fd', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
+                        <Upload size={18} /> Upload Primary Offer Letter Template (.docx)
+                        <input type="file" accept=".docx" onChange={(e) => handleTemplateUpload(e, 'offerLetter')} style={{ display: 'none' }} />
+                      </label>
+                    )}
+
+                    {onboardingSettings.declarationTemplateUrl ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '12px' }}>
+                        <FileText size={20} style={{ color: '#6d28d9' }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#4c1d95' }}>Declaration Template</div>
+                          <div style={{ fontSize: '11px', color: '#6d28d9' }}>Standard declaration for candidates</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button onClick={() => handlePreview('declaration')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #ddd6fe', background: '#fff', color: '#6d28d9', display: 'flex', cursor: 'pointer' }} title="Preview"><Eye size={16} /></button>
+                          <button onClick={() => handleDownloadTemplate('declaration')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #ddd6fe', background: '#fff', color: '#6d28d9', display: 'flex', cursor: 'pointer' }} title="Download Template"><Download size={16} /></button>
+                          <button onClick={() => fileInputRefs.current.declaration.click()} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #ddd6fe', background: '#fff', color: '#d97706', display: 'flex', cursor: 'pointer' }} title="Replace Template"><RefreshCw size={16} /></button>
+                          <button onClick={() => handleDeleteBaseTemplate('declaration')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex', cursor: 'pointer' }} title="Delete Template"><Trash2 size={16} /></button>
+                          <input type="file" ref={el => fileInputRefs.current.declaration = el} accept=".docx" onChange={(e) => handleTemplateUpload(e, 'declaration')} style={{ display: 'none' }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f5f3ff', color: '#6d28d9', padding: '12px 16px', borderRadius: '12px', border: '1px dashed #ddd6fe', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
+                        <Upload size={18} /> Upload Declaration Template (.docx)
+                        <input type="file" accept=".docx" onChange={(e) => handleTemplateUpload(e, 'declaration')} style={{ display: 'none' }} />
+                      </label>
                     )}
                     {onboardingSettings.dynamicTemplates?.map((temp) => (
                       <div key={temp._id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
@@ -794,10 +925,10 @@ const Onboarding = () => {
                           <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>{temp.name}</div>
                           <div style={{ fontSize: '11px', color: '#94a3b8' }}>Custom Dynamic Template</div>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <a href={temp.url} target="_blank" rel="noreferrer" style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex' }} title="View Original"><Eye size={16} /></a>
-                          <button onClick={() => handleDeleteDynamicTemplate(temp._id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex' }} title="Delete Template"><Trash2 size={16} /></button>
-                        </div>
+                         <div style={{ display: 'flex', gap: '8px' }}>
+                           <button onClick={() => handleFilePreview(temp.url, 'dynamic')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex', cursor: 'pointer' }} title="Preview Template"><Eye size={16} /></button>
+                           <button onClick={() => handleDeleteDynamicTemplate(temp._id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex', cursor: 'pointer' }} title="Delete Template"><Trash2 size={16} /></button>
+                         </div>
                       </div>
                     ))}
                   </div>
@@ -833,7 +964,7 @@ const Onboarding = () => {
                           <div style={{ fontSize: '11px', color: '#94a3b8' }}>{policy.isRequired ? 'Mandatory for candidates' : 'Optional'}</div>
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                          <a href={policy.url} target="_blank" rel="noreferrer" style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex' }} title="View Policy"><Eye size={16} /></a>
+                          <button onClick={() => handleFilePreview(policy.url, 'policy')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex', cursor: 'pointer' }} title="Preview Policy"><Eye size={16} /></button>
                           <button onClick={() => handleDeletePolicy(policy._id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer', display: 'flex' }} title="Delete Policy"><Trash2 size={16} /></button>
                         </div>
                       </div>
@@ -855,8 +986,9 @@ const Onboarding = () => {
                   { tag: '{joining_date}', desc: 'Joining Date' }, { tag: '{annual_ctc}', desc: 'Annual CTC' },
                   { tag: '{employee_address}', desc: 'Full Address' }, { tag: '{work_location}', desc: 'Work Location' },
                   { tag: '{probation_period}', desc: 'Probation Period' }, { tag: '{basic_salary}', desc: 'Basic Salary' },
-                  { tag: '{hra}', desc: 'House Rent Allowance' }, { tag: '{monthly_gross}', desc: 'Monthly Gross' },
-                  { tag: '{hr_name}', desc: 'Authorized Signatory Name' }
+                  { tag: '{hra}', desc: 'House Rent Allowance' }, { tag: '{special_allowance}', desc: 'Special Allowance' },
+                  { tag: '{monthly_gross}', desc: 'Monthly Gross' }, { tag: '{monthly_ctc}', desc: 'Monthly CTC' },
+                  { tag: '{offer_date}', desc: 'Date of Offer' }, { tag: '{hr_name}', desc: 'Authorized Signatory Name' }
                 ].map(p => (
                   <div key={p.tag} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                     <span style={{ fontFamily: 'Calibri, "Segoe UI", sans-serif', fontSize: '12pt', fontWeight: '600', color: '#0f172a' }}>{p.tag}</span>
@@ -902,6 +1034,10 @@ const Onboarding = () => {
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Department</label>
                   <input value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Date of Offer</label>
+                  <input type="date" value={formData.offerDate} onChange={(e) => setFormData({ ...formData, offerDate: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Joining Date</label>
@@ -1000,6 +1136,10 @@ const Onboarding = () => {
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Department</label>
                   <input value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Date of Offer</label>
+                  <input type="date" value={formData.offerDate} onChange={(e) => setFormData({ ...formData, offerDate: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Joining Date</label>
@@ -1252,19 +1392,18 @@ const Onboarding = () => {
                 <div style={{ display: 'grid', gap: '8px' }}>
                   {[
                     ...(selectedEmployee.documents || []).map(d => ({ ...d, itemType: 'document' })),
-                    ...(onboardingSettings.policies || [])
-                      .filter(p => (selectedEmployee.requestedDocuments || []).some(rd => rd.label === p.name))
-                      .map(p => {
-                        const req = (selectedEmployee.requestedDocuments || []).find(rd => rd.label === p.name);
-                        return {
-                          label: p.name,
-                          status: 'Policy',
-                          itemType: 'policy',
-                          _id: p._id,
-                          isAccepted: (selectedEmployee.offerDeclaration?.acceptedPolicies || []).some(ap => ap.policyId === p._id),
-                          emailSentAt: req?.emailSentAt
-                        };
-                      }),
+                    ...(onboardingSettings.policies || []).map(p => {
+                      const req = (selectedEmployee.requestedDocuments || []).find(rd => rd.label === p.name);
+                      return {
+                        label: p.name,
+                        status: 'Policy',
+                        itemType: 'policy',
+                        _id: p._id,
+                        isAccepted: (selectedEmployee.offerDeclaration?.acceptedPolicies || []).some(ap => ap.policyId === p._id),
+                        emailSentAt: req?.emailSentAt,
+                        url: p.url
+                      };
+                    }),
                     ...(onboardingSettings.dynamicTemplates || []).map(t => {
                       const req = (selectedEmployee.requestedDocuments || []).find(rd => rd.label === t.name);
                       return {
@@ -1276,17 +1415,22 @@ const Onboarding = () => {
                         emailSentAt: req?.emailSentAt
                       };
                     }),
-                    ...(onboardingSettings.offerLetterTemplateUrl ? (() => {
-                      const req = (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Offer Letter');
-                      return [{
-                        label: 'Offer Letter',
-                        status: 'Template',
-                        itemType: 'template',
-                        _id: 'offer-letter-default',
-                        isAccepted: selectedEmployee.offerDeclaration?.hasReadOfferLetter,
-                        emailSentAt: req?.emailSentAt
-                      }];
-                    })() : [])
+                    ...(onboardingSettings.offerLetterTemplateUrl ? [{
+                      label: 'Offer Letter',
+                      status: 'Template',
+                      itemType: 'template',
+                      _id: 'offer-letter-default',
+                      isAccepted: selectedEmployee.offerDeclaration?.hasReadOfferLetter,
+                      emailSentAt: (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Offer Letter')?.emailSentAt
+                    }] : []),
+                    ...(onboardingSettings.declarationTemplateUrl ? [{
+                      label: 'Declaration',
+                      status: 'Template',
+                      itemType: 'template',
+                      _id: 'declaration-default',
+                      isAccepted: selectedEmployee.offerDeclaration?.isComplete,
+                      emailSentAt: (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Declaration')?.emailSentAt
+                    }] : [])
                   ].map((item, idx) => {
                     const isDoc = item.itemType === 'document';
                     const badge = isDoc ? (DOC_BADGE[item.status] || DOC_BADGE.Pending) : { bg: '#f0fdf4', text: '#16a34a' };
@@ -1301,15 +1445,16 @@ const Onboarding = () => {
 
                         <div style={{ flex: 1, minWidth: '120px' }}>
                           <div style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>{item.label}</div>
+                          {item.itemType === 'policy' && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#dbeafe', color: '#1e40af' }}>STATIC POLICY</span></div>}
                           {item.rejectionReason && <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>⚠️ {item.rejectionReason}</div>}
                           {(item.itemType === 'policy' || item.itemType === 'template') && !item.isAccepted && (
                             <div style={{ fontSize: '11px', color: item.emailSentAt ? '#92400e' : '#d97706', marginTop: '2px' }}>
-                              {item.emailSentAt ? 'Awaiting candidate acceptance' : 'Pending selection'}
+                              {item.emailSentAt ? `📧 Sent: ${new Date(item.emailSentAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}` : 'Not Requested'}
                             </div>
                           )}
-                          {item.emailSentAt && <div style={{ fontSize: '11px', color: '#92400e', marginTop: '2px' }}>📧 Sent: {new Date(item.emailSentAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>}
                           {isDoc && item.uploadedAt && <div style={{ fontSize: '11px', color: '#1d4ed8', marginTop: '2px' }}>📤 Uploaded: {new Date(item.uploadedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>}
                         </div>
+
                         {item.itemType === 'policy' || item.itemType === 'template' ? (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: item.isAccepted ? '#dcfce7' : (item.emailSentAt ? '#fef3c7' : '#f1f5f9'), color: item.isAccepted ? '#15803d' : (item.emailSentAt ? '#92400e' : '#64748b'), whiteSpace: 'nowrap' }}>
                             {item.isAccepted ? <><Check size={12} /> Accepted</> : item.emailSentAt ? <><Send size={12} /> Mail Sent</> : <><Clock size={12} /> Pending</>}
@@ -1318,15 +1463,15 @@ const Onboarding = () => {
                           <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: badge.bg, color: badge.text, whiteSpace: 'nowrap' }}>{item.status}</span>
                         )}
 
-                        {isDoc && (
+                        {(item.url || isDoc) && (
                           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                             {item.url && (
-                              <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#3b82f6', fontSize: '12px', textDecoration: 'none', fontWeight: '600', transition: 'all 0.2s' }}>View</a>
+                              <button onClick={() => handleFilePreview(item.url, item.itemType || 'file')} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#3b82f6', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>View</button>
                             )}
-                            {item.status === 'Uploaded' && (
+                            {isDoc && item.status === 'Uploaded' && (
                               <>
-                                <button onClick={() => handleApproveDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #dcfce7, #d1fae5)', color: '#15803d', fontSize: '12px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>✓ Approve</button>
-                                <button onClick={() => handleFlagDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #fee2e2, #fecaca)', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>✕ Flag</button>
+                                <button onClick={() => handleApproveDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #dcfce7, #d1fae5)', color: '#15803d', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✓ Approve</button>
+                                <button onClick={() => handleFlagDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #fee2e2, #fecaca)', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✕ Flag</button>
                               </>
                             )}
                           </div>
@@ -1387,6 +1532,47 @@ const Onboarding = () => {
                     <strong>Transferred to Active Employee</strong>
                   </div>
                 )}
+
+                {/* Send Custom File Utility */}
+                <div style={{ marginBottom: '32px', padding: '20px', background: '#f8fafc', borderRadius: '16px', border: '2px dashed #e2e8f0' }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <UploadCloud size={18} style={{ color: '#3b82f6' }} /> Send Any File to Candidate
+                  </h4>
+                  <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#64748b' }}>Upload any manual document (Policies, Info booklets, etc.) to send it directly to the candidate's email.</p>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div 
+                      onClick={() => customFileInputRef.current?.click()}
+                      style={{ padding: '16px', border: '1px solid #cbd5e1', borderRadius: '12px', background: '#fff', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s' }}
+                      onMouseOver={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
+                      onMouseOut={(e) => e.currentTarget.style.borderColor = '#cbd5e1'}
+                    >
+                      <input 
+                        type="file" 
+                        ref={customFileInputRef} 
+                        onChange={(e) => setCustomFile(e.target.files[0])} 
+                        style={{ display: 'none' }} 
+                      />
+                      {customFile ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                          <FileText size={18} color="#2563eb" />
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{customFile.name}</span>
+                          <button onClick={(e) => { e.stopPropagation(); setCustomFile(null); if (customFileInputRef.current) customFileInputRef.current.value = ''; }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', marginLeft: '8px' }}><X size={14} /></button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '13px', color: '#94a3b8' }}>Click to select a file...</span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={handleSendCustomFile}
+                      disabled={sendingCustomFile || !customFile}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px', borderRadius: '10px', border: 'none', background: !customFile ? '#e2e8f0' : 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', cursor: (sendingCustomFile || !customFile) ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '14px', transition: 'all 0.2s', opacity: sendingCustomFile ? 0.7 : (!customFile ? 0.6 : 1), boxShadow: customFile ? '0 4px 12px rgba(37,99,235,0.2)' : 'none' }}
+                    >
+                      <Send size={16} /> {sendingCustomFile ? 'Sending...' : 'Send to Candidate Email'}
+                    </button>
+                  </div>
+                </div>
 
                 {/* Audit Log */}
                 {selectedEmployee.auditLog && selectedEmployee.auditLog.length > 0 && (
@@ -1456,6 +1642,8 @@ const Onboarding = () => {
                   <RefreshCw size={32} className="animate-spin" />
                   <span>Generating high-fidelity preview...</span>
                 </div>
+              ) : previewBlob?.type === 'application/pdf' ? (
+                <div ref={previewContainerRef} style={{ width: '100%', height: '800px', borderRadius: '12px', overflow: 'hidden' }} />
               ) : (
                 <div
                   id="docx-preview-root"
@@ -1495,8 +1683,12 @@ const Onboarding = () => {
               <button onClick={() => { setShowPreviewModal(false); setPreviewHtml(''); }} style={{ padding: '10px 24px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', color: '#475569' }}>
                 Close Preview
               </button>
-              <button onClick={() => handleDownloadTemplate(previewType)} style={{ padding: '10px 24px', border: 'none', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Download size={16} /> Download to Edit
+              <button 
+                onClick={handleDownloadCurrent} 
+                disabled={!previewBlob}
+                style={{ padding: '10px 24px', border: 'none', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', opacity: previewBlob ? 1 : 0.6 }}
+              >
+                <Download size={16} /> Download
               </button>
             </div>
           </div>
