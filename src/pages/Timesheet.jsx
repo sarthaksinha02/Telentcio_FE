@@ -24,6 +24,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [viewUser, setViewUser] = useState(user);
     const [holidays, setHolidays] = useState([]);
     const [usersList, setUsersList] = useState([]); // List of users for dropdown
+    const [weeklyOffs, setWeeklyOffs] = useState(['Sunday']);
 
 
     // Approval Logic
@@ -399,6 +400,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 setAvailableProjects(data.projects);
             }
             if (data.holidays) setHolidays(data.holidays);
+            if (data.weeklyOff) setWeeklyOffs(data.weeklyOff);
             // viewUser update is skipped for cache to avoid flickering if targetUserId changed
         };
 
@@ -425,7 +427,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 timesheet: tsRes.data,
                 attendanceLogs: tsRes.data.attendanceLog || [],
                 projects: projRes.data,
-                holidays: holRes.data || []
+                holidays: holRes.data || [],
+                weeklyOff: tsRes.data.weeklyOff || ['Sunday']
             };
 
             const freshFingerprint = buildFingerprint(payload);
@@ -577,7 +580,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     // Generate days for current view (Monthly)
     const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
-    const weeklyOff = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
+    const weeklyOff = weeklyOffs;
     
     let visibleDays = [];
     if (cycle === 'Weekly') {
@@ -2092,6 +2095,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                     }
                                 }}
                                 user={viewUser}
+                                weeklyOffs={weeklyOffs}
                                 holidays={holidays}
                                 date={viewDate}
                                 isPrivileged={canUpdateAttendance}

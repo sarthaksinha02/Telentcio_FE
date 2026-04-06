@@ -1483,7 +1483,7 @@ const Onboarding = () => {
 
                 {/* Submission Deadline Selection */}
                 <div style={{ marginTop: '24px', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Clock size={16} style={{ color: '#3b82f6' }} /> Submission Deadline for Candidate
                   </label>
                   <input

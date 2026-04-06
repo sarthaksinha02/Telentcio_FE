@@ -30,6 +30,7 @@ const Attendance = () => {
     const [showLogModal, setShowLogModal] = useState(false);
     const [logForm, setLogForm] = useState({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
     const [loggingTaskId, setLoggingTaskId] = useState(null);
+    const [weeklyOffs, setWeeklyOffs] = useState(['Saturday', 'Sunday']);
     const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks', 'regularize'
 
     useEffect(() => {
@@ -167,7 +168,6 @@ const Attendance = () => {
         const targetDate = startOfDay(new Date(day));
         const today = startOfDay(new Date());
 
-        const weeklyOffs = user?.company?.settings?.attendance?.weeklyOff || ['Saturday', 'Sunday'];
         const holidayDates = (holidays || []).map(h => format(new Date(h.date), 'yyyy-MM-dd'));
 
         // 1. Check if it's a future date
@@ -312,7 +312,8 @@ const Attendance = () => {
                 fetchHolidaysProm,
                 fetchLeavesProm
             ]);
-            setHistory(historyRes.data);
+            setHistory(historyRes.data.history || []);
+            setWeeklyOffs(historyRes.data.weeklyOff || ['Saturday', 'Sunday']);
             setHolidays(holidaysRes.data);
             setApprovedLeaves(leavesRes.data.data || []);
         } catch (error) {
@@ -426,7 +427,7 @@ const Attendance = () => {
             const freshData = {
                 status: statusData,
                 recentLogs: logsData || [],
-                history: historyData || [],
+                history: historyData?.history || [],
                 holidays: holidaysData || [],
                 approvedLeaves: leavesData?.data || []
             };
@@ -436,6 +437,7 @@ const Attendance = () => {
             // 3. Update React only if data changed
             if (!cached || cached.fingerprint !== freshFingerprint) {
                 applyData(freshData);
+                if (historyData?.weeklyOff) setWeeklyOffs(historyData.weeklyOff);
                 writeCache({ data: freshData, fingerprint: freshFingerprint });
             }
         }).finally(() => {
@@ -457,7 +459,10 @@ const Attendance = () => {
         const controller = new AbortController();
         const now = new Date();
         api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${selectedUserId}`, { signal: controller.signal })
-            .then(res => setHistory(res.data))
+            .then(res => {
+                setHistory(res.data.history || []);
+                if (res.data.weeklyOff) setWeeklyOffs(res.data.weeklyOff);
+            })
             .catch(e => { if (e?.code !== 'ERR_CANCELED' && e?.name !== 'CanceledError') console.error(e); });
 
         return () => controller.abort();
@@ -877,9 +882,8 @@ const Attendance = () => {
         days.forEach(day => {
             const dateStr = format(day, 'yyyy-MM-dd');
             const record = history.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-            const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
             const dayName = format(day, 'EEEE');
-            const isWeekendDay = weeklyOffDays.includes(dayName);
+            const isWeekendDay = weeklyOffs.includes(dayName);
             const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
 
             const row = sheet.getRow(currentRow);
@@ -898,7 +902,10 @@ const Attendance = () => {
             });
 
             let status = '';
-            if (leave) {
+            const isOffDay = !!holiday || isWeekendDay;
+            const showLeave = leave && (!isOffDay || leave.sandwichRule);
+
+            if (showLeave) {
                 status = 'Leave';
             } else if (holiday) {
                 status = holiday.name;
@@ -993,9 +1000,8 @@ const Attendance = () => {
         days.forEach(day => {
             const dateStr = format(day, 'yyyy-MM-dd');
             const record = history.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-            const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
             const dayName = format(day, 'EEEE');
-            const isWeeklyOff = weeklyOffDays.includes(dayName);
+            const isWeeklyOff = weeklyOffs.includes(dayName);
             const isFuture = day > new Date();
 
             let status = 'Absent';
@@ -1021,18 +1027,18 @@ const Attendance = () => {
             } else if (isFuture) {
                 status = '-';
                 rowColor = 'FFFFFFFF'; // White
-            } else if (leave) {
+            } else if (leave && (!(holiday || isWeeklyOff) || leave.sandwichRule)) {
                 status = `Leave (${leave.leaveType})`;
                 rowColor = 'FFE1BEE7'; // Light Purple/Indigo
             } else if (holiday) {
                 status = holiday.name;
                 rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB'; // Light Orange for Optional, Light Teal for Regular
-            } else if (record) {
-                status = 'Present';
-                rowColor = 'FFEBF1DE'; // Green
             } else if (isWeeklyOff) {
                 status = 'Weekoff';
                 rowColor = 'FFF2F2F2'; // Gray
+            } else if (record) {
+                status = 'Present';
+                rowColor = 'FFEBF1DE'; // Green
             }
 
             const row = sheet.addRow([
@@ -1069,7 +1075,7 @@ const Attendance = () => {
             const currentMonth = new Date().getMonth() + 1;
 
             const res = await api.get(`/attendance/team-report?month=${currentMonth}&year=${currentYear}`);
-            const { teamMembers, attendanceRecords } = res.data; // Note: Controller returns { teamMembers, attendanceRecords }
+            const { teamMembers, attendanceRecords, holidays, leaveRecords, weeklyOff } = res.data;
 
             if (!teamMembers || teamMembers.length === 0) {
                 toast.error('No team members found');
@@ -1109,6 +1115,28 @@ const Attendance = () => {
                 attendanceMap[userId][dateStr] = record;
             });
 
+            // 3. Prepare Other Maps
+            const leaveMap = {};
+            if (leaveRecords) {
+                leaveRecords.forEach(l => {
+                    const userId = l.user.toString();
+                    if (!leaveMap[userId]) leaveMap[userId] = {};
+                    const start = new Date(l.startDate);
+                    const end = new Date(l.endDate);
+                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                        const dStr = format(d, 'yyyy-MM-dd');
+                        leaveMap[userId][dStr] = { type: l.leaveType, sandwich: l.sandwichRule };
+                    }
+                });
+            }
+
+            const holidayMap = {};
+            if (holidays) {
+                holidays.forEach(h => {
+                    holidayMap[format(new Date(h.date), 'yyyy-MM-dd')] = h.name;
+                });
+            }
+
             // Freeze first row and first column
             worksheet.views = [
                 { state: 'frozen', xSplit: 1, ySplit: 1 }
@@ -1126,23 +1154,37 @@ const Attendance = () => {
                 parentRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Light Slate
 
                 // --- CHILD ROWS ---
+                const statusRow = { name: '   ↳ Status' };
                 const checkInRow = { name: '   ↳ Check In' };
                 const checkOutRow = { name: '   ↳ Check Out' };
                 const durationRow = { name: '   ↳ Duration' };
 
                 for (let d = 1; d <= daysInMonth; d++) {
-                    // Create date for column (Year, Month, Day)
-                    // We need a formatted YYYY-MM-DD string to match the map key
                     const colDate = new Date(currentYear, currentMonth - 1, d);
                     const dateStr = format(colDate, 'yyyy-MM-dd');
                     const record = userLogs[dateStr];
+                    const leave = (leaveMap[user._id] || {})[dateStr];
+                    const holiday = holidayMap[dateStr];
                     const colKey = `day_${d}`;
+
+                    const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
+                    const dayName = format(colDate, 'EEEE');
+                    const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
+                    const isOffDay = !!holiday || isWeeklyOff;
+
+                    // Status Logic
+                    let status = 'A';
+                    if (colDate > new Date()) status = '-';
+                    else if (leave && (!isOffDay || leave.sandwich)) status = `L (${leave.type})`;
+                    else if (holiday) status = 'H';
+                    else if (isWeeklyOff) status = 'WO';
+                    else if (record) status = 'P';
+
+                    statusRow[colKey] = status;
 
                     if (record) {
                         checkInRow[colKey] = record.clockInIST ? extractTime(record.clockInIST) : (record.clockIn ? formatTimeSimple(record.clockIn) : '-');
                         checkOutRow[colKey] = record.clockOutIST ? extractTime(record.clockOutIST) : (record.clockOut ? formatTimeSimple(record.clockOut) : '-');
-
-                        // Calculate duration
                         durationRow[colKey] = calculateDuration(record.clockIn, record.clockOut, colDate);
                     } else {
                         checkInRow[colKey] = '-';
@@ -1151,14 +1193,34 @@ const Attendance = () => {
                     }
                 }
 
+                const r0 = worksheet.addRow(statusRow);
                 const r1 = worksheet.addRow(checkInRow);
                 const r2 = worksheet.addRow(checkOutRow);
                 const r3 = worksheet.addRow(durationRow);
 
-                // Grouping Logic - This makes them collapsible
+                // Grouping Logic
+                r0.outlineLevel = 1;
                 r1.outlineLevel = 1;
                 r2.outlineLevel = 1;
                 r3.outlineLevel = 1;
+
+                // Status row styling
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const colKey = `day_${d}`;
+                    const cell = r0.getCell(colKey);
+                    const val = cell.value?.toString();
+                    if (val?.startsWith('L')) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE0B2' } };
+                    } else if (val === 'H') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1F2EB' } };
+                    } else if (val === 'WO') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+                    } else if (val === 'P') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
+                    } else if (val === 'A') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } };
+                    }
+                }
 
                 // Child Row Styling
                 [r1, r2, r3].forEach(row => {
@@ -1546,6 +1608,7 @@ const Attendance = () => {
                                     holidays={holidays} 
                                     approvedLeaves={approvedLeaves} 
                                     onRegularize={handleRegularize}
+                                    weeklyOffs={weeklyOffs}
                                 />
                             ) : activeTab === 'regularize' ? (
                                 <RegularizationRequestsView 

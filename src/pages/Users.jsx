@@ -181,7 +181,7 @@ const Users = () => {
 
             // Fetch data
             const res = await api.get(`/attendance/team-report?year=${year}&month=${month}`);
-            const { teamMembers, attendanceRecords, leaveRecords, holidays } = res.data;
+            const { teamMembers, attendanceRecords, leaveRecords, holidays, weeklyOff } = res.data;
 
             if (!teamMembers || teamMembers.length === 0) {
                 toast.error('No team members found', { id: toastId });
@@ -237,7 +237,7 @@ const Users = () => {
                     const end = new Date(leave.endDate);
                     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                         const dStr = d.toISOString().split('T')[0];
-                        leaveMap[userId][dStr] = leave.leaveType;
+                        leaveMap[userId][dStr] = { type: leave.leaveType, sandwich: leave.sandwichRule };
                     }
                 });
             }
@@ -290,10 +290,11 @@ const Users = () => {
                     const record = userLogs[dateStr];
                     const colKey = `day_${d}`;
 
-                    const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
-                    const isWeeklyOff = weeklyOffDays.includes(dateObj.toLocaleDateString('en-US', { weekday: 'long' }));
+                    const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
+                    const dayName = format(dateObj, 'EEEE');
+                    const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
                     const isFuture = dateObj > new Date();
-                    const leaveType = userLeaves[dateStr];
+                    const leaveData = userLeaves[dateStr];
                     const holidayName = holidayMap[dateStr];
 
                     // -- Calculate Duration First --
@@ -307,25 +308,28 @@ const Users = () => {
                     let statusShort = 'Absent'; // Default
                     let cellColor = 'FFF2DCDB'; // Red (Absent)
 
+                    const isOffDay = !!holidayName || isWeeklyOff;
+                    const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
+
                     if (isFuture) {
                         statusShort = '-';
                         cellColor = 'FFFFFFFF'; // White
                     }
-                    else if (leaveType) {
-                        statusShort = `L (${leaveType})`; // Show Leave Type
+                    else if (showLeave) {
+                        statusShort = `L (${leaveData.type})`; // Show Leave Type
                         cellColor = 'FFFFE0B2'; // Orange/Yellowish
                     }
                     else if (holidayName) {
                         statusShort = holidayName; // Show Holiday Name
                         cellColor = 'FFD1F2EB'; // Light Cyan/Greenish
                     }
-                    else if (record) {
-                        statusShort = 'Present';
-                        cellColor = 'FFEBF1DE'; // Light Green
-                    }
                     else if (isWeeklyOff) {
                         statusShort = 'Weekoff';
                         cellColor = 'FFF2F2F2'; // Light Grey
+                    }
+                    else if (record) {
+                        statusShort = 'Present';
+                        cellColor = 'FFEBF1DE'; // Light Green
                     }
 
                     if (exportOptions.status) {
@@ -337,7 +341,7 @@ const Users = () => {
 
                     // -- 2. Leaves Logic --
                     if (exportOptions.leaves) {
-                        leavesRow[colKey] = leaveType || '-';
+                        leavesRow[colKey] = leaveData?.type || '-';
                     }
 
                     // -- 3. Time/Duration Data --
@@ -395,10 +399,11 @@ const Users = () => {
                             // Match the key format
                             const dateStr = dateObj.toLocaleDateString('en-CA');
                             const record = userLogs[dateStr];
-                            const leaveType = userLeaves[dateStr];
+                            const leaveData = userLeaves[dateStr];
                             const holidayName = holidayMap[dateStr];
-                            const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
-                            const isWeeklyOff = weeklyOffDays.includes(dateObj.toLocaleDateString('en-US', { weekday: 'long' }));
+                            const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
+                            const dayName = format(dateObj, 'EEEE');
+                            const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
                             const isFuture = dateObj > new Date();
 
                             // -- Apply Same Logic for Coloring --
@@ -410,11 +415,14 @@ const Users = () => {
 
                             let cellColor = 'FFF2DCDB'; // Red
 
+                            const isOffDay = !!holidayName || isWeeklyOff;
+                            const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
+
                             if (isFuture) cellColor = 'FFFFFFFF';
-                            else if (leaveType) cellColor = 'FFFFE0B2';
+                            else if (showLeave) cellColor = 'FFFFE0B2';
                             else if (holidayName) cellColor = 'FFD1F2EB';
-                            else if (record) cellColor = 'FFEBF1DE';
                             else if (isWeeklyOff) cellColor = 'FFF2F2F2';
+                            else if (record) cellColor = 'FFEBF1DE';
 
                             const colKey = `day_${d}`;
                             // This library might not support key-based cell access directly on 'row' object efficiently if strictly column indexed?
@@ -468,7 +476,7 @@ const Users = () => {
             // Session Caching Logic
             const cacheKey = `user_data_${user?._id}`;
             const cachedData = sessionStorage.getItem(cacheKey);
-            
+
             if (cachedData) {
                 const parsed = JSON.parse(cachedData);
                 setUsers(parsed.users);
@@ -514,10 +522,10 @@ const Users = () => {
             if (newFingerprint !== oldFingerprint) {
                 setUsers(usersData);
                 setRoles(rolesData);
-                sessionStorage.setItem(cacheKey, JSON.stringify({ 
-                    users: usersData, 
-                    roles: rolesData, 
-                    fingerprint: newFingerprint 
+                sessionStorage.setItem(cacheKey, JSON.stringify({
+                    users: usersData,
+                    roles: rolesData,
+                    fingerprint: newFingerprint
                 }));
             }
         } catch (error) {

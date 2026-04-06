@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Edit2 } from 'lucide-react';
 import { differenceInCalendarDays } from 'date-fns';
 
-const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date, approvedLeaves = [], onRegularize, isPrivileged = false }) => {
+const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date, approvedLeaves = [], onRegularize, isPrivileged = false, weeklyOffs = ['Sunday'] }) => {
     const [currentDate, setCurrentDate] = useState(date || new Date());
 
     useEffect(() => {
@@ -97,9 +97,8 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date,
                         return d >= s && d <= e;
                     });
 
-                    const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
                     const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day.getDay()];
-                    const isWeeklyOff = weeklyOffDays.includes(dayName);
+                    const isWeeklyOff = weeklyOffs.includes(dayName);
 
                     const isToday = normalizeDate(day) === normalizeDate(new Date());
                     const joiningDate = user?.joiningDate ? new Date(user.joiningDate) : null;
@@ -117,9 +116,8 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date,
 
                             {/* Regularize Action */}
                             {(() => {
-                                const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
                                 const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day.getDay()];
-                                const isWeeklyOff = weeklyOffDays.includes(dayName);
+                                const isWeeklyOff = weeklyOffs.includes(dayName);
                                 const isHoliday = !!holiday;
 
                                 // 1. Skip if before joining or in future
@@ -140,7 +138,7 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date,
                                     const cDayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][checkDate.getDay()];
                                     const cDateStr = checkDate.toDateString();
                                     
-                                    const isCWeeklyOff = weeklyOffDays.includes(cDayName);
+                                    const isCWeeklyOff = weeklyOffs.includes(cDayName);
                                     const isCHoliday = holidays.some(h => new Date(h.date).toDateString() === cDateStr);
 
                                     if (!isCWeeklyOff && !isCHoliday) {
@@ -180,9 +178,8 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date,
                             {leave && (
                                 (() => {
                                     const isHoliday = !!holiday;
-                                    const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
                                     const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day.getDay()];
-                                    const isWeeklyOff = weeklyOffDays.includes(dayName);
+                                    const isWeeklyOff = weeklyOffs.includes(dayName);
                                     
                                     // If it's a holiday or weekly off, only show leave if sandwich rule is active
                                     if (isHoliday || isWeeklyOff) {
