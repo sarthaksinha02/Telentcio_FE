@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Edit2 } from 'lucide-react';
 import { differenceInCalendarDays } from 'date-fns';
 
-const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date, approvedLeaves = [], onRegularize, isPrivileged = false, weeklyOffs = ['Sunday'] }) => {
+const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], date, approvedLeaves = [], onRegularize, isPrivileged = false, weeklyOffs = ['Sunday'] }) => {
     const [currentDate, setCurrentDate] = useState(date || new Date());
 
     useEffect(() => {
@@ -89,9 +89,9 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date,
                 ))}
 
                 {days.map((day) => {
-                    const record = history.find(h => normalizeDate(h.date) === normalizeDate(day));
-                    const holiday = holidays.find(h => normalizeDate(h.date) === normalizeDate(day));
-                    const leave = approvedLeaves.find(l => {
+                    const record = (history || []).find(h => normalizeDate(h.date) === normalizeDate(day));
+                    const holiday = (holidays || []).find(h => normalizeDate(h.date) === normalizeDate(day));
+                    const leave = (approvedLeaves || []).find(l => {
                         const lStart = new Date(l.startDate);
                         const lEnd = new Date(l.endDate);
 
@@ -145,7 +145,7 @@ const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date,
                                     const cDateStr = checkDate.toDateString();
 
                                     const isCWeeklyOff = weeklyOffs.includes(cDayName);
-                                    const isCHoliday = holidays.some(h => new Date(h.date).toDateString() === cDateStr);
+                                    const isCHoliday = (holidays || []).some(h => new Date(h.date).toDateString() === cDateStr);
 
                                     if (!isCWeeklyOff && !isCHoliday) {
                                         workingDaysCount++;
