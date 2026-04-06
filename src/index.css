@@ -2,8 +2,13 @@
 
 @layer base {
   :root {
-    --primary-color: #2563eb;
-    --primary-hover: #1d4ed8;
+    --primary-color: #115cb9;
+    --primary-hover: #0056b3;
+    --surface: #f8f9fa;
+    --surface-container-low: #f1f4f6;
+    --surface-container-lowest: #ffffff;
+    --on-surface: #2b3437;
+    --outline-variant: rgba(171, 179, 183, 0.15);
   }
 
   html {
@@ -30,7 +35,12 @@
   }
 
   .premium-card {
-    @apply bg-white rounded-2xl border border-slate-100/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300;
+    @apply bg-white rounded-xl border border-slate-100/60 transition-all duration-300;
+    box-shadow: 0 4px 24px -2px rgba(43, 52, 55, 0.04);
+    &:hover {
+      box-shadow: 0 12px 32px -4px rgba(43, 52, 55, 0.08);
+      transform: translateY(-2px);
+    }
   }
 
   .glass-card {
@@ -42,7 +52,7 @@
   }
 
   .premium-gradient-blue {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    background: linear-gradient(135deg, #115cb9 0%, #0050a7 100%);
   }
 
   .premium-gradient-emerald {

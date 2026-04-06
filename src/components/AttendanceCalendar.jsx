@@ -1,269 +1,205 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Edit2 } from 'lucide-react';
-import { differenceInCalendarDays } from 'date-fns';
+import { ChevronLeft, ChevronRight, Edit2, Calendar as CalendarIcon, Info } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfDay } from 'date-fns';
 
 const AttendanceCalendar = ({ history, onMonthChange, user, holidays = [], date, approvedLeaves = [], onRegularize, isPrivileged = false, weeklyOffs = ['Sunday'] }) => {
     const [currentDate, setCurrentDate] = useState(date || new Date());
 
     useEffect(() => {
-        if (date) {
-            setCurrentDate(date);
-        }
+        if (date) setCurrentDate(date);
     }, [date]);
-
-    const getDaysInMonth = (date) => {
-        const year = date.getFullYear();
-        const month = date.getMonth();
-        const days = new Date(year, month + 1, 0).getDate();
-        return Array.from({ length: days }, (_, i) => new Date(year, month, i + 1));
-    };
 
     const normalizeDate = (d) => new Date(d).toDateString();
 
-    const days = getDaysInMonth(currentDate);
-    const startDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay(); // 0 = Sun
+    const days = eachDayOfInterval({
+        start: startOfMonth(currentDate),
+        end: endOfMonth(currentDate)
+    });
 
-    // Create empty cells for start padding
+    const startDay = startOfMonth(currentDate).getDay(); // 0 = Sun
     const blanks = Array.from({ length: startDay }, (_, i) => i);
 
     const prevMonth = () => {
-        const next = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+        const next = subMonths(currentDate, 1);
         setCurrentDate(next);
         onMonthChange(next.getFullYear(), next.getMonth() + 1);
     };
 
     const nextMonth = () => {
-        const next = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+        const next = addMonths(currentDate, 1);
         setCurrentDate(next);
         onMonthChange(next.getFullYear(), next.getMonth() + 1);
     };
 
-    const getStatusColor = (status) => {
+    const getStatusToken = (status) => {
         switch (status) {
-            case 'PRESENT': return 'bg-emerald-500';
-            case 'ABSENT': return 'bg-red-500';
-            case 'HALF_DAY': return 'bg-orange-500';
-            case 'LEAVE': return 'bg-purple-500';
-            default: return 'bg-slate-300';
+            case 'PRESENT': return { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-100', dot: 'bg-emerald-500' };
+            case 'ABSENT': return { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-100', dot: 'bg-red-500' };
+            case 'HALF_DAY': return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', dot: 'bg-amber-500' };
+            case 'LEAVE': return { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-100', dot: 'bg-indigo-500' };
+            default: return { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-100', dot: 'bg-slate-400' };
         }
     };
 
     return (
-        <div className="zoho-card">
-            {/* Header */}
-            <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-                <h3 className="font-semibold text-slate-800 text-sm">
-                    {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                </h3>
-                <div className="flex space-x-2">
-                    <button onClick={prevMonth} className="p-1 hover:bg-slate-200 rounded text-slate-500">
-                        <ChevronLeft size={20} />
+        <div className="bg-white flex flex-col h-full rounded-xl overflow-hidden">
+            {/* High-Authority Header */}
+            <div className="flex justify-between items-center px-6 py-5 border-b border-slate-100">
+                <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100 shadow-sm">
+                        <CalendarIcon size={20} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                        <h3 className="text-base font-black text-slate-800 tracking-tight leading-none mb-1">
+                            {format(currentDate, 'MMMM yyyy')}
+                        </h3>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visual Audit Journal</p>
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200/50">
+                    <button 
+                        onClick={prevMonth} 
+                        className="p-2 hover:bg-white hover:text-blue-600 rounded-lg text-slate-400 transition-all border border-transparent hover:border-slate-200 active:scale-95 shadow-none hover:shadow-sm"
+                    >
+                        <ChevronLeft size={16} strokeWidth={3} />
                     </button>
-                    <button onClick={nextMonth} className="p-1 hover:bg-slate-200 rounded text-slate-500">
-                        <ChevronRight size={20} />
+                    <button 
+                        onClick={() => {
+                            const now = new Date();
+                            setCurrentDate(now);
+                            onMonthChange(now.getFullYear(), now.getMonth() + 1);
+                        }}
+                        className="px-3 py-1.5 text-[9px] font-black uppercase text-slate-500 hover:text-blue-600 hover:bg-white rounded-lg transition-all"
+                    >
+                        Today
+                    </button>
+                    <button 
+                        onClick={nextMonth} 
+                        className="p-2 hover:bg-white hover:text-blue-600 rounded-lg text-slate-400 transition-all border border-transparent hover:border-slate-200 active:scale-95 shadow-none hover:shadow-sm"
+                    >
+                        <ChevronRight size={16} strokeWidth={3} />
                     </button>
                 </div>
             </div>
 
-            {/* Grid Header */}
-            <div className="grid grid-cols-7 text-center border-b border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wide py-1.5">
-                <div>Sun</div>
-                <div>Mon</div>
-                <div>Tue</div>
-                <div>Wed</div>
-                <div>Thu</div>
-                <div>Fri</div>
-                <div>Sat</div>
-            </div>
+            {/* Grid Architecture */}
+            <div className="flex-1 overflow-auto custom-scrollbar">
+                <div className="grid grid-cols-7 text-center border-b border-slate-100 bg-[#f9fafb]/50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] py-3">
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d}>{d}</div>)}
+                </div>
 
-            {/* Calendar Rows */}
-            <div className="grid grid-cols-7 text-xs">
-                {blanks.map((b) => (
-                    <div key={`blank-${b}`} className="min-h-[80px] border-b border-r border-slate-100 bg-slate-50/30"></div>
-                ))}
+                <div className="grid grid-cols-7 border-l border-slate-50">
+                    {blanks.map((b) => (
+                        <div key={`blank-${b}`} className="aspect-[4/3] border-r border-b border-slate-50 bg-[#fafbfc]/30"></div>
+                    ))}
 
-                {days.map((day) => {
-                    const record = history.find(h => normalizeDate(h.date) === normalizeDate(day));
-                    const holiday = holidays.find(h => normalizeDate(h.date) === normalizeDate(day));
-                    const leave = approvedLeaves.find(l => {
-                        const lStart = new Date(l.startDate);
-                        const lEnd = new Date(l.endDate);
-                        
-                        // Normalize to date-only midnight for reliable comparison
-                        const s = new Date(lStart.getFullYear(), lStart.getMonth(), lStart.getDate()).getTime();
-                        const e = new Date(lEnd.getFullYear(), lEnd.getMonth(), lEnd.getDate()).getTime();
-                        const d = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
-                        
-                        return d >= s && d <= e;
-                    });
+                    {days.map((day) => {
+                        const dateStr = normalizeDate(day);
+                        const record = history.find(h => normalizeDate(h.date) === dateStr);
+                        const holiday = holidays.find(h => normalizeDate(h.date) === dateStr);
+                        const leave = approvedLeaves.find(l => {
+                            const s = startOfDay(new Date(l.startDate)).getTime();
+                            const e = startOfDay(new Date(l.endDate)).getTime();
+                            const d = startOfDay(day).getTime();
+                            return d >= s && d <= e;
+                        });
 
-                    const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day.getDay()];
-                    const isWeeklyOff = weeklyOffs.includes(dayName);
+                        const dayOfWeek = format(day, 'EEEE');
+                        const isWeeklyOff = weeklyOffs.includes(dayOfWeek);
+                        const isToday = isSameDay(day, new Date());
+                        const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
+                        const isBeforeJoining = joiningDate && day < joiningDate;
 
-                    const isToday = normalizeDate(day) === normalizeDate(new Date());
-                    const joiningDate = user?.joiningDate ? new Date(user.joiningDate) : null;
-                    if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
-                    const isBeforeJoining = joiningDate && day < joiningDate;
+                        const attendanceStatus = record?.status || (record?.clockIn ? 'PRESENT' : (day < startOfDay(new Date()) && !isWeeklyOff && !holiday && !isBeforeJoining ? 'ABSENT' : null));
+                        const token = attendanceStatus ? getStatusToken(attendanceStatus) : null;
 
-                    return (
-                        <div
-                            key={day.toISOString()}
-                            className={`min-h-[80px] border-b border-r border-slate-100 p-1.5 relative group hover:bg-slate-50 transition-colors ${isToday ? 'bg-blue-50/30' : ''} ${isWeeklyOff ? 'bg-slate-50/50' : ''}`}
-                        >
-                            <div className={`text-right mb-1 font-medium text-xs ${isToday ? 'text-blue-600' : (isWeeklyOff ? 'text-slate-300' : 'text-slate-400')}`}>
-                                {day.getDate()}
-                            </div>
-
-                            {/* Regularize Action */}
-                            {(() => {
-                                const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day.getDay()];
-                                const isWeeklyOff = weeklyOffs.includes(dayName);
-                                const isHoliday = !!holiday;
-
-                                // 1. Skip if before joining or in future
-                                const todayStart = new Date();
-                                todayStart.setHours(0, 0, 0, 0);
-                                if (isBeforeJoining || day > todayStart) return null;
-
-                                // 2. Skip if it's a weekly off or holiday (no attendance allowed)
-                                if (isWeeklyOff || isHoliday) return null;
-
-                                // 3. Calculate 4 working days ago
-                                let workingDaysCount = 0;
-                                let checkDate = new Date(todayStart);
-                                let maxLookback = 30; // Safety break
-
-                                while (workingDaysCount < 4 && maxLookback > 0) {
-                                    checkDate.setDate(checkDate.getDate() - 1);
-                                    const cDayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][checkDate.getDay()];
-                                    const cDateStr = checkDate.toDateString();
+                        return (
+                            <div
+                                key={day.toISOString()}
+                                className={`aspect-[4/3] border-r border-b border-slate-50 p-2 relative group transition-all duration-200 ${isToday ? 'bg-blue-50/10' : 'bg-white hover:bg-slate-50/50'} ${isWeeklyOff ? 'bg-[#fcfdfe]/20' : ''}`}
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div className={`text-[12px] font-black tabular-nums transition-colors ${isToday ? 'text-blue-600 bg-blue-100/50 px-1.5 py-0.5 rounded-lg' : (isWeeklyOff ? 'text-slate-300' : 'text-slate-400 group-hover:text-slate-800')}`}>
+                                        {format(day, 'd')}
+                                    </div>
                                     
-                                    const isCWeeklyOff = weeklyOffs.includes(cDayName);
-                                    const isCHoliday = holidays.some(h => new Date(h.date).toDateString() === cDateStr);
+                                    {/* Action Hub */}
+                                    {(() => {
+                                        const todayStart = startOfDay(new Date());
+                                        if (isBeforeJoining || day > todayStart || isWeeklyOff || holiday) return null;
 
-                                    if (!isCWeeklyOff && !isCHoliday) {
-                                        workingDaysCount++;
-                                    }
-                                    maxLookback--;
-                                }
-
-                                const fourWorkingDaysAgo = new Date(checkDate);
-                                fourWorkingDaysAgo.setHours(0, 0, 0, 0);
-
-                                const canRegularize = day >= fourWorkingDaysAgo || isPrivileged;
-                                
-                                if (canRegularize) {
-                                    return (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onRegularize(day, record);
-                                            }}
-                                            className="absolute top-1 left-1 p-1 bg-white border border-slate-200 rounded shadow-sm text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-50"
-                                            title="Regularize Attendance"
-                                        >
-                                            <Edit2 size={10} />
-                                        </button>
-                                    );
-                                }
-                                return null;
-                            })()}
-
-                            {holiday && (
-                                <div className={`mb-1 text-[9px] font-bold px-1 py-0.5 rounded ${holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} truncate`} title={holiday.name}>
-                                    {holiday.name}
+                                        return (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onRegularize(day, record);
+                                                }}
+                                                className="p-1 text-slate-300 opacity-0 group-hover:opacity-100 transition-all hover:bg-blue-600 hover:text-white hover:border-blue-600 rounded-md border border-slate-100 bg-white shadow-sm"
+                                                title="Request Correction"
+                                            >
+                                                <Edit2 size={10} strokeWidth={4} />
+                                            </button>
+                                        );
+                                    })()}
                                 </div>
-                            )}
 
-                            {leave && (
-                                (() => {
-                                    const isHoliday = !!holiday;
-                                    const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day.getDay()];
-                                    const isWeeklyOff = weeklyOffs.includes(dayName);
-                                    
-                                    // If it's a holiday or weekly off, only show leave if sandwich rule is active
-                                    if (isHoliday || isWeeklyOff) {
-                                        if (!leave.sandwichRule) return null;
-                                    }
-                                    
-                                    return (
-                                        <div className="mb-1 text-[9px] font-bold px-1 py-0.5 rounded bg-purple-100 text-purple-700 truncate" title={`${leave.leaveType} (${leave.status})`}>
+                                <div className="mt-2 space-y-1">
+                                    {holiday && (
+                                        <div className={`text-[8px] font-black px-1.5 py-1 rounded-md uppercase tracking-tighter truncate border ${holiday.isOptional ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`} title={holiday.name}>
+                                            {holiday.name}
+                                        </div>
+                                    )}
+
+                                    {leave && (
+                                        <div className="text-[8px] font-black px-1.5 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-tighter truncate" title={leave.leaveType}>
                                             {leave.leaveType}
                                         </div>
-                                    );
-                                })()
-                            )}
+                                    )}
 
-                            {record ? (
-                                (() => {
-                                    const finalStatus = record.status || (record.clockIn ? 'PRESENT' : 'ABSENT');
-                                    return (
-                                        <div className="space-y-1">
-                                            <div className="flex items-center space-x-1">
-                                                <div className={`h-1.5 w-1.5 rounded-full ${getStatusColor(finalStatus)}`}></div>
-                                                <span className="text-[10px] font-semibold text-slate-700 capitalize">{finalStatus.toLowerCase()}</span>
+                                    {token && (
+                                        <div className={`mt-1 pt-1.5 border-t border-slate-50`}>
+                                            <div className={`flex items-center gap-1.5 mb-1 px-1.5 py-0.5 rounded-md border ${token.bg} ${token.text} ${token.border}`}>
+                                                <div className={`h-1.5 w-1.5 rounded-full ${token.dot} shadow-sm`}></div>
+                                                <span className="text-[8px] font-black uppercase tracking-widest">{attendanceStatus}</span>
                                             </div>
-                                            {record.clockIn && (
-                                                <div className="text-[9px] text-slate-500 font-mono pl-2.5 line-clamp-1">
-                                                    In: {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                                                </div>
-                                            )}
-                                            {record.clockOut && (
-                                                <div className="text-[9px] text-slate-500 font-mono pl-2.5 line-clamp-1">
-                                                    Out: {new Date(record.clockOut).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                            {record?.clockIn && (
+                                                <div className="flex flex-col gap-0.5 px-0.5">
+                                                    <div className="text-[8px] font-bold text-slate-400 flex justify-between">
+                                                        <span>IN</span>
+                                                        <span className="text-slate-600">{format(new Date(record.clockIn), 'HH:mm')}</span>
+                                                    </div>
+                                                    {record.clockOut && (
+                                                        <div className="text-[8px] font-bold text-slate-400 flex justify-between">
+                                                            <span>OUT</span>
+                                                            <span className="text-slate-600">{format(new Date(record.clockOut), 'HH:mm')}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
-                                    );
-                                })()
-                            ) : (
-                                !leave && (
-                                    isBeforeJoining ? (
-                                        <div className="flex justify-center mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title="Not Applicable">N/A</span>
-                                        </div>
-                                    ) : (
-                                        isWeeklyOff ? (
-                                            <div className="flex justify-center mt-3 opacity-40">
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Off</span>
-                                            </div>
-                                        ) : (
-                                            !holiday && day < new Date() && (
-                                                <div className="flex justify-center mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <span className="text-[10px] text-red-400 bg-red-50 px-1.5 py-0.5 rounded">Absent</span>
-                                                </div>
-                                            )
-                                        )
-                                    )
-                                )
-                            )}
-                        </div>
-                    );
-                })}
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
 
-            {/* Legend */}
-            <div className="flex flex-wrap gap-x-4 gap-y-2 px-4 py-3 bg-slate-50 border-t border-slate-100 items-center justify-center rounded-b-lg">
-                <div className="flex items-center space-x-1.5">
-                    <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
-                    <span className="text-[10px] text-slate-600 font-medium">Present</span>
-                </div>
-                <div className="flex items-center space-x-1.5">
-                    <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                    <span className="text-[10px] text-slate-600 font-medium">Absent</span>
-                </div>
-                <div className="flex items-center space-x-1.5">
-                    <div className="h-2 w-2 rounded-full bg-orange-500"></div>
-                    <span className="text-[10px] text-slate-600 font-medium">Half Day</span>
-                </div>
-                <div className="flex items-center space-x-1.5">
-                    <div className="h-2 w-2 rounded-full bg-purple-500"></div>
-                    <span className="text-[10px] text-slate-600 font-medium">Leave</span>
-                </div>
-                <div className="flex items-center space-x-1.5 border-l border-slate-200 pl-4 ml-2">
-                    <div className="h-2 w-2 rounded-full bg-green-200"></div>
-                    <span className="text-[10px] text-slate-600 font-medium">Holiday</span>
-                </div>
+            {/* Premium Legend Footer */}
+            <div className="flex flex-wrap gap-x-6 gap-y-3 px-6 py-4 bg-slate-50/50 border-t border-slate-100 items-center justify-center">
+                {[
+                    { label: 'Present', color: 'bg-emerald-500' },
+                    { label: 'Absent', color: 'bg-red-500' },
+                    { label: 'Half Day', color: 'bg-amber-500' },
+                    { label: 'Leave', color: 'bg-indigo-500' },
+                    { label: 'Holiday' , color: 'bg-emerald-100 border border-emerald-200'}
+                ].map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                        <div className={`h-2 w-2 rounded-full ${item.color} shadow-sm`}></div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.1em]">{item.label}</span>
+                    </div>
+                ))}
             </div>
         </div>
     );

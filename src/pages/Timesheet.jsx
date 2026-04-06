@@ -32,16 +32,16 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [pendingApprovals, setPendingApprovals] = useState([]);
     const [loadingApprovals, setLoadingApprovals] = useState(false);
 
-    const canApprove = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
-                      user?.permissions?.includes('*') || 
-                      user?.permissions?.includes('attendance.approve') || 
-                      user?.permissions?.includes('timesheet.approve');
+    const canApprove = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('attendance.approve') ||
+        user?.permissions?.includes('timesheet.approve');
 
     // Permission to edit own attendance
-    const canEditAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
-                            user?.permissions?.includes('*') || 
-                            user?.permissions?.includes('attendance.update_self') ||
-                            user?.permissions?.includes('attendance.update_others');
+    const canEditAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('attendance.update_self') ||
+        user?.permissions?.includes('attendance.update_others');
 
     // Rejection Modal State
     const [showRejectModal, setShowRejectModal] = useState(false);
@@ -543,8 +543,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         };
 
         if (user && (
-            user.roles?.some(r => r === 'Admin' || r.name === 'Admin' || r === 'Manager' || r.name === 'Manager') || 
-            user.permissions?.includes('timesheet.view') || 
+            user.roles?.some(r => r === 'Admin' || r.name === 'Admin' || r === 'Manager' || r.name === 'Manager') ||
+            user.permissions?.includes('timesheet.view') ||
             user.permissions?.includes('*') ||
             (user.directReports && user.directReports.length > 0)
         )) {
@@ -581,7 +581,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     // Generate days for current view (Monthly)
     const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
     const weeklyOff = weeklyOffs;
-    
+
     let visibleDays = [];
     if (cycle === 'Weekly') {
         const start = startOfWeek(viewDate);
@@ -995,22 +995,22 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         saveAs(new Blob([buffer]), fileName);
     };
 
-    const canViewAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
-                            user?.permissions?.includes('*') || 
-                            user?.permissions?.includes('attendance.view') ||
-                            user?.permissions?.includes('attendance.update_others');
-    const canViewTimesheets = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
-                            user?.permissions?.includes('*') || 
-                            user?.permissions?.includes('timesheet.view') ||
-                            user?.permissions?.includes('timesheet.update_others');
+    const canViewAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('attendance.view') ||
+        user?.permissions?.includes('attendance.update_others');
+    const canViewTimesheets = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('timesheet.view') ||
+        user?.permissions?.includes('timesheet.update_others');
 
-    const canUpdateAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
-                               user?.permissions?.includes('*') || 
-                               user?.permissions?.includes('attendance.update_others');
-                               
-    const canUpdateTimesheet = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || 
-                              user?.permissions?.includes('*') || 
-                              user?.permissions?.includes('timesheet.update_others');
+    const canUpdateAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('attendance.update_others');
+
+    const canUpdateTimesheet = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('timesheet.update_others');
 
     return (
         <div className={`${isEmbedded ? 'w-full' : 'min-h-screen bg-slate-100 p-6 md:p-10'} font-sans overflow-x-hidden`}>
@@ -1110,7 +1110,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 {targetUserName ? `${targetUserName}'s Timesheet` : 'Timesheet'}
                                             </h1>
                                             <div className="flex items-center space-x-2 text-sm text-slate-500">
-                                                                                                <span>
+                                                <span>
                                                     {(() => {
                                                         const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
                                                         if (cycle === 'Weekly') return `Week ${format(viewDate, 'II')}, ${format(viewDate, 'yyyy')}`;

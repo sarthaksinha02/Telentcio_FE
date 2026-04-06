@@ -157,7 +157,7 @@ const QueryDetails = () => {
         return <CheckCircle size={16} className="text-blue-500" />;
     };
 
-    const isAdmin = user?.roles?.some(r => (r.name || r) === 'Admin' || r?.isSystem === true);
+    const isAdmin = user?.roles?.some(r => ['Admin', 'System'].includes(r.name || r) || r?.isSystem === true);
     const isAssignee = query.assignedTo?._id === user?._id || query.assignedTo === user?._id;
     const isRaiser = query.raisedBy?._id === user?._id || query.raisedBy === user?._id;
 

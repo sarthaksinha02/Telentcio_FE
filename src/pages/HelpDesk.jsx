@@ -150,8 +150,8 @@ const HelpDesk = () => {
     
     const [filters, setFilters] = useState({ status: '', priority: '' });
 
-    const isAdmin = user?.roles?.some(r => (r.name || r) === 'Admin' || r?.isSystem === true);
-    const isResolverRole = user?.roles?.some(r => ['HR', 'Supervisor', 'Admin'].includes(r.name || r));
+    const isAdmin = user?.roles?.some(r => ['Admin', 'System'].includes(r.name || r) || r?.isSystem === true);
+    const isResolverRole = user?.roles?.some(r => ['HR', 'Supervisor', 'Admin', 'System'].includes(r.name || r));
 
     // Track which tabs have already been fetched to avoid redundant API calls
     const loadedTabs = React.useRef(new Set());
