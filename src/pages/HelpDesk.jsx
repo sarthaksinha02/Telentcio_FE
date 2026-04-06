@@ -153,13 +153,21 @@ const HelpDesk = () => {
     const isAdmin = user?.roles?.some(r => ['Admin', 'System'].includes(r.name || r) || r?.isSystem === true);
     const isResolverRole = user?.roles?.some(r => ['HR', 'Supervisor', 'Admin', 'System'].includes(r.name || r));
 
+    // Debugging: Log admin status on load
+    React.useEffect(() => {
+        if (user) {
+            console.log('HelpDesk Admin Status:', isAdmin);
+            console.log('HelpDesk Roles:', user.roles);
+        }
+    }, [user, isAdmin]);
+
     // Track which tabs have already been fetched to avoid redundant API calls
     const loadedTabs = React.useRef(new Set());
 
     const fetchTabData = async (tab, force = false, isBackground = false) => {
         if (!force && !isBackground && loadedTabs.current.has(tab)) return; 
         
-        const CACHE_KEY = `helpdesk_data_${user?._id}`;
+        const CACHE_KEY = `helpdesk_data_${user?._id}_admin_${isAdmin}`;
 
         // Helper: Generate fingerprint for change detection
         const buildFingerprint = (data) => {
