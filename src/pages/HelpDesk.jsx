@@ -227,7 +227,15 @@ const HelpDesk = () => {
                 const oldFingerprint = buildFingerprint(cachedData[cacheField] || []);
                 const newFingerprint = buildFingerprint(freshData);
 
-                if (newFingerprint !== oldFingerprint || force) {
+                let changed = newFingerprint !== oldFingerprint || force;
+                
+                if (tab === 'assigned' && freshAllData) {
+                    const oldAllFingerprint = buildFingerprint(cachedData['allQueries'] || []);
+                    const newAllFingerprint = buildFingerprint(freshAllData);
+                    if (oldAllFingerprint !== newAllFingerprint) changed = true;
+                }
+
+                if (changed) {
                     if (tab === 'my-queries') setQueries(freshData);
                     else if (tab === 'assigned') {
                         setAssignedQueries(freshData);
