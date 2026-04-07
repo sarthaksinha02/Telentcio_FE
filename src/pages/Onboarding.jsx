@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, UploadCloud, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const STATUS_COLORS = {
   Pending: { bg: '#fef3c7', text: '#92400e', dot: '#f59e0b' },
@@ -54,6 +55,10 @@ const Onboarding = () => {
   const [sendingCustomFile, setSendingCustomFile] = useState(false);
   const [customFile, setCustomFile] = useState(null);
   const customFileInputRef = useRef(null);
+  const initialEmployeesFetchDoneRef = useRef(false);
+  const initialSettingsFetchDoneRef = useRef(false);
+  const ONBOARDING_EMPLOYEE_CACHE_TTL_MS = 20 * 1000;
+  const ONBOARDING_SETTINGS_CACHE_TTL_MS = 60 * 1000;
 
   // Close menu when clicking outside or scrolling
   useEffect(() => {
@@ -176,31 +181,90 @@ const Onboarding = () => {
 
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
-  const fetchEmployees = useCallback(async () => {
+  const fetchEmployees = useCallback(async ({ force = false } = {}) => {
+    const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${searchTerm || 'all'}`;
     try {
-      setLoading(true);
-      const params = { page, limit: 15 };
+      const cached = readSessionCache(cacheKey);
+      if (cached) {
+        const data = cached.data || {};
+        setEmployees(data.employees || []);
+        setStats(data.stats || { Pending: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 });
+        setTotalPages(data.totalPages || 1);
+        setLoading(false);
+        if (!force && isCacheFresh(cached, ONBOARDING_EMPLOYEE_CACHE_TTL_MS)) return;
+      } else {
+        setLoading(true);
+      }
+
+      const params = { tab: 'employees', page, limit: 15 };
       if (statusFilter !== 'All') params.status = statusFilter;
       if (searchTerm) params.search = searchTerm;
-      const res = await api.get('/onboarding/employees', { params });
-      setEmployees(res.data.employees || []);
-      setStats(res.data.stats || { Pending: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 });
-      setTotalPages(res.data.totalPages || 1);
+      const res = await api.get('/onboarding/bootstrap', { params });
+      const employeesData = res.data.employees || [];
+      const statsData = res.data.stats || { Pending: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 };
+      const totalPagesData = res.data.totalPages || 1;
+      setEmployees(employeesData);
+      setStats(statsData);
+      setTotalPages(totalPagesData);
+
+      const fingerprint = JSON.stringify({
+        page,
+        statusFilter,
+        searchTerm,
+        total: res.data.total || employeesData.length,
+        first: employeesData[0]?._id
+      });
+
+      const minimalEmployees = employeesData.map(employee => ({
+        _id: employee._id,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        email: employee.email,
+        phone: employee.phone,
+        designation: employee.designation,
+        department: employee.department,
+        joiningDate: employee.joiningDate,
+        offerDate: employee.offerDate,
+        status: employee.status,
+        tempEmployeeId: employee.tempEmployeeId,
+        createdBy: employee.createdBy
+      }));
+
+      sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload({
+        employees: minimalEmployees,
+        stats: statsData,
+        totalPages: totalPagesData
+      }, fingerprint)));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter, searchTerm]);
+  }, [page, searchTerm, statusFilter, user?._id]);
 
-  const fetchSettings = useCallback(async () => {
+  const fetchSettings = useCallback(async ({ force = false } = {}) => {
+    const cacheKey = `onboarding_settings_${user?._id}`;
     try {
-      const res = await api.get('/onboarding/settings');
-      setOnboardingSettings(res.data || { offerLetterTemplateUrl: '', declarationTemplateUrl: '', policies: [], dynamicTemplates: [] });
+      const cached = readSessionCache(cacheKey);
+      if (cached) {
+        setOnboardingSettings(cached.data || { offerLetterTemplateUrl: '', declarationTemplateUrl: '', policies: [], dynamicTemplates: [] });
+        if (!force && isCacheFresh(cached, ONBOARDING_SETTINGS_CACHE_TTL_MS)) return;
+      }
+
+      const res = await api.get('/onboarding/bootstrap', { params: { tab: 'settings' } });
+      const settings = res.data?.settings || { offerLetterTemplateUrl: '', declarationTemplateUrl: '', policies: [], dynamicTemplates: [] };
+      setOnboardingSettings(settings);
+      const fingerprint = JSON.stringify({
+        offer: settings.offerLetterTemplateUrl || '',
+        declaration: settings.declarationTemplateUrl || '',
+        policies: settings.policies?.length || 0,
+        templates: settings.dynamicTemplates?.length || 0
+      });
+      sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload(settings, fingerprint)));
     } catch (err) {
       console.error('Failed to fetch onboarding settings');
     }
-  }, []);
+  }, [user?._id]);
 
   const handleDynamicTemplateUpload = async (e) => {
     const file = e.target.files[0];
@@ -223,7 +287,7 @@ const Onboarding = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Template uploaded!', { id: 'dynamic' });
-      fetchSettings();
+      fetchSettings({ force: true });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Upload failed', { id: 'dynamic' });
     }
@@ -234,15 +298,23 @@ const Onboarding = () => {
     try {
       await api.delete(`/onboarding/settings/templates/dynamic/${id}`);
       toast.success('Template deleted');
-      fetchSettings();
+      fetchSettings({ force: true });
     } catch (err) {
       toast.error('Failed to delete template');
     }
   };
 
   useEffect(() => {
-    if (activeTab === 'employees') fetchEmployees();
-    if (activeTab === 'settings') fetchSettings();
+    if (activeTab === 'employees') {
+      if (initialEmployeesFetchDoneRef.current && page === 1 && statusFilter === 'All' && !searchTerm) return;
+      initialEmployeesFetchDoneRef.current = true;
+      fetchEmployees();
+    }
+    if (activeTab === 'settings') {
+      if (initialSettingsFetchDoneRef.current) return;
+      initialSettingsFetchDoneRef.current = true;
+      fetchSettings();
+    }
   }, [fetchEmployees, fetchSettings, activeTab]);
 
   const handleTemplateUpload = async (e, type) => {
@@ -263,7 +335,7 @@ const Onboarding = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success(res.data.message, { id: 'upload' });
-      fetchSettings();
+      fetchSettings({ force: true });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Upload failed', { id: 'upload' });
     }
@@ -286,7 +358,7 @@ const Onboarding = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Policy uploaded!', { id: 'policy' });
-      fetchSettings();
+      fetchSettings({ force: true });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Upload failed', { id: 'policy' });
     }
@@ -297,7 +369,7 @@ const Onboarding = () => {
     try {
       await api.delete(`/onboarding/settings/policies/${policyId}`);
       toast.success('Policy deleted');
-      fetchSettings();
+      fetchSettings({ force: true });
     } catch (err) {
       toast.error('Failed to delete policy');
     }
@@ -400,7 +472,7 @@ const Onboarding = () => {
     try {
       await api.delete(`/onboarding/settings/templates/${type}`);
       toast.success('Template deleted successfully');
-      fetchSettings();
+      fetchSettings({ force: true });
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to delete template');
     }

@@ -1,106 +1,96 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Calendar, User, Clock, ChevronRight } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Bell, Calendar, Clock, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
-import { format, isToday, isTomorrow, isPast } from 'date-fns';
-import socket from '../api/socket';
+import { format, isPast, isToday } from 'date-fns';
 import toast from 'react-hot-toast';
-
+import api from '../api/axios';
+import socket from '../api/socket';
+import { useAuth } from '../context/AuthContext';
 
 const Topbar = ({ toggleSidebar }) => {
     const { user, hasModule } = useAuth();
     const navigate = useNavigate();
+    const hasTalentAcquisition = hasModule('talentAcquisition');
     const [notifications, setNotifications] = useState([]);
     const [interviews, setInterviews] = useState([]);
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef(null);
+    const showDropdownRef = useRef(false);
+    const lastBootstrapUserIdRef = useRef(null);
 
     useEffect(() => {
-        if (user) {
-            fetchNotifications();
-            if (hasModule('talentAcquisition')) {
-                fetchMyInterviews();
-            }
-            
-            // Listen for real-time notifications
-            const handleSocketNotification = (newNotif) => {
-                setNotifications(prev => [newNotif, ...prev]);
-                // Optional: Show a small toast if the dropdown isn't open
-                if (!showDropdown) {
-                    toast.success(`New Notification: ${newNotif.title}`, {
-                        icon: '🔔',
-                        position: 'top-right'
-                    });
-                }
-            };
+        showDropdownRef.current = showDropdown;
+    }, [showDropdown]);
 
-            // Listen for interview updates
-            const handleInterviewUpdate = (data) => {
-                // Fetch the full list again to ensure everything is synced
-                // Alternatively, patch the local state if performance is a concern
-                fetchMyInterviews();
-                
-                if (data.type === 'EVALUATED') {
-                    toast.success(`Interview for ${data.candidateName} has been evaluated`, {
-                        position: 'top-right'
-                    });
-                } else if (data.type !== 'UPDATE') {
-                    // This covers new assignments since Notification handles the specific toast if it's a new assignment
-                    // Just refresh the list
-                }
-            };
-
-            socket.on('notification', handleSocketNotification);
-            socket.on('interview_update', handleInterviewUpdate);
-            
-            // Listen for manual triggers from other components
-            const handleRefresh = () => {
-                fetchNotifications();
-                fetchMyInterviews();
-            };
-            window.addEventListener('refreshNotifications', handleRefresh);
-            
-            return () => {
-                socket.off('notification', handleSocketNotification);
-                socket.off('interview_update', handleInterviewUpdate);
-                window.removeEventListener('refreshNotifications', handleRefresh);
-            };
+    const fetchNotificationBootstrap = async () => {
+        try {
+            const res = await api.get('/notifications/bootstrap', {
+                params: { includeInterviews: hasTalentAcquisition }
+            });
+            setNotifications(res.data?.notifications || []);
+            setInterviews(res.data?.interviews || []);
+        } catch (error) {
+            console.error('Failed to fetch notification bootstrap:', error);
         }
-    }, [user, showDropdown]);
+    };
 
+    useEffect(() => {
+        if (!user) return;
+        if (lastBootstrapUserIdRef.current === user._id) return;
 
-    // Close dropdowns on outside click
+        lastBootstrapUserIdRef.current = user._id;
+        fetchNotificationBootstrap();
+    }, [user?._id]);
+
+    useEffect(() => {
+        if (!user) return;
+
+        const handleSocketNotification = (newNotif) => {
+            setNotifications(prev => [newNotif, ...prev]);
+            if (!showDropdownRef.current) {
+                toast.success(`New Notification: ${newNotif.title}`, {
+                    position: 'top-right'
+                });
+            }
+        };
+
+        const handleInterviewUpdate = (data) => {
+            fetchNotificationBootstrap();
+
+            if (data.type === 'EVALUATED') {
+                toast.success(`Interview for ${data.candidateName} has been evaluated`, {
+                    position: 'top-right'
+                });
+            }
+        };
+
+        const handleRefresh = () => {
+            fetchNotificationBootstrap();
+        };
+
+        socket.on('notification', handleSocketNotification);
+        socket.on('interview_update', handleInterviewUpdate);
+        window.addEventListener('refreshNotifications', handleRefresh);
+
+        return () => {
+            socket.off('notification', handleSocketNotification);
+            socket.off('interview_update', handleInterviewUpdate);
+            window.removeEventListener('refreshNotifications', handleRefresh);
+        };
+    }, [user?._id, hasTalentAcquisition]);
+
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
                 setShowDropdown(false);
             }
         };
+
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const fetchNotifications = async () => {
-        try {
-            const res = await api.get('/notifications');
-            setNotifications(res.data || []);
-        } catch (error) {
-            console.error('Failed to fetch notifications:', error);
-        }
-    };
-
-    const fetchMyInterviews = async () => {
-        try {
-            const res = await api.get('/ta/candidates/my/interviews');
-            setInterviews(res.data || []);
-        } catch (error) {
-            console.error('Failed to fetch user interviews:', error);
-        }
-    };
-
-    // Filter interviews scheduled for today
-    const todaysInterviews = interviews.filter(inv => 
+    const todaysInterviews = interviews.filter(inv =>
         inv.scheduledDate && isToday(new Date(inv.scheduledDate))
     );
 
@@ -142,7 +132,7 @@ const Topbar = ({ toggleSidebar }) => {
             default: return <Bell size={16} className="text-slate-600" />;
         }
     };
-    
+
     const getBgForType = (type) => {
         switch (type) {
             case 'Interview': return 'bg-indigo-50';
@@ -154,7 +144,6 @@ const Topbar = ({ toggleSidebar }) => {
         }
     };
 
-    // Combine notifications and tasks into a single feed
     const allNotifications = [
         ...todaysInterviews.map(inv => ({
             _id: `task-${inv.roundId}`,
@@ -189,9 +178,8 @@ const Topbar = ({ toggleSidebar }) => {
             </div>
 
             <div className="flex items-center gap-4 ml-auto">
-                {/* Unified Notifications & Tasks Bell */}
                 <div className="relative" ref={dropdownRef}>
-                    <button 
+                    <button
                         onClick={() => setShowDropdown(!showDropdown)}
                         className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors relative"
                     >
@@ -201,7 +189,6 @@ const Topbar = ({ toggleSidebar }) => {
                         )}
                     </button>
 
-                    {/* Dropdown Menu */}
                     {showDropdown && (
                         <div className="absolute right-0 mt-2 w-80 sm:w-80 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
                             <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
@@ -223,8 +210,8 @@ const Topbar = ({ toggleSidebar }) => {
                                 ) : (
                                     <div className="divide-y divide-slate-100">
                                         {allNotifications.map((notif) => (
-                                            <div 
-                                                key={notif._id} 
+                                            <div
+                                                key={notif._id}
                                                 onClick={() => {
                                                     if (notif.isTask) {
                                                         navigate(notif.link);
@@ -260,11 +247,10 @@ const Topbar = ({ toggleSidebar }) => {
                                     </div>
                                 )}
                             </div>
-                            
-                            {/* Bottom Actions based on active tab */}
+
                             {totalUnreadCount > 0 && notifications.some(n => !n.isRead) && (
                                 <div className="p-2 bg-slate-50 border-t border-slate-100 flex justify-center">
-                                    <button 
+                                    <button
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleMarkAllAsRead();
@@ -281,7 +267,6 @@ const Topbar = ({ toggleSidebar }) => {
 
                 <div className="w-px h-6 bg-slate-200"></div>
 
-                {/* User Profile Summary */}
                 <div className="flex items-center gap-3">
                     <div className="hidden md:block text-right">
                         <p className="text-sm font-bold text-slate-800 leading-tight">{user?.firstName}</p>

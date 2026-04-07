@@ -9,6 +9,7 @@ import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { Download, Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const Discussions = () => {
     const navigate = useNavigate();
@@ -47,34 +48,121 @@ const Discussions = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const limit = 10;
+    const initialFetchDoneRef = useRef(false);
+    const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
+    const SUPERVISOR_CACHE_TTL_MS = 60 * 1000;
 
-    const fetchDiscussions = async (page) => {
+    const fetchDiscussions = async (page, force = false, isBackground = false) => {
+        const CACHE_KEY = `discussion_data_${user?._id}_p${page}`;
+
+        // 1. Initial Load from Cache
+        if (!isBackground && !force) {
+            const cached = readSessionCache(CACHE_KEY);
+            if (cached) {
+                const data = cached.data || cached;
+                setDiscussions(data.discussions || []);
+                setTotalPages(data.totalPages || 1);
+                setCurrentPage(data.currentPage || page);
+                setLoading(false);
+                if (isCacheFresh(cached, DISCUSSION_CACHE_TTL_MS)) return;
+            }
+        }
+
         try {
-            setLoading(true);
-            const res = await api.get(`/discussions?page=${page}&limit=${limit}`);
-            setDiscussions(res.data.discussions);
-            setCurrentPage(res.data.currentPage);
-            setTotalPages(res.data.totalPages);
+            if (!isBackground && !readSessionCache(CACHE_KEY)) setLoading(true);
+            const res = await api.get('/discussions/bootstrap', { params: { page, limit } });
+            const freshData = {
+                discussions: res.data.discussions || [],
+                supervisors: res.data.supervisors || [],
+                totalPages: res.data.totalPages || 1,
+                currentPage: res.data.currentPage || page
+            };
+            const newFingerprint = (freshData.discussions || []).map(d => `${d._id}-${d.status}-${d.discussion?.substring(0, 20)}-${d.dueDate}`).join('|');
+            const cachedValue = readSessionCache(CACHE_KEY);
+            const oldFingerprint = cachedValue?.fingerprint || '';
+
+            if (newFingerprint !== oldFingerprint || force) {
+                setDiscussions(freshData.discussions);
+                setCurrentPage(freshData.currentPage);
+                setTotalPages(freshData.totalPages);
+                setSupervisors(freshData.supervisors);
+
+                // Minimal data for caching
+                const minimalDiscussions = freshData.discussions.map(d => ({
+                    _id: d._id,
+                    discussion: d.discussion,
+                    status: d.status,
+                    dueDate: d.dueDate,
+                    createdAt: d.createdAt,
+                    supervisor: d.supervisor ? { _id: d.supervisor._id, firstName: d.supervisor.firstName, lastName: d.supervisor.lastName, profilePicture: d.supervisor.profilePicture } : null
+                }));
+
+                const payload = createCachePayload({
+                    discussions: minimalDiscussions,
+                    totalPages: freshData.totalPages,
+                    currentPage: freshData.currentPage
+                }, newFingerprint);
+                
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+
+                const minimalSupervisors = freshData.supervisors.map(s => ({
+                    _id: s._id,
+                    firstName: s.firstName,
+                    lastName: s.lastName
+                }));
+                const supervisorFingerprint = minimalSupervisors.map(s => s._id).join('|');
+                sessionStorage.setItem(
+                    `supervisors_data_${user?._id}`,
+                    JSON.stringify(createCachePayload(minimalSupervisors, supervisorFingerprint))
+                );
+            }
         } catch (error) {
             console.error(error);
-            toast.error('Failed to load discussions');
+            if (!isBackground) toast.error('Failed to load discussions');
         } finally {
             setLoading(false);
         }
     };
 
     const fetchSupervisors = async () => {
+        const SUPERVISOR_CACHE_KEY = `supervisors_data_${user?._id}`;
+        
+        // Load from cache first
+        const cached = readSessionCache(SUPERVISOR_CACHE_KEY);
+        if (cached) {
+            setSupervisors(cached.data || cached);
+            if (isCacheFresh(cached, SUPERVISOR_CACHE_TTL_MS)) return;
+        }
+
         try {
             const res = await api.get('/discussions/supervisors');
-            setSupervisors(res.data);
+            const freshData = res.data;
+
+            const oldFingerprint = cached?.fingerprint || '';
+            const newFingerprint = freshData.map(s => `${s._id}`).join('|');
+
+            if (newFingerprint !== oldFingerprint) {
+                setSupervisors(freshData);
+
+                // Minimal data
+                const minimalSupervisors = freshData.map(s => ({
+                    _id: s._id,
+                    firstName: s.firstName,
+                    lastName: s.lastName
+                }));
+
+                sessionStorage.setItem(SUPERVISOR_CACHE_KEY, JSON.stringify(createCachePayload(minimalSupervisors, newFingerprint)));
+            }
         } catch (error) {
             console.error('Error fetching supervisors:', error);
         }
     };
 
     useEffect(() => {
+        if (currentPage === 1 && initialFetchDoneRef.current) return;
+        if (currentPage === 1) initialFetchDoneRef.current = true;
         fetchDiscussions(currentPage);
-        fetchSupervisors();
+        if (currentPage === 1) fetchSupervisors();
     }, [currentPage]);
 
     // Close export menu when clicking outside
@@ -88,7 +176,7 @@ const Discussions = () => {
             document.addEventListener('mousedown', handleClickOutside);
         }
         return () => {
-            document.addEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('mousedown', handleClickOutside);
         };
     }, [showExportMenu]);
 
@@ -222,7 +310,9 @@ const Discussions = () => {
             await api.post('/discussions', payload);
             toast.success('Discussion created');
 
-            fetchDiscussions(1); // Fetch the first page to show the new discussion
+            // Force refresh the first page and clear cache for it
+            sessionStorage.removeItem(`discussion_data_${user?._id}_p1`);
+            fetchDiscussions(1, true); 
 
             setIsCreating(false);
             setNewDiscussion({
@@ -263,16 +353,36 @@ const Discussions = () => {
             toast.success('Discussion updated');
 
             // Update local state and push completed to bottom
-            setDiscussions(prev => {
-                const updated = prev.map(d => d._id === id ? { ...d, ...payload } : d);
-                return updated.sort((a, b) => {
+            const updatedDiscussions = discussions.map(d => d._id === id ? { ...d, ...payload } : d)
+                .sort((a, b) => {
                     const aCompleted = a.status === 'mark as complete';
                     const bCompleted = b.status === 'mark as complete';
                     if (aCompleted && !bCompleted) return 1;
                     if (!aCompleted && bCompleted) return -1;
                     return 0;
                 });
-            });
+            
+            setDiscussions(updatedDiscussions);
+
+            // Update cache for current page
+            const CACHE_KEY = `discussion_data_${user?._id}_p${currentPage}`;
+            const buildFingerprint = (items) => items.map(d => `${d._id}-${d.status}-${d.discussion?.substring(0, 20)}-${d.dueDate}`).join('|');
+            const newFingerprint = buildFingerprint(updatedDiscussions);
+            
+            const minimalDiscussions = updatedDiscussions.map(d => ({
+                _id: d._id,
+                discussion: d.discussion,
+                status: d.status,
+                dueDate: d.dueDate,
+                createdAt: d.createdAt,
+                supervisor: d.supervisor ? { _id: d.supervisor._id, firstName: d.supervisor.firstName, lastName: d.supervisor.lastName, profilePicture: d.supervisor.profilePicture } : null
+            }));
+
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify(createCachePayload({
+                discussions: minimalDiscussions,
+                totalPages: totalPages,
+                currentPage: currentPage
+            }, newFingerprint)));
 
             setEditingId(null);
             setEditData(null);
@@ -289,7 +399,8 @@ const Discussions = () => {
             try {
                 await api.delete(`/discussions/${id}`);
                 toast.success('Discussion deleted');
-                fetchDiscussions(currentPage);
+                sessionStorage.removeItem(`discussion_data_${user?._id}_p${currentPage}`);
+                fetchDiscussions(currentPage, true);
             } catch (error) {
                 console.error('Error deleting discussion:', error);
                 toast.error('Failed to delete discussion');

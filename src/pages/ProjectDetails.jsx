@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/Button';
+import { createCachePayload } from '../utils/cache';
 import { format, differenceInDays, addDays, isValid, parseISO } from 'date-fns';
 
 const ProjectDetails = () => {
@@ -52,10 +53,11 @@ const ProjectDetails = () => {
             
             if (cachedData) {
                 const parsed = JSON.parse(cachedData);
-                setProject(parsed.project);
-                setModules(parsed.modules);
-                setTasks(parsed.tasks);
-                setEmployees(parsed.employees);
+                const data = parsed.data || parsed;
+                setProject(data.project);
+                setModules(data.modules || []);
+                setTasks(data.tasks || []);
+                setEmployees(data.employees || []);
                 setLoading(false);
             }
 
@@ -82,13 +84,58 @@ const ProjectDetails = () => {
                 setModules(moduleData);
                 setTasks(taskData);
                 setEmployees(empData);
-                sessionStorage.setItem(cacheKey, JSON.stringify({ 
-                    project: projData, 
-                    modules: moduleData, 
-                    tasks: taskData, 
-                    employees: empData, 
-                    fingerprint: newFingerprint 
+
+                // Minimal data for caching
+                const minimalProject = {
+                    _id: projData._id,
+                    name: projData.name,
+                    status: projData.status,
+                    isActive: projData.isActive,
+                    description: projData.description,
+                    startDate: projData.startDate,
+                    dueDate: projData.dueDate,
+                    manager: projData.manager ? { firstName: projData.manager.firstName } : null
+                };
+
+                const minimalModules = moduleData.map(m => ({
+                    _id: m._id,
+                    name: m.name,
+                    status: m.status,
+                    description: m.description,
+                    startDate: m.startDate,
+                    dueDate: m.dueDate,
+                    tasks: m.tasks?.map(t => ({
+                        _id: t._id,
+                        name: t.name,
+                        description: t.description,
+                        status: t.status,
+                        priority: t.priority,
+                        startDate: t.startDate,
+                        dueDate: t.dueDate,
+                        estimatedHours: t.estimatedHours,
+                        loggedHours: t.loggedHours,
+                        assignees: t.assignees?.map(a => ({ _id: a._id, firstName: a.firstName, lastName: a.lastName, email: a.email })),
+                        workLogs: t.workLogs?.map(l => ({
+                            _id: l._id,
+                            date: l.date,
+                            hours: l.hours,
+                            description: l.description,
+                            user: l.user ? { _id: l.user._id, firstName: l.user.firstName, lastName: l.user.lastName } : null
+                        }))
+                    }))
                 }));
+
+                const minimalTasks = minimalModules.flatMap(m => m.tasks) || [];
+                const minimalEmployees = empData.map(e => ({ _id: e._id, firstName: e.firstName, lastName: e.lastName, email: e.email }));
+
+                const payload = createCachePayload({
+                    project: minimalProject,
+                    modules: minimalModules,
+                    tasks: minimalTasks,
+                    employees: minimalEmployees
+                }, newFingerprint);
+
+                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
 
         } catch (error) {

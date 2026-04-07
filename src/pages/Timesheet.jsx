@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText } from 'lucide-react';
@@ -9,6 +9,7 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false }) => {
     const { user } = useAuth();
@@ -25,6 +26,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [holidays, setHolidays] = useState([]);
     const [usersList, setUsersList] = useState([]); // List of users for dropdown
     const [weeklyOffs, setWeeklyOffs] = useState(['Sunday']);
+    const lastFetchKeyRef = useRef('');
+    const TIMESHEET_CACHE_TTL_MS = 20 * 1000;
 
 
     // Approval Logic
@@ -132,6 +135,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     };
 
     const handleEditClick = (entry) => {
+        if (!isEditableTimesheetStatus) {
+            toast.error('Submitted timesheets cannot be edited');
+            return;
+        }
         setEntryToEdit(entry);
 
         // Parse decimal hours to H:M
@@ -231,6 +238,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     const submitEdit = async () => {
         try {
+            if (!isEditableTimesheetStatus) {
+                toast.error('Submitted timesheets cannot be edited');
+                return;
+            }
             // Validation: Check Joining Date
             const targetDate = startOfDay(new Date(entryToEdit.date));
             const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
@@ -300,7 +311,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 toast.success('Entry updated');
             }
             setEntryToEdit(null);
-            fetchData();
+            await refreshTimesheetData();
         } catch (error) {
             console.error(error);
             toast.error(error.response?.data?.message || 'Failed to update entry');
@@ -349,6 +360,25 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const targetUserName = propUserName || queryParams.get('name');
     const effectiveUserId = targetUserId || user?._id;
 
+    const getCurrentTimesheetCacheKey = () => {
+        const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+        let formattedMonth;
+        if (cycle === 'Weekly') {
+            formattedMonth = format(viewDate, "yyyy-'W'II");
+        } else if (cycle === 'Daily') {
+            formattedMonth = format(viewDate, 'yyyy-MM-dd');
+        } else {
+            formattedMonth = format(viewDate, 'yyyy-MM');
+        }
+
+        return `timesheet_${user?._id}_${targetUserId || 'self'}_${formattedMonth}_${cycle}`;
+    };
+
+    const refreshTimesheetData = async () => {
+        sessionStorage.removeItem(getCurrentTimesheetCacheKey());
+        await fetchData(true);
+    };
+
     const fetchData = async (skipCache = false) => {
         const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
         let formattedMonth;
@@ -364,44 +394,90 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         const CACHE_KEY = `timesheet_${user?._id}_${targetUserId || 'self'}_${formattedMonth}_${cycle}`;
 
         const readCache = () => {
-            try {
-                const raw = sessionStorage.getItem(CACHE_KEY);
-                if (!raw) return null;
-                const parsed = JSON.parse(raw);
-                if (!parsed?.data?.timesheet) {
-                    sessionStorage.removeItem(CACHE_KEY);
-                    return null;
-                }
-                return parsed;
-            } catch { return null; }
+            const parsed = readSessionCache(CACHE_KEY);
+            const data = parsed?.data || parsed;
+            if (!data || !data.timesheet) {
+                sessionStorage.removeItem(CACHE_KEY);
+                return null;
+            }
+            return parsed;
         };
 
         const writeCache = (data, fingerprint) => {
             try {
-                sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, fingerprint }));
-            } catch { /* Ignore if storage full */ }
+                const minimalTimesheet = data.timesheet ? {
+                    _id: data.timesheet._id,
+                    status: data.timesheet.status,
+                    rejectionReason: data.timesheet.rejectionReason,
+                    user: data.timesheet.user,
+                    userDetails: data.timesheet.userDetails,
+                    entries: (data.timesheet.entries || []).map(entry => ({
+                        _id: entry._id,
+                        date: entry.date,
+                        project: entry.project,
+                        module: entry.module,
+                        task: entry.task,
+                        taskName: entry.taskName,
+                        hours: entry.hours,
+                        description: entry.description,
+                        status: entry.status,
+                        rejectionReason: entry.rejectionReason,
+                        startTime: entry.startTime,
+                        endTime: entry.endTime,
+                        type: entry.type
+                    })),
+                    attendanceLog: (data.timesheet.attendanceLog || []).map(l => ({
+                        _id: l._id,
+                        date: l.date,
+                        clockIn: l.clockIn,
+                        clockOut: l.clockOut,
+                        clockInIST: l.clockInIST,
+                        clockOutIST: l.clockOutIST,
+                        duration: l.duration,
+                        status: l.status,
+                        approvalStatus: l.approvalStatus
+                    }))
+                } : null;
+
+                const payload = createCachePayload({
+                    timesheet: minimalTimesheet,
+                    attendanceLogs: minimalTimesheet?.attendanceLog || [],
+                    projects: data.projects || [],
+                    holidays: data.holidays || [],
+                    weeklyOff: data.weeklyOff || ['Sunday'],
+                    usersList: data.usersList || []
+                }, fingerprint);
+
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+            } catch (e) {
+                console.error("Timesheet Cache Write Failed:", e);
+            }
         };
 
         const buildFingerprint = (data) => {
-            if (!data) return '';
-            const tsPart = `${data.timesheet?._id}:${data.timesheet?.status}:${data.timesheet?.entries?.length || 0}`;
-            const logPart = data.attendanceLogs?.map(l => `${l._id}:${l.clockIn}:${l.clockOut}`).join('|') || '';
-            const holPart = data.holidays?.length || 0;
-            return `${tsPart}#${logPart}#${holPart}`;
+            const payload = data?.data || data;
+            if (!payload) return '';
+            const tsPart = `${payload.timesheet?._id}:${payload.timesheet?.status}:${payload.timesheet?.entries?.length || 0}`;
+            const logPart = (payload.attendanceLogs || payload.timesheet?.attendanceLog)?.map(
+                l => `${l._id}:${l.clockIn}:${l.clockOut}:${l.duration}:${l.approvalStatus || ''}`
+            ).join('|') || '';
+            return `${tsPart}#${logPart}`;
         };
 
         const applyData = (data) => {
-            if (data.timesheet) {
-                setTimesheet(data.timesheet);
-                setAttendanceLogs(data.timesheet.attendanceLog || []);
+            const payload = data?.data || data;
+            if (payload.timesheet) {
+                setTimesheet(payload.timesheet);
+                setAttendanceLogs(payload.attendanceLogs || payload.timesheet.attendanceLog || []);
+                setViewUser(payload.timesheet.userDetails || payload.timesheet.user || user);
             }
-            if (data.projects) {
-                setProjects(data.projects);
-                setAvailableProjects(data.projects);
+            if (payload.projects) {
+                setProjects(payload.projects);
+                setAvailableProjects(payload.projects);
             }
-            if (data.holidays) setHolidays(data.holidays);
-            if (data.weeklyOff) setWeeklyOffs(data.weeklyOff);
-            // viewUser update is skipped for cache to avoid flickering if targetUserId changed
+            if (payload.holidays) setHolidays(payload.holidays);
+            if (payload.weeklyOff) setWeeklyOffs(payload.weeklyOff);
+            if (payload.usersList) setUsersList(payload.usersList);
         };
 
         const cached = skipCache ? null : readCache();
@@ -410,26 +486,27 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         if (!skipCache && cached?.data) {
             applyData(cached.data);
             setLoading(false);
+            if (isCacheFresh(cached, TIMESHEET_CACHE_TTL_MS)) return;
         } else {
             setLoading(true);
         }
 
         try {
-            const [tsRes, projRes, holRes] = await Promise.all([
-                targetUserId
-                    ? api.get(`/timesheet/user/${targetUserId}?month=${formattedMonth}`)
-                    : api.get(`/timesheet/current?month=${formattedMonth}`),
-                api.get('/timesheet/projects', { params: { userId: effectiveUserId } }),
-                api.get('/holidays')
-            ]);
-
-            const payload = {
-                timesheet: tsRes.data,
-                attendanceLogs: tsRes.data.attendanceLog || [],
-                projects: projRes.data,
-                holidays: holRes.data || [],
-                weeklyOff: tsRes.data.weeklyOff || ['Sunday']
+            const requestParams = {
+                month: formattedMonth,
+                monthNumber: viewDate.getMonth() + 1,
+                year: viewDate.getFullYear(),
+                userId: targetUserId || undefined
             };
+
+            if (skipCache) {
+                requestParams._fresh = Date.now();
+            }
+
+            const payload = (await api.get('/timesheet/bootstrap', {
+                params: requestParams,
+                headers: skipCache ? { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } : undefined
+            })).data;
 
             const freshFingerprint = buildFingerprint(payload);
             const cachedFingerprint = cached?.fingerprint || (readCache()?.fingerprint || '');
@@ -440,17 +517,6 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             } else {
                 writeCache(payload, freshFingerprint);
             }
-
-            // Always update users if in target mode
-            if (targetUserId) {
-                try {
-                    const userRes = await api.get(`/admin/users/${targetUserId}`);
-                    setViewUser(userRes.data);
-                } catch (e) { console.error("Failed to fetch user details", e); }
-            } else {
-                setViewUser(user);
-            }
-
         } catch (error) {
             console.error('Timesheet fetch error', error);
             if (!cached?.data) toast.error('Failed to load timesheet');
@@ -491,6 +557,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     };
 
     const submitNewEntry = async () => {
+        if (!isEditableTimesheetStatus) {
+            toast.error('Submitted timesheets cannot be edited');
+            return;
+        }
         const h = parseFloat(newEntry.hours) || 0;
         const m = parseFloat(newEntry.minutes) || 0;
         const totalHours = h + (m / 60);
@@ -516,7 +586,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             toast.success("Work Log Added");
             setIsAddingEntry(false);
             setNewEntry({ projectId: '', moduleId: '', taskId: '', hours: '', minutes: '', description: '' });
-            fetchData(); // Refresh
+            await refreshTimesheetData();
             // Update selected cell logs? fetchData will update timesheet, but we might need to locally update selectedCell or close it.
             // Closing it is easiest to ensure consistency.
             setSelectedCell(null);
@@ -525,32 +595,6 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             toast.error(error.response?.data?.message || "Failed to add entry");
         }
     };
-
-    // Fetch Users List for Dropdown (Admin/Manager/timesheet.view)
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                if (user.roles.includes('Admin') || user.permissions?.includes('timesheet.view')) {
-                    const res = await api.get('/admin/users');
-                    setUsersList(res.data);
-                } else if (user.roles.includes('Manager')) {
-                    const res = await api.get('/admin/users/team');
-                    setUsersList(res.data);
-                }
-            } catch (error) {
-                console.error("Failed to fetch users list", error);
-            }
-        };
-
-        if (user && (
-            user.roles?.some(r => r === 'Admin' || r.name === 'Admin' || r === 'Manager' || r.name === 'Manager') ||
-            user.permissions?.includes('timesheet.view') ||
-            user.permissions?.includes('*') ||
-            (user.directReports && user.directReports.length > 0)
-        )) {
-            fetchUsers();
-        }
-    }, [user]);
 
     const handleUserChange = (e) => {
         const selectedId = e.target.value;
@@ -571,6 +615,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     };
 
     useEffect(() => {
+        const fetchKey = `${targetUserId || 'self'}::${viewDate.toISOString()}`;
+        if (lastFetchKeyRef.current === fetchKey) return;
+        lastFetchKeyRef.current = fetchKey;
+
         fetchData();
 
         // Background polling for real-time timesheet status/entry updates
@@ -596,6 +644,20 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     // State for Details Modal
     const [selectedCell, setSelectedCell] = useState(null); // { date: Date, project: ProjectObj, logs: [] }
+
+    useEffect(() => {
+        if (!selectedCell || !timesheet?.entries) return;
+
+        const dateKey = format(new Date(selectedCell.date), 'yyyy-MM-dd');
+        const selectedProjectId = selectedCell.project?._id || selectedCell.project;
+        const refreshedLogs = timesheet.entries.filter(entry => {
+            const entryDateKey = format(new Date(entry.date), 'yyyy-MM-dd');
+            const entryProjectId = entry.project?._id || entry.project;
+            return entryDateKey === dateKey && String(entryProjectId) === String(selectedProjectId);
+        });
+
+        setSelectedCell(prev => prev ? { ...prev, logs: refreshedLogs } : prev);
+    }, [timesheet, selectedCell?.date, selectedCell?.project]);
 
     const handleExportAttendance = async () => {
         // Use the component-level targetUserId which already accounts for propUserId or query params
@@ -738,7 +800,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     // Group entries by Project
     const getEntriesByProject = () => {
-        if (!timesheet) return {};
+        if (!timesheet || !timesheet.entries) return {};
         const groups = {};
 
         timesheet.entries.forEach(entry => {
@@ -794,7 +856,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             const formattedMonth = format(viewDate, 'yyyy-MM');
             await api.post('/timesheet/submit', { month: formattedMonth });
             toast.success('Timesheet Submitted Successfully');
-            fetchData(); // Refresh to update status
+            await refreshTimesheetData();
         } catch (error) {
             console.error(error);
             toast.error(error.response?.data?.message || 'Failed to submit timesheet');
@@ -1011,6 +1073,70 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const canUpdateTimesheet = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
         user?.permissions?.includes('*') ||
         user?.permissions?.includes('timesheet.update_others');
+    const isEditableTimesheetStatus = !timesheet || timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED';
+
+    const getResolvedTimesheetEntryStatus = (status) => {
+        if (timesheet?.status === 'APPROVED') return 'APPROVED';
+        if (timesheet?.status === 'REJECTED') return 'REJECTED';
+        return status || 'PENDING';
+    };
+
+    const getLogStatusMeta = (status) => {
+        const resolvedStatus = getResolvedTimesheetEntryStatus(status);
+
+        if (resolvedStatus === 'REJECTED') {
+            return {
+                label: 'Rejected',
+                badgeClass: 'bg-red-100 text-red-700 ring-1 ring-red-500 group-hover/cell:bg-red-600 group-hover/cell:text-white',
+                pillClass: 'bg-red-100 text-red-700'
+            };
+        }
+        if (resolvedStatus === 'APPROVED') {
+            return {
+                label: 'Approved',
+                badgeClass: 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-400 group-hover/cell:bg-emerald-600 group-hover/cell:text-white',
+                pillClass: 'bg-emerald-100 text-emerald-700'
+            };
+        }
+        return {
+            label: 'Pending',
+            badgeClass: 'bg-slate-200 text-slate-800 ring-1 ring-slate-300 group-hover/cell:bg-slate-700 group-hover/cell:text-white',
+            pillClass: 'bg-slate-100 text-slate-700'
+        };
+    };
+
+    const getDayStatusMeta = (logs = []) => {
+        if (timesheet?.status === 'APPROVED' && logs.length > 0) return getLogStatusMeta('APPROVED');
+        if (timesheet?.status === 'REJECTED' && logs.length > 0) return getLogStatusMeta('REJECTED');
+        if (logs.some(log => getResolvedTimesheetEntryStatus(log.status) === 'REJECTED')) return getLogStatusMeta('REJECTED');
+        if (logs.length > 0 && logs.every(log => getResolvedTimesheetEntryStatus(log.status) === 'APPROVED')) return getLogStatusMeta('APPROVED');
+        return getLogStatusMeta('PENDING');
+    };
+
+    const getAttendanceStatusMeta = (record) => {
+        if (!record) {
+            return { label: 'Absent', chipClass: 'bg-red-100 text-red-700' };
+        }
+
+        if (record.clockIn && !record.clockOut) {
+            return { label: 'Incomplete', chipClass: 'bg-red-100 text-red-700' };
+        }
+
+        const resolvedApprovalStatus = (timesheet?.status === 'APPROVED' ? 'APPROVED' : null)
+            || (timesheet?.status === 'REJECTED' ? 'REJECTED' : null)
+            || record.approvalStatus
+            || 'PENDING';
+
+        if (resolvedApprovalStatus === 'REJECTED') {
+            return { label: 'Rejected', chipClass: 'bg-red-100 text-red-700' };
+        }
+
+        if (resolvedApprovalStatus === 'APPROVED') {
+            return { label: 'Approved', chipClass: 'bg-emerald-100 text-emerald-700' };
+        }
+
+        return { label: 'Pending', chipClass: 'bg-amber-100 text-amber-700' };
+    };
 
     return (
         <div className={`${isEmbedded ? 'w-full' : 'min-h-screen bg-slate-100 p-6 md:p-10'} font-sans overflow-x-hidden`}>
@@ -1378,10 +1504,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             <span className="text-slate-200 select-none text-[10px]">{isFutureDate ? '-' : 'N/A'}</span>
                                                         ) : log ? (
                                                             <div className="flex flex-col items-center justify-center">
-                                                                <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${log.clockOutIST || isSameDay(new Date(log.date), new Date())
-                                                                    ? 'bg-slate-200 text-slate-800'
-                                                                    : 'bg-red-100 text-red-700'
-                                                                    }`}>
+                                                                <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${getAttendanceStatusMeta(log).chipClass}`}>
                                                                     {log.duration
                                                                         ? (log.duration / 60).toFixed(1)
                                                                         : (log.clockOut && log.clockIn
@@ -1423,7 +1546,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             const hours = group.hours[dateKey];
                                                             const logs = group.logs[dateKey] || [];
                                                             const isOffDay = weeklyOff.includes(format(day, 'EEEE'));
-                                                            const isRejected = logs.some(l => l.status === 'REJECTED');
+                                                            const dayStatusMeta = getDayStatusMeta(logs);
                                                             const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
 
                                                             // Joining Date Check
@@ -1460,14 +1583,14 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                         <span className="text-slate-200 text-[10px] select-none">{isFutureDate ? '-' : 'N/A'}</span>
                                                                     ) : hours ? (
                                                                         <div className="flex flex-col items-center justify-center group/cell relative">
-                                                                            <span className={`inline-flex items-center justify-center h-8 w-8 rounded-full font-bold text-xs shadow-sm transition-all ${isRejected
-                                                                                ? 'bg-red-100 text-red-700 ring-1 ring-red-500 group-hover/cell:bg-red-600 group-hover/cell:text-white'
-                                                                                : 'bg-blue-100 text-blue-700 group-hover/cell:bg-blue-600 group-hover/cell:text-white'
-                                                                                }`}>
+                                                                            <span
+                                                                                title={dayStatusMeta.label}
+                                                                                className={`inline-flex items-center justify-center h-8 w-8 rounded-full font-bold text-xs shadow-sm transition-all ${dayStatusMeta.badgeClass}`}
+                                                                            >
                                                                                 {hours}
                                                                             </span>
                                                                             {logs.length > 1 && (
-                                                                                <div className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white"></div>
+                                                                                <div className="absolute -top-1 -right-1 h-3 w-3 bg-sky-500 rounded-full border-2 border-white"></div>
                                                                             )}
                                                                         </div>
                                                                     ) : (
@@ -1502,7 +1625,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 return (
                                                     <td key={day.toString()} className="p-1 border-r border-slate-300 text-center">
                                                         {total > 0 && (
-                                                            <span className={`block py-1 rounded ${total > 9 ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-800'}`}>
+                                                            <span className={`block py-1 rounded ${total > 9 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-800'}`}>
                                                                 {total.toFixed(1)}
                                                             </span>
                                                         )}
@@ -1533,7 +1656,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         <h4 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center justify-between">
                                             <div className="flex items-center"><Clock size={12} className="mr-1" /> Attendance</div>
                                             {attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date))) ? (
-                                                ((timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED' || canUpdateAttendance) && (!targetUserId || canUpdateAttendance)) && canEditAttendance && (
+                                                (isEditableTimesheetStatus && (!targetUserId || canUpdateAttendance)) && canEditAttendance && (
                                                     <button
                                                         onClick={() => {
                                                             const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
@@ -1548,7 +1671,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     </button>
                                                 )
                                             ) : (
-                                                (timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED' || !timesheet || canUpdateAttendance) && (!targetUserId || canUpdateAttendance) && canEditAttendance && selectedCell.date <= new Date() && (
+                                                isEditableTimesheetStatus && (!targetUserId || canUpdateAttendance) && canEditAttendance && selectedCell.date <= new Date() && (
                                                     <button
                                                         onClick={() => {
                                                             setEntryToEdit({ type: 'ATTENDANCE_CREATE', date: selectedCell.date });
@@ -1613,9 +1736,15 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         const start = log.clockIn ? new Date(log.clockIn) : null;
                                                         const end = log.clockOut ? new Date(log.clockOut) : null;
                                                         const duration = start && end ? ((end - start) / 3600000).toFixed(2) : '0.0';
+                                                        const attendanceMeta = getAttendanceStatusMeta(log);
 
                                                         return (
                                                             <div className="flex flex-col space-y-2">
+                                                                <div className="flex justify-end">
+                                                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${attendanceMeta.chipClass}`}>
+                                                                        {attendanceMeta.label}
+                                                                    </span>
+                                                                </div>
                                                                 <div className="flex justify-between items-center text-sm bg-white p-2 rounded border border-slate-200 shadow-sm">
                                                                     <div className="flex flex-col">
                                                                         <span className="text-slate-400 text-[10px] font-bold uppercase">Check In</span>
@@ -1637,7 +1766,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 ) : (
                                                     <div className="text-center py-4 space-y-3">
                                                         <div className="text-xs text-slate-400 italic">No attendance record found for this date.</div>
-                                                        {(timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && canEditAttendance && (
+                                                        {isEditableTimesheetStatus && !targetUserId && canEditAttendance && (
                                                             <Button
                                                                 onClick={() => {
                                                                     setEntryToEdit({ type: 'ATTENDANCE_CREATE', date: selectedCell.date });
@@ -1658,7 +1787,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                     {/* Add Work Log Section */}
                                     <div className="p-4 bg-white border-t border-slate-100">
                                         {!isAddingEntry ? (
-                                            ((timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED' || canUpdateTimesheet) && (!targetUserId || canUpdateTimesheet)) && (
+                                            (isEditableTimesheetStatus && (!targetUserId || canUpdateTimesheet)) && (
                                                 <Button
                                                     onClick={() => {
                                                         setIsAddingEntry(true);
@@ -1902,16 +2031,16 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 <>
                                                     <div className="flex justify-between items-start mb-2">
                                                         <div className="font-semibold text-slate-700 text-sm flex-1 mr-4">
-                                                            {log.status === 'REJECTED' && <div className="text-red-500 text-xs font-bold mb-1">Status: Rejected</div>}
+                                                            <div className="text-xs font-bold mb-1 text-slate-500">Status: {getLogStatusMeta(log.status).label}</div>
                                                             <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
                                                                 {log.description || 'No description provided.'}
                                                             </p>
                                                         </div>
                                                         <div className="flex items-center space-x-2">
-                                                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${log.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${getLogStatusMeta(log.status).pillClass}`}>
                                                                 {log.hours}h
                                                             </span>
-                                                            {((timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED' || canUpdateTimesheet) && (!targetUserId || canUpdateTimesheet)) && (
+                                                            {(isEditableTimesheetStatus && (!targetUserId || canUpdateTimesheet)) && (
                                                                 <button
                                                                     onClick={() => { handleEditClick(log); }}
                                                                     className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
@@ -2027,8 +2156,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             status = holiday.name;
                                             statusColor = holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700';
                                         } else if (record) {
-                                            status = 'Present';
-                                            statusColor = 'bg-green-100 text-green-700';
+                                            const attendanceMeta = getAttendanceStatusMeta(record);
+                                            status = attendanceMeta.label;
+                                            statusColor = attendanceMeta.chipClass;
                                         } else if (isWeeklyOff) {
                                             status = 'Weekoff';
                                             statusColor = 'bg-slate-100 text-slate-500';

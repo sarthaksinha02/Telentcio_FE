@@ -9,6 +9,7 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { createCachePayload } from '../utils/cache';
 
 const Users = () => {
     const navigate = useNavigate();
@@ -479,8 +480,10 @@ const Users = () => {
 
             if (cachedData) {
                 const parsed = JSON.parse(cachedData);
-                setUsers(parsed.users);
-                setRoles(parsed.roles);
+                // Use .data if it exists (new format), else fallback to top-level (old format)
+                const data = parsed.data || parsed;
+                setUsers(data.users || []);
+                setRoles(data.roles || []);
                 setLoading(false); // Immediate UI update
             }
 
@@ -522,11 +525,31 @@ const Users = () => {
             if (newFingerprint !== oldFingerprint) {
                 setUsers(usersData);
                 setRoles(rolesData);
-                sessionStorage.setItem(cacheKey, JSON.stringify({
-                    users: usersData,
-                    roles: rolesData,
-                    fingerprint: newFingerprint
+
+                // Minimal data for caching
+                const minimalUsers = usersData.map(u => ({
+                    _id: u._id,
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    email: u.email,
+                    employeeCode: u.employeeCode,
+                    joiningDate: u.joiningDate,
+                    department: u.department,
+                    employmentType: u.employmentType,
+                    workLocation: u.workLocation,
+                    isActive: u.isActive,
+                    roles: u.roles?.map(r => ({ _id: r._id, name: r.name })),
+                    reportingManagers: u.reportingManagers?.map(m => ({ _id: m._id, firstName: m.firstName, lastName: m.lastName, email: m.email }))
                 }));
+
+                const minimalRoles = rolesData.map(r => ({ _id: r._id, name: r.name }));
+
+                const payload = createCachePayload({
+                    users: minimalUsers,
+                    roles: minimalRoles
+                }, newFingerprint);
+
+                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
         } catch (error) {
             toast.error('Failed to load data');

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { Users, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import Skeleton from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -14,45 +15,51 @@ const Clients = () => {
     const [clients, setClients] = useState([]);
     const [businessUnits, setBusinessUnits] = useState([]);
     const [loading, setLoading] = useState(true);
+    const initialFetchDoneRef = useRef(false);
+    const CLIENT_CACHE_TTL_MS = 45 * 1000;
+    const cacheKey = `client_data_${user?._id}`;
 
-    const fetchData = async () => {
+    const fetchData = async ({ force = false } = {}) => {
         try {
-            const cacheKey = `client_data_${user?._id}`;
-            const cachedData = sessionStorage.getItem(cacheKey);
-            
+            const cachedData = readSessionCache(cacheKey);
+
             if (cachedData) {
-                const parsed = JSON.parse(cachedData);
-                setClients(parsed.clients);
-                setBusinessUnits(parsed.businessUnits);
+                const data = cachedData.data || cachedData;
+                setClients(data.clients || []);
+                setBusinessUnits(data.businessUnits || []);
                 setLoading(false);
+                if (!force && isCacheFresh(cachedData, CLIENT_CACHE_TTL_MS)) return;
             }
 
-            // Fetch Clients and Business Units in parallel
-            const [clientsRes, buRes] = await Promise.allSettled([
-                api.get('/projects/clients'),
-                api.get('/projects/business-units')
-            ]);
+            const bootstrapRes = await api.get('/projects/bootstrap');
+            const clientData = bootstrapRes.data?.clients || [];
+            const buData = bootstrapRes.data?.businessUnits || [];
 
-            const clientData = clientsRes.status === 'fulfilled' ? clientsRes.value.data : [];
-            const buData = buRes.status === 'fulfilled' ? buRes.value.data : [];
-
-            if (clientsRes.status === 'rejected') {
-                console.error("Failed to load clients", clientsRes.reason);
-                toast.error('Failed to load clients');
-            }
-
-            // Fingerprint check
             const newFingerprint = JSON.stringify({ c: clientData.length, b: buData.length });
-            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+            const oldFingerprint = cachedData?.fingerprint || null;
 
-            if (newFingerprint !== oldFingerprint) {
-                setClients(clientData);
-                setBusinessUnits(buData);
-                sessionStorage.setItem(cacheKey, JSON.stringify({ 
-                    clients: clientData, 
-                    businessUnits: buData, 
-                    fingerprint: newFingerprint 
+            setClients(clientData);
+            setBusinessUnits(buData);
+
+            if (newFingerprint !== oldFingerprint || force) {
+                const minimalClients = clientData.map(c => ({
+                    _id: c._id,
+                    name: c.name,
+                    location: c.location,
+                    email: c.email,
+                    businessUnit: c.businessUnit ? { _id: c.businessUnit._id, name: c.businessUnit.name } : null
                 }));
+
+                const minimalBUs = buData.map(bu => ({
+                    _id: bu._id,
+                    name: bu.name
+                }));
+
+                const payload = createCachePayload({ 
+                    clients: minimalClients, 
+                    businessUnits: minimalBUs 
+                }, newFingerprint);
+                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
 
         } catch (error) {
@@ -63,6 +70,8 @@ const Clients = () => {
     };
 
     useEffect(() => {
+        if (initialFetchDoneRef.current) return;
+        initialFetchDoneRef.current = true;
         fetchData();
     }, []);
 

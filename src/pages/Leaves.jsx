@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -9,6 +9,7 @@ import {
 import toast from 'react-hot-toast';
 import Button from '../components/Button';
 import { format } from 'date-fns';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 // ─── Donut Chart for Balance Card ────────────────────────────────────────────
 const DonutChart = ({ utilized, total, isUnlimited }) => {
@@ -62,6 +63,7 @@ const StatusBadge = ({ status }) => {
 // ─── Leaves Page ──────────────────────────────────────────────────────────────
 const Leaves = () => {
     const { user } = useAuth();
+    const initialFetchDoneRef = useRef(false);
     const [activeTab, setActiveTab] = useState('my-leaves');
 
     const [balances, setBalances] = useState([]);
@@ -94,6 +96,7 @@ const Leaves = () => {
         || user?.permissions?.includes('*');
     const isManager = (user?.directReportsCount ?? user?.directReports?.length ?? 0) > 0;
     const hasApprovalAccess = isAdminUser || isManager;
+    const LEAVES_CACHE_TTL_MS = 20 * 1000;
 
 
     const fetchData = async (page = 1, skipCache = false) => {
@@ -101,28 +104,56 @@ const Leaves = () => {
         const CACHE_KEY = `leaves_${user?._id}_${new Date().toISOString().slice(0, 10)}`;
 
         const readCache = () => {
-            try {
-                const raw = sessionStorage.getItem(CACHE_KEY);
-                if (!raw) return null;
-                const parsed = JSON.parse(raw);
-                if (!parsed?.data?.balances) {
-                    sessionStorage.removeItem(CACHE_KEY);
-                    return null;
-                }
-                return parsed;
-            } catch { return null; }
+            const parsed = readSessionCache(CACHE_KEY);
+            const data = parsed?.data || parsed;
+            if (!data || !data.balances) {
+                sessionStorage.removeItem(CACHE_KEY);
+                return null;
+            }
+            return parsed;
         };
 
         const writeCache = (data, fingerprint) => {
             try {
-                sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, fingerprint }));
+                // Minimal data for caching
+                const minimalBalances = (data.balances || []).map(b => ({
+                    leaveType: b.leaveType,
+                    policyName: b.policyName,
+                    openingBalance: b.openingBalance,
+                    accrued: b.accrued,
+                    utilized: b.utilized,
+                    closingBalance: b.closingBalance,
+                    policyAccrualAmount: b.policyAccrualAmount,
+                    proofRequiredAbove: b.proofRequiredAbove
+                }));
+
+                const minimalRequests = (data.requests || []).map(r => ({
+                    _id: r._id,
+                    leaveType: r.leaveType,
+                    startDate: r.startDate,
+                    endDate: r.endDate,
+                    daysCount: r.daysCount,
+                    isHalfDay: r.isHalfDay,
+                    halfDaySession: r.halfDaySession,
+                    reason: r.reason,
+                    createdAt: r.createdAt,
+                    status: r.status
+                }));
+
+                const payload = createCachePayload({
+                    balances: minimalBalances,
+                    requests: minimalRequests,
+                    pagination: data.pagination
+                }, fingerprint);
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
             } catch { /* Silently fail if storage full */ }
         };
 
         const buildFingerprint = (data) => {
-            if (!data) return '';
-            const balPart = data.balances?.map(b => `${b.leaveType}:${b.utilized}:${b.closingBalance}`).join('|') || '';
-            const reqPart = data.requests?.map(r => `${r._id}:${r.status}`).join('|') || '';
+            const items = data?.data || data;
+            if (!items) return '';
+            const balPart = items.balances?.map(b => `${b.leaveType}:${b.utilized}:${b.closingBalance}`).join('|') || '';
+            const reqPart = items.requests?.map(r => `${r._id}:${r.status}`).join('|') || '';
             return `${balPart}#${reqPart}`;
         };
 
@@ -135,25 +166,21 @@ const Leaves = () => {
         const cached = skipCache ? null : readCache();
 
         // 1. Show cached data instantly if available
-        if (!skipCache && cached?.data && page === 1) {
-            applyData(cached.data);
+        if (!skipCache && cached && page === 1) {
+            applyData(cached.data || cached);
             setLoading(false);
+            if (isCacheFresh(cached, LEAVES_CACHE_TTL_MS)) return;
         } else {
             setLoading(true);
         }
 
         // 2. Fetch fresh data
         try {
-            const [balRes, reqRes] = await Promise.all([
-                api.get('/leaves/balance'),
-                api.get(`/leaves/requests?page=${page}&limit=10`)
-            ]);
+            const res = await api.get('/leaves/bootstrap', {
+                params: { page, limit: 10 }
+            });
 
-            const payload = {
-                balances: balRes.data,
-                requests: reqRes.data.data,
-                pagination: reqRes.data.pagination
-            };
+            const payload = res.data;
 
             const freshFingerprint = buildFingerprint(payload);
             const cachedFingerprint = cached?.fingerprint || (readCache()?.fingerprint || '');
@@ -197,13 +224,15 @@ const Leaves = () => {
     };
 
     useEffect(() => {
-        if (user?._id) {
-            fetchData(1);
+        if (!user?._id) return;
+        if (initialFetchDoneRef.current) return;
+        initialFetchDoneRef.current = true;
 
-            // Add background polling for real-time leave status updates
-            const pollInterval = setInterval(() => fetchData(1, true), 30000);
-            return () => clearInterval(pollInterval);
-        }
+        fetchData(1);
+
+        // Add background polling for real-time leave status updates
+        const pollInterval = setInterval(() => fetchData(1, true), 30000);
+        return () => clearInterval(pollInterval);
     }, [user?._id]);
 
     const handleChange = (e) => {
@@ -219,19 +248,21 @@ const Leaves = () => {
         e.preventDefault();
         setProcessingId('apply');
         try {
-            const submitData = { ...formData };
+            const submitData = new FormData();
+            submitData.append('leaveType', formData.leaveType);
+            submitData.append('startDate', formData.startDate);
+            submitData.append('endDate', formData.endDate);
+            submitData.append('isHalfDay', String(formData.isHalfDay));
+            submitData.append('halfDaySession', formData.isHalfDay ? formData.halfDaySession : '');
+            submitData.append('reason', formData.reason);
 
-            // Upload proof document if selected
             if (proofFile) {
-                const uploadData = new FormData();
-                uploadData.append('file', proofFile);
-                const uploadRes = await api.post('/upload', uploadData, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
-                submitData.documents = [uploadRes.data.url];
+                submitData.append('document', proofFile);
             }
 
-            await api.post('/leaves/apply', submitData);
+            await api.post('/leaves/apply', submitData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
             toast.success('Leave applied successfully');
             setShowModal(false);
             setFormData({ leaveType: '', startDate: '', endDate: '', isHalfDay: false, halfDaySession: 'First Half', reason: '' });
@@ -269,6 +300,29 @@ const Leaves = () => {
             fetchData(requestsPagination.page);
         } catch (err) { toast.error(err.response?.data?.message || 'Failed to cancel'); }
         finally { setCancellingId(null); }
+    };
+
+    const renderLeaveDocuments = (documents = []) => {
+        if (!Array.isArray(documents) || documents.length === 0) {
+            return <span className="text-xs text-gray-400">No attachment</span>;
+        }
+
+        return (
+            <div className="flex flex-wrap gap-2">
+                {documents.map((doc, index) => (
+                    <a
+                        key={`${doc}-${index}`}
+                        href={doc}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-md hover:bg-blue-100 transition-colors"
+                    >
+                        <FileText size={12} />
+                        <span>View proof{documents.length > 1 ? ` ${index + 1}` : ''}</span>
+                    </a>
+                ))}
+            </div>
+        );
     };
 
     if (loading && balances.length === 0) {
@@ -571,7 +625,8 @@ const Leaves = () => {
                                     </thead>
                                     <tbody className="divide-y divide-gray-50">
                                         {approvalRequests.map(req => (
-                                            <tr key={req._id} className="hover:bg-gray-50 transition-colors">
+                                            <React.Fragment key={req._id}>
+                                            <tr className="hover:bg-gray-50 transition-colors">
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-8 h-8 rounded-full bg-[#e8f0fe] text-[#1a73e8] flex items-center justify-center font-bold text-sm flex-shrink-0">
@@ -597,18 +652,12 @@ const Leaves = () => {
                                                         {req.daysCount}d
                                                         {req.daysCount > 3 && <AlertCircle size={12} className="text-orange-400" />}
                                                     </span>
-                                                    {req.isHalfDay && <span className="text-xs text-gray-400 block">(Half day)</span>}
+                                                    {req.isHalfDay && <span className="text-xs text-gray-400 block">({req.halfDaySession || 'Half day'})</span>}
                                                 </td>
                                                 <td className="px-4 py-4 text-gray-500 w-[180px] min-w-[180px] max-w-[180px]">
-                                                    {expandedRows.includes(req._id) ? (
-                                                        <div className="bg-blue-50/50 p-2.5 rounded-lg border border-blue-100/30 text-[11px] leading-relaxed text-gray-600 whitespace-pre-wrap break-words animate-fade-in shadow-inner">
-                                                            {req.reason}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="text-[11px] truncate" title={req.reason}>
-                                                            {req.reason.length > 60 ? `${req.reason.substring(0, 60)}...` : req.reason}
-                                                        </div>
-                                                    )}
+                                                    <div className="text-[11px] truncate" title={req.reason}>
+                                                        {req.reason.length > 60 ? `${req.reason.substring(0, 60)}...` : req.reason}
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-4">
                                                     <StatusBadge status={req.status} />
@@ -618,7 +667,7 @@ const Leaves = () => {
                                                         <button
                                                             onClick={() => toggleRowExpansion(req._id)}
                                                             className={`p-1 rounded transition-colors ${expandedRows.includes(req._id) ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50'}`}
-                                                            title="Toggle Reason"
+                                                            title="View details"
                                                         >
                                                             <Eye size={16} />
                                                         </button>
@@ -643,6 +692,33 @@ const Leaves = () => {
                                                     </div>
                                                 </td>
                                             </tr>
+                                            {expandedRows.includes(req._id) && (
+                                                <tr className="bg-blue-50/40">
+                                                    <td colSpan={7} className="px-6 py-4 border-t border-blue-100">
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            <div className="bg-white/80 rounded-lg border border-blue-100 p-3">
+                                                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Reason</div>
+                                                                <div className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                                                                    {req.reason || 'No reason provided'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-white/80 rounded-lg border border-blue-100 p-3">
+                                                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Attachment</div>
+                                                                {renderLeaveDocuments(req.documents)}
+                                                                {req.status === 'Rejected' && req.rejectionReason && (
+                                                                    <div className="mt-3 pt-3 border-t border-red-100">
+                                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1">Rejection Reason</div>
+                                                                        <div className="text-sm text-red-700 whitespace-pre-wrap break-words">
+                                                                            {req.rejectionReason}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            </React.Fragment>
                                         ))}
                                     </tbody>
                                 </table>

@@ -40,39 +40,67 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
         onMonthChange(next.getFullYear(), next.getMonth() + 1);
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'PRESENT': return 'bg-emerald-500';
-            case 'ABSENT': return 'bg-red-500';
-            case 'HALF_DAY': return 'bg-orange-500';
-            case 'LEAVE': return 'bg-purple-500';
-            default: return 'bg-slate-300';
+    const getApprovalMeta = (record) => {
+        const finalStatus = record?.status || (record?.clockIn ? 'PRESENT' : 'ABSENT');
+
+        if (record?.clockIn && !record?.clockOut) {
+            return {
+                primaryLabel: 'Incomplete',
+                secondaryLabel: '',
+                textClass: 'text-slate-800',
+                dotClass: 'bg-red-500',
+                showTimes: true
+            };
         }
+
+        if (record?.approvalStatus === 'REJECTED') {
+            return {
+                primaryLabel: finalStatus === 'PRESENT' ? 'Present' : finalStatus.replace('_', ' '),
+                secondaryLabel: '',
+                textClass: 'text-slate-800',
+                dotClass: 'bg-red-500',
+                showTimes: true
+            };
+        }
+
+        if (record?.approvalStatus === 'APPROVED') {
+            return {
+                primaryLabel: finalStatus === 'PRESENT' ? 'Present' : finalStatus.replace('_', ' '),
+                secondaryLabel: '',
+                textClass: 'text-slate-800',
+                dotClass: 'bg-emerald-500',
+                showTimes: true
+            };
+        }
+
+        return {
+            primaryLabel: finalStatus === 'PRESENT' ? 'Present' : finalStatus.replace('_', ' '),
+            secondaryLabel: '',
+            textClass: 'text-slate-800',
+            dotClass: finalStatus === 'PRESENT' ? 'bg-emerald-500' : 'bg-slate-400',
+            showTimes: true
+        };
     };
 
     return (
-        <div className="zoho-card">
+        <div className="zoho-card overflow-hidden">
             {/* Header */}
-            <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-                <h3 className="font-semibold text-slate-800 text-sm">
+            <div className="flex justify-between items-center px-6 py-5 border-b border-slate-100 bg-white">
+                <h3 className="font-semibold text-slate-800 text-[14px]">
                     {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </h3>
                 <div className="flex space-x-2">
-                    <button onClick={prevMonth} className="p-1 hover:bg-slate-200 rounded text-slate-500">
+                    <button onClick={prevMonth} className="p-1.5 hover:bg-slate-100 rounded text-slate-500 transition-colors">
                         <ChevronLeft size={20} />
-
                     </button>
-                    <button onClick={nextMonth} className="p-1 hover:bg-slate-200 rounded text-slate-500">
+                    <button onClick={nextMonth} className="p-1.5 hover:bg-slate-100 rounded text-slate-500 transition-colors">
                         <ChevronRight size={20} />
-
-
-
                     </button>
                 </div>
             </div>
 
             {/* Grid Header */}
-            <div className="grid grid-cols-7 text-center border-b border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wide py-1.5">
+            <div className="grid grid-cols-7 text-center border-b border-slate-200 bg-slate-50/60 text-[11px] font-semibold text-slate-500 uppercase tracking-wide py-3">
                 <div>Sun</div>
                 <div>Mon</div>
                 <div>Tue</div>
@@ -85,7 +113,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
             {/* Calendar Rows */}
             <div className="grid grid-cols-7 text-xs">
                 {blanks.map((b) => (
-                    <div key={`blank-${b}`} className="min-h-[80px] border-b border-r border-slate-100 bg-slate-50/30"></div>
+                    <div key={`blank-${b}`} className="min-h-[100px] border-b border-r border-slate-100 bg-white"></div>
                 ))}
 
                 {days.map((day) => {
@@ -114,9 +142,9 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                     return (
                         <div
                             key={day.toISOString()}
-                            className={`min-h-[80px] border-b border-r border-slate-100 p-1.5 relative group hover:bg-slate-50 transition-colors ${isToday ? 'bg-blue-50/30' : ''} ${isWeeklyOff ? 'bg-slate-50/50' : ''}`}
+                            className={`min-h-[100px] border-b border-r border-slate-100 px-2 py-2 relative group transition-colors ${isToday ? 'bg-blue-50/20' : 'bg-white'} ${isWeeklyOff ? 'bg-slate-50/40' : ''}`}
                         >
-                            <div className={`text-right mb-1 font-medium text-xs ${isToday ? 'text-blue-600' : (isWeeklyOff ? 'text-slate-300' : 'text-slate-400')}`}>
+                            <div className={`text-right mb-2 font-medium text-[11px] ${isToday ? 'text-blue-600' : (isWeeklyOff ? 'text-slate-300' : 'text-slate-400')}`}>
                                 {day.getDate()}
                             </div>
 
@@ -176,7 +204,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                             })()}
 
                             {holiday && (
-                                <div className={`mb-1 text-[9px] font-bold px-1 py-0.5 rounded ${holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} truncate`} title={holiday.name}>
+                                <div className={`mb-1 text-[9px] font-semibold px-1 py-0.5 rounded ${holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} truncate`} title={holiday.name}>
                                     {holiday.name}
                                 </div>
                             )}
@@ -202,25 +230,30 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
 
                             {record ? (
                                 (() => {
-                                    const finalStatus = record.status || (record.clockIn ? 'PRESENT' : 'ABSENT');
+                                    const approvalMeta = getApprovalMeta(record);
                                     return (
-                                        <div className="space-y-1">
-                                            <div className="flex items-center space-x-1">
-                                                <div className={`h-1.5 w-1.5 rounded-full ${getStatusColor(finalStatus)}`}></div>
-                                                <span className="text-[10px] font-semibold text-slate-700 capitalize">{finalStatus.toLowerCase()}</span>
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-start space-x-1">
+                                                <div className={`h-2 w-2 rounded-full mt-1 ${approvalMeta.dotClass}`}></div>
+                                                <div className="leading-tight">
+                                                    <div className={`text-[10px] font-medium ${approvalMeta.textClass}`}>
+                                                        {approvalMeta.primaryLabel}
+                                                    </div>
+                                                    {approvalMeta.secondaryLabel && (
+                                                        <div className={`text-[9px] font-medium ${approvalMeta.textClass}`}>
+                                                            ({approvalMeta.secondaryLabel})
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                            {record.clockIn && (
-                                                <div className="text-[9px] text-slate-500 font-mono pl-2.5 line-clamp-1">
+                                            {approvalMeta.showTimes && record.clockIn && (
+                                                <div className="text-[9px] text-slate-500 font-mono pl-3 line-clamp-1">
                                                     In: {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                                                 </div>
                                             )}
-                                            {record.clockOut && (
-                                                <div className="text-[9px] text-slate-500 font-mono pl-2.5 line-clamp-1">
+                                            {approvalMeta.showTimes && record.clockOut && (
+                                                <div className="text-[9px] text-slate-500 font-mono pl-3 line-clamp-1">
                                                     Out: {new Date(record.clockOut).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-
-
-
-
                                                 </div>
                                             )}
                                         </div>
@@ -229,18 +262,18 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                             ) : (
                                 !leave && (
                                     isBeforeJoining ? (
-                                        <div className="flex justify-center mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title="Not Applicable">N/A</span>
+                                        <div className="flex justify-center mt-6 opacity-70">
+                                            <span className="text-[11px] text-slate-300 font-semibold" title="Not Applicable">N/A</span>
                                         </div>
                                     ) : (
                                         isWeeklyOff ? (
-                                            <div className="flex justify-center mt-3 opacity-40">
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Off</span>
+                                            <div className="flex justify-center mt-6 opacity-80">
+                                                <span className="text-[11px] text-slate-300 font-semibold uppercase tracking-wide">OFF</span>
                                             </div>
                                         ) : (
                                             !holiday && day < new Date() && (
-                                                <div className="flex justify-center mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <span className="text-[10px] text-red-400 bg-red-50 px-1.5 py-0.5 rounded">Absent</span>
+                                                <div className="flex justify-center mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <span className="text-[11px] text-red-400 font-medium">Absent</span>
                                                 </div>
                                             )
                                         )
@@ -259,12 +292,12 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                     <span className="text-[10px] text-slate-600 font-medium">Present</span>
                 </div>
                 <div className="flex items-center space-x-1.5">
-                    <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                    <span className="text-[10px] text-slate-600 font-medium">Absent</span>
+                    <div className="h-2 w-2 rounded-full bg-amber-500"></div>
+                    <span className="text-[10px] text-slate-600 font-medium">Pending</span>
                 </div>
                 <div className="flex items-center space-x-1.5">
-                    <div className="h-2 w-2 rounded-full bg-orange-500"></div>
-                    <span className="text-[10px] text-slate-600 font-medium">Half Day</span>
+                    <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                    <span className="text-[10px] text-slate-600 font-medium">Rejected / Absent</span>
                 </div>
                 <div className="flex items-center space-x-1.5">
                     <div className="h-2 w-2 rounded-full bg-purple-500"></div>

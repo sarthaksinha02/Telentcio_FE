@@ -10,6 +10,7 @@ import { saveAs } from 'file-saver';
 import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay, subDays, startOfDay } from 'date-fns';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const Attendance = () => {
     const { user, hasModule } = useAuth();
@@ -300,22 +301,18 @@ const Attendance = () => {
     const fetchMonthHistory = async (year, month) => {
         try {
             const userId = selectedUserId || user._id;
-            // Fetch attendance history, holidays, and leaves for the same month in parallel
-            const fetchHistoryProm = api.get(`/attendance/history?year=${year}&month=${month}&userId=${userId}`);
-            const fetchHolidaysProm = api.get(`/holidays?year=${year}&month=${month}`);
-            const fetchLeavesProm = hasModule('leaves')
-                ? api.get(`/leaves/requests?status=Approved&limit=0&userId=${userId}`)
-                : Promise.resolve({ data: { data: [] } });
-
-            const [historyRes, holidaysRes, leavesRes] = await Promise.all([
-                fetchHistoryProm,
-                fetchHolidaysProm,
-                fetchLeavesProm
-            ]);
-            setHistory(historyRes.data.history || []);
-            setWeeklyOffs(historyRes.data.weeklyOff || ['Saturday', 'Sunday']);
-            setHolidays(holidaysRes.data);
-            setApprovedLeaves(leavesRes.data.data || []);
+            const res = await api.get('/attendance/bootstrap', {
+                params: {
+                    year,
+                    month,
+                    userId,
+                    logsLimit: 4
+                }
+            });
+            setHistory(res.data.history || []);
+            setWeeklyOffs(res.data.weeklyOff || ['Saturday', 'Sunday']);
+            setHolidays(res.data.holidays || []);
+            setApprovedLeaves(res.data.approvedLeaves || []);
         } catch (error) {
             console.error('Error fetching month data', error);
             toast.error('Could not load calendar data');
@@ -348,6 +345,7 @@ const Attendance = () => {
     // function sets the ref to false, which cancels the AbortController and
     // prevents the second invocation from writing stale state.
     const didFetchRef = useRef(false);
+    const ATTENDANCE_CACHE_TTL_MS = 20 * 1000;
 
     useEffect(() => {
         if (!user?._id) return;
@@ -370,17 +368,55 @@ const Attendance = () => {
         const CACHE_KEY = `attendance_v1_${user._id}_${now.toISOString().slice(0, 10)}`;
 
         const readCache = () => {
+            return readSessionCache(CACHE_KEY);
+        };
+
+        const writeCache = (data, fingerprint) => {
             try {
-                const raw = sessionStorage.getItem(CACHE_KEY);
-                return raw ? JSON.parse(raw) : null;
-            } catch { return null; }
+                // Minimal data for caching
+                const minimalStatus = data.status ? {
+                    _id: data.status._id,
+                    user: data.status.user,
+                    status: data.status.status,
+                    clockIn: data.status.clockIn,
+                    clockInIST: data.status.clockInIST,
+                    clockOut: data.status.clockOut,
+                    clockOutIST: data.status.clockOutIST
+                } : null;
+
+                const minimalHistory = (data.history || []).map(h => ({
+                    _id: h._id,
+                    date: h.date,
+                    clockIn: h.clockIn,
+                    clockOut: h.clockOut,
+                    status: h.status,
+                    lat: h.lat,
+                    lng: h.lng
+                }));
+
+                const minimalLogs = (data.recentLogs || []).map(l => ({
+                    _id: l._id,
+                    task: l.task ? { _id: l.task._id, name: l.task.name } : null,
+                    hours: l.hours,
+                    minutes: l.minutes,
+                    description: l.description,
+                    date: l.date
+                }));
+
+                const payload = createCachePayload({
+                    status: minimalStatus,
+                    recentLogs: minimalLogs,
+                    history: minimalHistory,
+                    approvedLeaves: (data.approvedLeaves || []).map(l => ({ _id: l._id, leaveType: l.leaveType, startDate: l.startDate, endDate: l.endDate, status: l.status }))
+                }, fingerprint);
+
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+            } catch { }
         };
 
-        const writeCache = (payload) => {
-            try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload)); } catch { }
-        };
-
-        const buildFingerprint = (payload) => {
+        const buildFingerprint = (data) => {
+            const payload = data?.data || data;
+            if (!payload) return 'none';
             // Simple string fingerprint based on current status and recent logs
             const statusStr = payload.status ? `${payload.status.status}|${payload.status.clockInIST}|${payload.status.clockOutIST}` : 'none';
             const logsStr = (payload.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',');
@@ -393,52 +429,51 @@ const Attendance = () => {
             if (payload.status !== undefined) setStatus(payload.status);
             if (payload.recentLogs) setRecentLogs(payload.recentLogs);
             if (payload.history) setHistory(payload.history);
-            if (payload.holidays) setHolidays(payload.holidays);
             if (payload.approvedLeaves) setApprovedLeaves(payload.approvedLeaves);
         };
 
         // 1. Try Cache First (Instant UI)
         const cached = readCache();
-        if (cached?.data) {
-            applyData(cached.data);
+        if (cached) {
+            applyData(cached.data || cached);
             setLoading(false);
+            if (isCacheFresh(cached, ATTENDANCE_CACHE_TTL_MS)) {
+                return () => {
+                    controller.abort();
+                    didFetchRef.current = false;
+                };
+            }
         }
 
         // 2. Fetch Fresh Data (Background)
-        const fetchStatus = safe(api.get('/attendance/today', { signal }).then(r => r.data));
-        const fetchLogs = hasModule('projectManagement')
-            ? safe(api.get('/projects/worklogs?limit=4', { signal }).then(r => r.data))
-            : Promise.resolve([]);
-        const fetchHistory = safe(api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${user._id}`, { signal }).then(r => r.data));
-        const fetchHolidays = safe(api.get(`/holidays?year=${now.getFullYear()}`, { signal }).then(r => r.data));
-        const fetchLeaves = hasModule('leaves')
-            ? safe(api.get(`/leaves/requests?status=Approved&limit=0&userId=${user._id}`, { signal }).then(r => r.data))
-            : Promise.resolve({ data: [] });
-
-        Promise.all([
-            fetchStatus,
-            fetchLogs,
-            fetchHistory,
-            fetchHolidays,
-            fetchLeaves
-        ]).then(([statusData, logsData, historyData, holidaysData, leavesData]) => {
+        safe(api.get('/attendance/bootstrap', {
+            params: {
+                year: now.getFullYear(),
+                month: now.getMonth() + 1,
+                userId: user._id,
+                logsLimit: 4
+            },
+            signal
+        }).then(r => r.data)).then((bootstrapData) => {
             if (signal.aborted) return;
 
             const freshData = {
-                status: statusData,
-                recentLogs: logsData || [],
-                history: historyData?.history || [],
-                holidays: holidaysData || [],
-                approvedLeaves: leavesData?.data || []
+                status: bootstrapData?.status,
+                recentLogs: bootstrapData?.recentLogs || [],
+                history: bootstrapData?.history || [],
+                holidays: bootstrapData?.holidays || [],
+                approvedLeaves: bootstrapData?.approvedLeaves || []
             };
 
             const freshFingerprint = buildFingerprint(freshData);
+            const cachedFingerprint = cached?.fingerprint || (readCache()?.fingerprint || '');
 
             // 3. Update React only if data changed
-            if (!cached || cached.fingerprint !== freshFingerprint) {
+            if (!cached || cachedFingerprint !== freshFingerprint) {
                 applyData(freshData);
-                if (historyData?.weeklyOff) setWeeklyOffs(historyData.weeklyOff);
-                writeCache({ data: freshData, fingerprint: freshFingerprint });
+                if (bootstrapData?.weeklyOff) setWeeklyOffs(bootstrapData.weeklyOff);
+                if (bootstrapData?.holidays) setHolidays(bootstrapData.holidays);
+                writeCache(freshData, freshFingerprint);
             }
         }).finally(() => {
             if (!signal.aborted) setLoading(false);
@@ -458,9 +493,19 @@ const Attendance = () => {
 
         const controller = new AbortController();
         const now = new Date();
-        api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${selectedUserId}`, { signal: controller.signal })
+        api.get('/attendance/bootstrap', {
+            params: {
+                year: now.getFullYear(),
+                month: now.getMonth() + 1,
+                userId: selectedUserId,
+                logsLimit: 4
+            },
+            signal: controller.signal
+        })
             .then(res => {
                 setHistory(res.data.history || []);
+                setHolidays(res.data.holidays || []);
+                setApprovedLeaves(res.data.approvedLeaves || []);
                 if (res.data.weeklyOff) setWeeklyOffs(res.data.weeklyOff);
             })
             .catch(e => { if (e?.code !== 'ERR_CANCELED' && e?.name !== 'CanceledError') console.error(e); });
@@ -2034,6 +2079,9 @@ const RegularizationRequestsView = ({ requests, onProcess, processingId, current
                                             <span>{format(new Date(req.date), 'EEE, MMM dd')}</span>
                                             <span className="h-1 w-1 bg-slate-300 rounded-full"></span>
                                             <span className="text-blue-600 font-bold uppercase tracking-tighter">{req.type}</span>
+                                        </div>
+                                        <div className="text-[11px] text-slate-400 mt-1">
+                                            Sent: {format(new Date(req.createdAt), 'EEE, MMM dd yyyy')} at {format(new Date(req.createdAt), 'hh:mm a')}
                                         </div>
                                         <div className="mt-3 bg-white/50 border border-slate-100 rounded-lg p-2 flex gap-4 text-[10px] font-mono">
                                             {(req.type === 'IN' || req.type === 'BOTH') && (

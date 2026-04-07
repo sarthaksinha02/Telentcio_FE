@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { Settings, Edit2, Shield, Plus, Check, X, AlertCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 import { useAuth } from '../context/AuthContext';
 
@@ -11,6 +12,9 @@ const LeaveConfig = () => {
     const [loading, setLoading] = useState(true);
     const [editingPolicy, setEditingPolicy] = useState(null);
     const [showModal, setShowModal] = useState(false);
+    const initialFetchDoneRef = useRef(false);
+    const LEAVE_CONFIG_CACHE_TTL_MS = 60 * 1000;
+    const cacheKey = `leave_config_data_${user?._id}`;
 
     const [formData, setFormData] = useState({
         leaveType: '', name: '', description: '', isPaid: true,
@@ -20,29 +24,47 @@ const LeaveConfig = () => {
         allowBackdated: true, proRata: true, proofRequiredAbove: 0
     });
 
-    const fetchPolicies = async () => {
+    const fetchPolicies = async ({ force = false } = {}) => {
         try {
-            const cacheKey = `leave_config_data_${user?._id}`;
-            const cachedData = sessionStorage.getItem(cacheKey);
-            
+            const cachedData = readSessionCache(cacheKey);
+
             if (cachedData) {
-                setPolicies(JSON.parse(cachedData).policies);
+                const data = cachedData.data || cachedData;
+                setPolicies(data.policies || []);
                 setLoading(false);
+                if (!force && isCacheFresh(cachedData, LEAVE_CONFIG_CACHE_TTL_MS)) return;
             }
 
             const res = await api.get('/leaves/config');
             const policiesData = res.data;
 
-            // Fingerprint check
             const newFingerprint = JSON.stringify({ l: policiesData.length, lp: policiesData[0]?._id });
-            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+            const oldFingerprint = cachedData?.fingerprint || null;
 
-            if (newFingerprint !== oldFingerprint) {
-                setPolicies(policiesData);
-                sessionStorage.setItem(cacheKey, JSON.stringify({ 
-                    policies: policiesData, 
-                    fingerprint: newFingerprint 
+            setPolicies(policiesData);
+
+            if (newFingerprint !== oldFingerprint || force) {
+                const minimalPolicies = policiesData.map(p => ({
+                    _id: p._id,
+                    name: p.name,
+                    leaveType: p.leaveType,
+                    description: p.description,
+                    isPaid: p.isPaid,
+                    accrualType: p.accrualType,
+                    accrualAmount: p.accrualAmount,
+                    maxLimitPerYear: p.maxLimitPerYear,
+                    carryForward: p.carryForward,
+                    maxCarryForward: p.maxCarryForward,
+                    sandwichRule: p.sandwichRule,
+                    allowBackdated: p.allowBackdated,
+                    employeeTypes: p.employeeTypes,
+                    proRata: p.proRata,
+                    proofRequiredAbove: p.proofRequiredAbove,
+                    allowNegativeBalance: p.allowNegativeBalance
                 }));
+
+                const payload = createCachePayload({ policies: minimalPolicies }, newFingerprint);
+                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
         } catch (error) {
             console.error(error);
@@ -53,6 +75,8 @@ const LeaveConfig = () => {
     };
 
     useEffect(() => {
+        if (initialFetchDoneRef.current) return;
+        initialFetchDoneRef.current = true;
         fetchPolicies();
     }, []);
 
@@ -97,7 +121,7 @@ const LeaveConfig = () => {
             await api.delete(`/leaves/config/${id}`);
             toast.success('Policy Deleted');
             sessionStorage.removeItem(`leave_config_data_${user?._id}`);
-            fetchPolicies();
+            fetchPolicies({ force: true });
         } catch (error) {
             toast.error('Failed to delete policy');
         }
@@ -142,7 +166,7 @@ const LeaveConfig = () => {
             toast.success('Policy Updated Successfully');
             sessionStorage.removeItem(`leave_config_data_${user?._id}`);
             setShowModal(false);
-            fetchPolicies();
+            fetchPolicies({ force: true });
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to update policy');
         }
@@ -154,7 +178,7 @@ const LeaveConfig = () => {
             await api.post('/leaves/config/seed');
             toast.success('Defaults Seeded');
             sessionStorage.removeItem(`leave_config_data_${user?._id}`);
-            fetchPolicies();
+            fetchPolicies({ force: true });
         } catch (error) {
             toast.error('Seed Failed');
         }

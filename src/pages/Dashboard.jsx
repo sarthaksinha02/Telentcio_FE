@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Skeleton from '../components/Skeleton';
@@ -6,6 +6,7 @@ import Button from '../components/Button';
 import { Link, useNavigate } from 'react-router-dom';
 import { LogOut, Users, Clock, Calendar, Search, Bell, Menu, ChevronDown, Shield, Building, Briefcase, UserCheck, UserX, AlertCircle, ArrowUpRight, TrendingUp, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Simple global cache for location lookups to avoid redundant API hits across polls
@@ -67,29 +68,51 @@ const Dashboard = () => {
     const [loading, setLoading] = useState(true);
     const attSettings = user?.company?.settings?.attendance || {};
     const showLocation = attSettings.requireLocationCheckIn || attSettings.requireLocationCheckOut || attSettings.locationCheck;
+    const initialFetchDoneRef = useRef(false);
+    const DASHBOARD_CACHE_TTL_MS = 15 * 1000;
 
     useEffect(() => {
+        if (initialFetchDoneRef.current) return;
+        initialFetchDoneRef.current = true;
+
         // Cache key: date-scoped so it auto-invalidates at midnight
         const CACHE_KEY = `dashboard_${new Date().toISOString().slice(0, 10)}`;
 
         const readCache = () => {
-            try {
-                const raw = sessionStorage.getItem(CACHE_KEY);
-                if (!raw) return null;
-                const parsed = JSON.parse(raw);
-                if (!parsed?.data?.stats) {
-                    sessionStorage.removeItem(CACHE_KEY);
-                    return null;
-                }
-                return parsed; // returns { data, fingerprint }
-            } catch {
+            const parsed = readSessionCache(CACHE_KEY);
+            const data = parsed?.data || parsed;
+            if (!data || !data.stats) {
+                sessionStorage.removeItem(CACHE_KEY);
                 return null;
             }
+            return parsed;
         };
 
         const writeCache = (data, fingerprint) => {
             try {
-                sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, fingerprint }));
+                // Minimal data for caching
+                const minimalActivity = (data.recentActivity || []).map(r => ({
+                    id: r.id,
+                    user: r.user ? { name: r.user.name, role: r.user.role, employmentType: r.user.employmentType } : null,
+                    time: r.time,
+                    status: r.status,
+                    location: r.location
+                }));
+
+                const minimalProjects = (data.projects || []).map(p => ({
+                    _id: p._id,
+                    name: p.name,
+                    status: p.status,
+                    deadline: p.deadline
+                }));
+
+                const payload = createCachePayload({
+                    stats: data.stats,
+                    recentActivity: minimalActivity,
+                    projects: minimalProjects
+                }, fingerprint);
+
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
             } catch {
                 // sessionStorage unavailable or full — silently skip
             }
@@ -97,7 +120,8 @@ const Dashboard = () => {
 
         // Lightweight fingerprint: tracks every attendance record's
         // id + status + clockIn so any change (new clock-in, status update) is detected
-        const buildFingerprint = (payload) => {
+        const buildFingerprint = (data) => {
+            const payload = data?.data || data;
             if (!payload) return '';
             const activityPart = payload.recentActivity?.map(r => `${r.id}:${r.status}:${r.time ?? ''}`).join('|') || '';
             const statsPart = `${payload.stats?.totalEmployees || 0}:${payload.stats?.presentToday || 0}`;
@@ -116,9 +140,10 @@ const Dashboard = () => {
             const cached = skipCache ? null : readCache();
 
             // 1. Show cached data instantly on first mount (no loading delay)
-            if (!skipCache && cached?.data) {
-                applyData(cached.data);
+            if (!skipCache && cached) {
+                applyData(cached.data || cached);
                 setLoading(false);
+                if (isCacheFresh(cached, DASHBOARD_CACHE_TTL_MS)) return;
             }
 
             // 2. Always fetch fresh data in background

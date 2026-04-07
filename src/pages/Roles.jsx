@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { Plus, Check, Shield } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const Roles = () => {
     const { user } = useAuth();
@@ -15,26 +16,25 @@ const Roles = () => {
     const [roleName, setRoleName] = useState('');
     const [selectedPerms, setSelectedPerms] = useState([]);
     const [viewOnly, setViewOnly] = useState(false);
+    const initialFetchDoneRef = useRef(false);
+    const ROLE_CACHE_TTL_MS = 45 * 1000;
+    const cacheKey = `role_data_${user?._id}`;
 
-    const fetchData = async () => {
+    const fetchData = async ({ force = false } = {}) => {
         try {
-            const cacheKey = `role_data_${user?._id}`;
-            const cachedData = sessionStorage.getItem(cacheKey);
-            
+            const cachedData = readSessionCache(cacheKey);
+
             if (cachedData) {
-                const parsed = JSON.parse(cachedData);
-                setRoles(parsed.roles);
-                setPermissions(parsed.permissions);
+                const data = cachedData.data || cachedData;
+                setRoles(data.roles || []);
+                setPermissions(data.permissions || {});
                 setLoading(false);
+                if (!force && isCacheFresh(cachedData, ROLE_CACHE_TTL_MS)) return;
             }
 
-            const [rolesRes, permsRes] = await Promise.all([
-                api.get('/admin/roles'),
-                api.get('/admin/permissions')
-            ]);
-
-            const rolesData = rolesRes.data;
-            const permsData = permsRes.data;
+            const bootstrapRes = await api.get('/admin/roles/bootstrap');
+            const rolesData = bootstrapRes.data?.roles || [];
+            const permsData = bootstrapRes.data?.permissions || {};
 
             // Fingerprint check - include total number of permissions (sum across all modules)
             const totalPerms = Object.values(permsData).reduce((sum, modulePerms) => sum + modulePerms.length, 0);
@@ -44,16 +44,40 @@ const Roles = () => {
                 tp: totalPerms,
                 lr: rolesData[0]?._id 
             });
-            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+            const oldFingerprint = cachedData?.fingerprint || null;
 
-            if (newFingerprint !== oldFingerprint) {
-                setRoles(rolesData);
-                setPermissions(permsData);
-                sessionStorage.setItem(cacheKey, JSON.stringify({ 
-                    roles: rolesData, 
-                    permissions: permsData, 
-                    fingerprint: newFingerprint 
+            setRoles(rolesData);
+            setPermissions(permsData);
+
+            if (newFingerprint !== oldFingerprint || force) {
+                const minimalRoles = rolesData.map(role => ({
+                    _id: role._id,
+                    name: role.name,
+                    isSystem: role.isSystem,
+                    permissions: role.permissions.map(p => ({
+                        _id: p._id,
+                        key: p.key,
+                        description: p.description,
+                        module: p.module
+                    }))
                 }));
+
+                const minimalPerms = {};
+                for (const module in permsData) {
+                    minimalPerms[module] = permsData[module].map(p => ({
+                        _id: p._id,
+                        key: p.key,
+                        description: p.description,
+                        module: p.module
+                    }));
+                }
+
+                const payload = createCachePayload({
+                    roles: minimalRoles,
+                    permissions: minimalPerms
+                }, newFingerprint);
+
+                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
         } catch (error) {
             toast.error('Failed to load data');
@@ -104,6 +128,8 @@ const Roles = () => {
     };
 
     useEffect(() => {
+        if (initialFetchDoneRef.current) return;
+        initialFetchDoneRef.current = true;
         fetchData();
     }, []);
 
@@ -154,7 +180,7 @@ const Roles = () => {
             setRoleName('');
             setSelectedPerms([]);
             setEditingId(null);
-            fetchData();
+            fetchData({ force: true });
         } catch (error) {
             toast.error(error.response?.data?.message || (editingId ? 'Failed to update role' : 'Failed to create role'));
         }
