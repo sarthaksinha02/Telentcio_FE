@@ -24,6 +24,7 @@ const Attendance = () => {
     const [usersList, setUsersList] = useState(user?.directReports || []);
     const [selectedUserId, setSelectedUserId] = useState(user?._id);
     const [viewUser, setViewUser] = useState(user); // Hold complete profile of user being viewed
+    const [calendarDate, setCalendarDate] = useState(new Date());
 
     // Task Integration
     const [assignedTasks, setAssignedTasks] = useState([]);
@@ -298,7 +299,7 @@ const Attendance = () => {
 
 
 
-    const fetchMonthHistory = async (year, month) => {
+    const fetchMonthHistory = async (year, month, options = {}) => {
         try {
             const userId = selectedUserId || user._id;
             const res = await api.get('/attendance/bootstrap', {
@@ -306,8 +307,12 @@ const Attendance = () => {
                     year,
                     month,
                     userId,
-                    logsLimit: 4
-                }
+                    logsLimit: 4,
+                    ...(options.skipCache ? { ts: Date.now() } : {})
+                },
+                headers: options.skipCache
+                    ? { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
+                    : undefined
             });
             setHistory(res.data.history || []);
             setWeeklyOffs(res.data.weeklyOff || ['Saturday', 'Sunday']);
@@ -317,6 +322,91 @@ const Attendance = () => {
             console.error('Error fetching month data', error);
             toast.error('Could not load calendar data');
         }
+    };
+
+    const getAttendanceCacheKey = (targetUserId, dateValue = new Date()) =>
+        `attendance_v1_${targetUserId}_${new Date(dateValue).toISOString().slice(0, 10)}`;
+
+    const upsertAttendanceRecord = (records = [], attendanceRecord) => {
+        if (!attendanceRecord) return records;
+
+        const recordDate = format(
+            new Date(attendanceRecord.date || attendanceRecord.clockIn || attendanceRecord.createdAt || new Date()),
+            'yyyy-MM-dd'
+        );
+
+        const nextRecords = [...records];
+        const existingIndex = nextRecords.findIndex(item =>
+            format(new Date(item.date), 'yyyy-MM-dd') === recordDate
+        );
+
+        if (existingIndex >= 0) {
+            nextRecords[existingIndex] = {
+                ...nextRecords[existingIndex],
+                ...attendanceRecord
+            };
+        } else {
+            nextRecords.unshift(attendanceRecord);
+        }
+
+        return nextRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+    };
+
+    const updateAttendanceCache = (attendanceRecord) => {
+        if (!user?._id || !attendanceRecord) return;
+
+        const cacheKey = getAttendanceCacheKey(user._id);
+        const cached = readSessionCache(cacheKey);
+        const cachedData = cached?.data || {};
+        const nextStatus = {
+            ...(cachedData.status || {}),
+            ...attendanceRecord
+        };
+        const nextHistory = upsertAttendanceRecord(cachedData.history || [], attendanceRecord);
+        const nextData = {
+            ...cachedData,
+            status: nextStatus,
+            history: nextHistory,
+            recentLogs: cachedData.recentLogs || [],
+            approvedLeaves: cachedData.approvedLeaves || []
+        };
+        const nextFingerprint = `${nextStatus.status || 'none'}|${nextStatus.clockInIST || nextStatus.clockIn || ''}|${nextStatus.clockOutIST || nextStatus.clockOut || ''}::${(nextData.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',')}::H${nextHistory.length}::L${(nextData.approvedLeaves || []).length}`;
+
+        sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload(nextData, nextFingerprint)));
+    };
+
+    const applyImmediateAttendanceUpdate = (attendanceRecord) => {
+        if (!attendanceRecord) return;
+
+        const effectiveDate = new Date(
+            attendanceRecord.clockOut ||
+            attendanceRecord.clockIn ||
+            attendanceRecord.date ||
+            new Date()
+        );
+        const normalizedRecord = {
+            status: 'PRESENT',
+            approvalStatus: attendanceRecord.approvalStatus || 'APPROVED',
+            ...attendanceRecord,
+            date: startOfDay(effectiveDate).toISOString()
+        };
+
+        setStatus(prev => ({
+            ...(prev || {}),
+            ...normalizedRecord
+        }));
+
+        const isViewingSelf = !selectedUserId || selectedUserId === user?._id;
+        const recordDate = new Date(normalizedRecord.date || normalizedRecord.clockIn || new Date());
+        const isVisibleMonth =
+            recordDate.getFullYear() === calendarDate.getFullYear() &&
+            recordDate.getMonth() === calendarDate.getMonth();
+
+        if (isViewingSelf && isVisibleMonth) {
+            setHistory(prev => upsertAttendanceRecord(prev, normalizedRecord));
+        }
+
+        updateAttendanceCache(normalizedRecord);
     };
 
     const fetchRecentLogs = async () => {
@@ -492,11 +582,10 @@ const Attendance = () => {
         if (selectedUserId === user._id) return; // own data already fetched above
 
         const controller = new AbortController();
-        const now = new Date();
         api.get('/attendance/bootstrap', {
             params: {
-                year: now.getFullYear(),
-                month: now.getMonth() + 1,
+                year: calendarDate.getFullYear(),
+                month: calendarDate.getMonth() + 1,
                 userId: selectedUserId,
                 logsLimit: 4
             },
@@ -511,7 +600,7 @@ const Attendance = () => {
             .catch(e => { if (e?.code !== 'ERR_CANCELED' && e?.name !== 'CanceledError') console.error(e); });
 
         return () => controller.abort();
-    }, [selectedUserId]);
+    }, [calendarDate, selectedUserId, user?._id]);
 
     // Fetch Tasks only when the 'tasks' tab is clicked
     const tasksFetchedRef = useRef(false);
@@ -555,11 +644,13 @@ const Attendance = () => {
             setLoadingLocation(true);
             try {
                 const payload = locationData ? { location: locationData } : {};
-                await api.post('/attendance/clock-in', payload);
+                const { data: attendanceRecord } = await api.post('/attendance/clock-in', payload);
+                applyImmediateAttendanceUpdate(attendanceRecord);
                 toast.success('Clocked In Successfully');
-                await fetchTodayStatus();
-                const now = new Date();
-                fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
+                fetchTodayStatus();
+                if (!selectedUserId || selectedUserId === user?._id) {
+                    fetchMonthHistory(calendarDate.getFullYear(), calendarDate.getMonth() + 1, { skipCache: true });
+                }
             } catch (error) {
                 toast.error(error.response?.data?.message || 'Error Clocking In');
             } finally {
@@ -631,11 +722,13 @@ const Attendance = () => {
             setLoadingLocation(true);
             try {
                 const payload = locationData ? { location: locationData } : {};
-                await api.post('/attendance/clock-out', payload);
+                const { data: attendanceRecord } = await api.post('/attendance/clock-out', payload);
+                applyImmediateAttendanceUpdate(attendanceRecord);
                 toast.success('Clocked Out Successfully');
                 fetchTodayStatus();
-                const now = new Date();
-                fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
+                if (!selectedUserId || selectedUserId === user?._id) {
+                    fetchMonthHistory(calendarDate.getFullYear(), calendarDate.getMonth() + 1, { skipCache: true });
+                }
             } catch (error) {
                 toast.error(error.response?.data?.message || 'Error Clocking Out');
             } finally {
@@ -1648,8 +1741,12 @@ const Attendance = () => {
                             {activeTab === 'history' ? (
                                 <AttendanceCalendar
                                     history={history}
-                                    onMonthChange={fetchMonthHistory}
+                                    onMonthChange={(year, month) => {
+                                        setCalendarDate(new Date(year, month - 1, 1));
+                                        fetchMonthHistory(year, month);
+                                    }}
                                     user={user}
+                                    date={calendarDate}
                                     holidays={holidays}
                                     approvedLeaves={approvedLeaves}
                                     onRegularize={handleRegularize}
