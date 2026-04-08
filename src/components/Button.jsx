@@ -2,6 +2,8 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+const MotionButton = motion.button;
+
 const Button = ({
     children,
     isLoading = false,
@@ -43,7 +45,7 @@ const Button = ({
     const isEffectiveLoading = isLoading || internalLoading;
 
     return (
-        <motion.button
+        <MotionButton
             whileHover={{ scale: disabled || isEffectiveLoading ? 1 : 1.01 }}
             whileTap={{ scale: disabled || isEffectiveLoading ? 1 : 0.99 }}
             type={type}
@@ -58,7 +60,7 @@ const Button = ({
             <span className={`flex items-center gap-2 ${isEffectiveLoading ? 'opacity-0' : 'opacity-100'}`}>
                 {children}
             </span>
-        </motion.button>
+        </MotionButton>
     );
 };
 

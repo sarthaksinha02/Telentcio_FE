@@ -11,17 +11,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 // Simple global cache for location lookups to avoid redundant API hits across polls
 const locationCache = {};
+const DASHBOARD_CACHE_TTL_MS = 15 * 1000;
+const MotionDiv = motion.div;
 
 const LocationLink = ({ location }) => {
-    const [cityName, setCityName] = useState('...');
     const coordsKey = location ? `${location.lat},${location.lng}` : null;
+    const [cityName, setCityName] = useState(() => (
+        coordsKey && locationCache[coordsKey] ? locationCache[coordsKey] : '...'
+    ));
 
     useEffect(() => {
         if (!coordsKey) return;
-        if (locationCache[coordsKey]) {
-            setCityName(locationCache[coordsKey]);
-            return;
-        }
+        if (locationCache[coordsKey]) return;
 
         const fetchCity = async () => {
             try {
@@ -36,12 +37,12 @@ const LocationLink = ({ location }) => {
                 } else {
                     setCityName('Map view');
                 }
-            } catch (error) {
+            } catch {
                 setCityName('Map view');
             }
         };
         fetchCity();
-    }, [coordsKey]);
+    }, [coordsKey, location?.lat, location?.lng]);
 
     if (!location || !location.lat) return <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tight">Unknown</span>;
 
@@ -60,16 +61,13 @@ const LocationLink = ({ location }) => {
 };
 
 const Dashboard = () => {
-    const { user, logout } = useAuth();
+    const { user } = useAuth();
     const navigate = useNavigate();
     const [stats, setStats] = useState(null);
     const [projects, setProjects] = useState([]);
     const [recentActivity, setRecentActivity] = useState([]);
     const [loading, setLoading] = useState(true);
-    const attSettings = user?.company?.settings?.attendance || {};
-    const showLocation = attSettings.requireLocationCheckIn || attSettings.requireLocationCheckOut || attSettings.locationCheck;
     const initialFetchDoneRef = useRef(false);
-    const DASHBOARD_CACHE_TTL_MS = 15 * 1000;
 
     useEffect(() => {
         if (initialFetchDoneRef.current) return;
@@ -184,7 +182,7 @@ const Dashboard = () => {
         <div className="flex-1 flex flex-col bg-[#f8f9fa] font-sans selection:bg-blue-100 selection:text-blue-900">
             {/* Main Content */}
             <main className="flex-1 flex flex-col overflow-hidden">
-                <motion.div
+                <MotionDiv
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
@@ -238,7 +236,7 @@ const Dashboard = () => {
                                     textColor: 'text-orange-600'
                                 }
                             ].map((kpi, idx) => (
-                                <motion.div
+                                <MotionDiv
                                     key={kpi.label}
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
@@ -275,7 +273,7 @@ const Dashboard = () => {
                                                 <span>{Math.round(kpi.progress)}%</span>
                                             </div>
                                             <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                                <motion.div
+                                                <MotionDiv
                                                     initial={{ width: 0 }}
                                                     animate={{ width: `${kpi.progress}%` }}
                                                     transition={{ duration: 1, delay: 0.5 }}
@@ -284,7 +282,7 @@ const Dashboard = () => {
                                             </div>
                                         </div>
                                     )}
-                                </motion.div>
+                                </MotionDiv>
                             ))}
                         </div>
 
@@ -417,7 +415,7 @@ const Dashboard = () => {
                             )}
                         </div>
                     </div>
-                </motion.div>
+                </MotionDiv>
             </main>
         </div>
     );

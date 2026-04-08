@@ -145,7 +145,7 @@ const WorkflowSettings = () => {
             await api.delete(`/workflows/${id}`);
             toast.success('Workflow deleted');
             fetchWorkflows();
-        } catch (error) {
+        } catch {
             toast.error('Failed to delete');
         }
     };
@@ -223,7 +223,7 @@ const WorkflowSettings = () => {
             await api.delete(`/ta/interview-workflows/${id}`);
             toast.success('Interview workflow deleted');
             fetchInterviewWorkflows();
-        } catch (error) {
+        } catch {
             toast.error('Failed to delete');
         }
     };

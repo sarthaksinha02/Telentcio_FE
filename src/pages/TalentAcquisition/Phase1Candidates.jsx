@@ -25,7 +25,7 @@ const Phase1Candidates = () => {
     const [filterExperience, setFilterExperience] = useState('');
     const [filterInterviewStatus, setFilterInterviewStatus] = useState('All');
     const [filterRating, setFilterRating] = useState('All');
-    const [filterPulledBy, setFilterPulledBy] = useState('All');
+    const [filterPulledBy] = useState('All');
 
     // Menu State
     const [activeMenu, setActiveMenu] = useState(null);
@@ -106,9 +106,6 @@ const Phase1Candidates = () => {
     const metrics = useMemo(() => {
         // These metrics are now computed based on the *current page* of candidates,
         // or directly from backend data where available (like totalCandidates).
-        // Dynamically compute 'interested' (pre-screened) based on the current filterStatus
-        const targetStatus = filterStatus === 'All' ? 'Interested' : filterStatus;
-
         // Apply PulledBy filter to the base dataset for metrics if a user is selected
         const baseCandidates = filterPulledBy === 'All'
             ? candidates
@@ -125,7 +122,7 @@ const Phase1Candidates = () => {
                 return true;
             }).length,
         };
-    }, [candidates, totalCandidates, filterStatus, filterPulledBy]);
+    }, [candidates, totalCandidates, filterPulledBy]);
 
 
 
@@ -510,14 +507,9 @@ const Phase1Candidates = () => {
                                                             const rounds = candidate.interviewRounds || [];
                                                             const hasFailed = rounds.some(r => r.status === 'Failed');
                                                             const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                                                            let avgRating = null;
-
-                                                            if (!hasFailed && ratedRounds.length > 0) {
-                                                                const total = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0);
-                                                                // Format to 1 decimal place, or no decimals if whole number
-                                                                let calculatedAvg = total / ratedRounds.length;
-                                                                avgRating = Number.isInteger(calculatedAvg) ? calculatedAvg.toString() : calculatedAvg.toFixed(1);
-                                                            }
+                                                            const averageRating = !hasFailed && ratedRounds.length > 0
+                                                                ? ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length
+                                                                : null;
 
                                                             return (
                                                                 <div className="flex flex-col gap-1.5 items-start">
@@ -536,7 +528,7 @@ const Phase1Candidates = () => {
                                                                             ))}
                                                                             {ratedRounds.length > 2 && (
                                                                                 <span
-                                                                                    className="text-[10px] font-bold text-amber-600 flex items-center justify-center bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors"
+                                                                                    className={`text-[10px] font-bold flex items-center justify-center px-1.5 py-0.5 rounded border cursor-pointer hover:bg-amber-100 transition-colors ${averageRating !== null ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-slate-500 bg-slate-50 border-slate-200'}`}
                                                                                     onClick={(e) => { e.stopPropagation(); handleView(candidate); }}
                                                                                     title="View all rounds"
                                                                                 >

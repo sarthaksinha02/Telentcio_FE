@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { Settings, Edit2, Shield, Plus, Check, X, AlertCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -24,7 +24,7 @@ const LeaveConfig = () => {
         allowBackdated: true, proRata: true, proofRequiredAbove: 0
     });
 
-    const fetchPolicies = async ({ force = false } = {}) => {
+    const fetchPolicies = useCallback(async ({ force = false } = {}) => {
         try {
             const cachedData = readSessionCache(cacheKey);
 
@@ -72,13 +72,13 @@ const LeaveConfig = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [LEAVE_CONFIG_CACHE_TTL_MS, cacheKey]);
 
     useEffect(() => {
         if (initialFetchDoneRef.current) return;
         initialFetchDoneRef.current = true;
         fetchPolicies();
-    }, []);
+    }, [fetchPolicies]);
 
     const handleCreate = () => {
         setEditingPolicy(null);
@@ -122,7 +122,7 @@ const LeaveConfig = () => {
             toast.success('Policy Deleted');
             sessionStorage.removeItem(`leave_config_data_${user?._id}`);
             fetchPolicies({ force: true });
-        } catch (error) {
+        } catch {
             toast.error('Failed to delete policy');
         }
     };
@@ -179,7 +179,7 @@ const LeaveConfig = () => {
             toast.success('Defaults Seeded');
             sessionStorage.removeItem(`leave_config_data_${user?._id}`);
             fetchPolicies({ force: true });
-        } catch (error) {
+        } catch {
             toast.error('Seed Failed');
         }
     };

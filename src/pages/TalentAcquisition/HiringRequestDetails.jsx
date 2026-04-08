@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Construction, Loader, FileText, Paperclip } from 'lucide-react';
@@ -35,7 +35,7 @@ const HiringRequestDetails = () => {
         }
     }, [searchParams]);
 
-    const fetchRequest = async () => {
+    const fetchRequest = useCallback(async () => {
         try {
             setLoading(true);
             const res = await api.get(`/ta/hiring-request/${id}`);
@@ -46,11 +46,11 @@ const HiringRequestDetails = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [id]);
 
     useEffect(() => {
         fetchRequest();
-    }, [id]);
+    }, [fetchRequest]);
 
     const isDynamic = request?.approvalChain && request?.approvalChain?.length > 0;
 
@@ -162,20 +162,6 @@ const HiringRequestDetails = () => {
         );
     }
     if (!request) return <div className="p-10 text-center">Request not found</div>;
-
-    const getStatusColor = (status) => {
-        const colors = {
-            'Draft': 'bg-slate-100 text-slate-700',
-            'Submitted': 'bg-blue-100 text-blue-700',
-            'Pending_L1': 'bg-amber-100 text-amber-700',
-            'Pending_Approval': 'bg-amber-100 text-amber-700',
-            'Pending_Final': 'bg-purple-100 text-purple-700',
-            'Approved': 'bg-emerald-100 text-emerald-700',
-            'Rejected': 'bg-red-100 text-red-700',
-            'Closed': 'bg-gray-100 text-gray-700'
-        };
-        return colors[status] || colors['Draft'];
-    };
 
     return (
         <div className="min-h-screen bg-slate-50 pb-12">

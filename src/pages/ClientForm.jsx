@@ -85,7 +85,7 @@ const ClientForm = () => {
             }
         };
         init();
-    }, [id]);
+    }, [id, isEditing, navigate]);
 
     /* ── Contact person helpers ─────────────────── */
     const addContact = () => setContacts(prev => [...prev, { ...EMPTY_CONTACT }]);
@@ -161,7 +161,6 @@ const ClientForm = () => {
                 await api.post('/projects/clients', payload);
                 toast.success('Client created successfully');
             }
-            sessionStorage.removeItem(`client_data_${user?._id}`);
             navigate('/clients');
         } catch {
             toast.error(isEditing ? 'Failed to update client' : 'Failed to create client');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { Plus, Check, Shield } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
@@ -20,7 +20,7 @@ const Roles = () => {
     const ROLE_CACHE_TTL_MS = 45 * 1000;
     const cacheKey = `role_data_${user?._id}`;
 
-    const fetchData = async ({ force = false } = {}) => {
+    const fetchData = useCallback(async ({ force = false } = {}) => {
         try {
             const cachedData = readSessionCache(cacheKey);
 
@@ -79,12 +79,12 @@ const Roles = () => {
 
                 sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
-        } catch (error) {
+        } catch {
             toast.error('Failed to load data');
         } finally {
             setLoading(false);
         }
-    };
+    }, [ROLE_CACHE_TTL_MS, cacheKey]);
 
     const isPermissionVisible = (perm) => {
         if (!perm || !perm.key) return false;
@@ -131,7 +131,7 @@ const Roles = () => {
         if (initialFetchDoneRef.current) return;
         initialFetchDoneRef.current = true;
         fetchData();
-    }, []);
+    }, [fetchData]);
 
     const togglePermission = (id) => {
         if (viewOnly) return;

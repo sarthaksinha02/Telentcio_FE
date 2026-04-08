@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -9,13 +9,12 @@ import Skeleton from '../components/Skeleton';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/Button';
 import { createCachePayload } from '../utils/cache';
-import { format, differenceInDays, addDays, isValid, parseISO } from 'date-fns';
+import { format, differenceInDays, addDays, isValid } from 'date-fns';
 
 const ProjectDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const canCreateProject = user?.roles?.includes('Admin') || user?.permissions?.includes('project.create');
     const canUpdateProject = user?.roles?.includes('Admin') || user?.permissions?.includes('project.update');
     const canCreateTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.create');
     const canUpdateTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.update');
@@ -46,7 +45,7 @@ const ProjectDetails = () => {
     const [loggingTaskId, setLoggingTaskId] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             const cacheKey = `project_details_${id}`;
             const cachedData = sessionStorage.getItem(cacheKey);
@@ -144,11 +143,11 @@ const ProjectDetails = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [id]);
 
     useEffect(() => {
         fetchData();
-    }, [id]);
+    }, [fetchData]);
 
     // --- Handlers (Keep existing logic mostly) ---
     const handleCreateModule = async (e) => {
@@ -168,7 +167,7 @@ const ProjectDetails = () => {
             setEditingModuleId(null);
             setModuleForm({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
             fetchData();
-        } catch (error) {
+        } catch {
             toast.error('Failed to save module');
         } finally {
             setIsSubmitting(false);
@@ -192,7 +191,7 @@ const ProjectDetails = () => {
             setEditingTaskId(null);
             setTaskForm({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '' });
             fetchData();
-        } catch (error) {
+        } catch {
             toast.error('Failed to save task');
         } finally {
             setIsSubmitting(false);
@@ -210,7 +209,7 @@ const ProjectDetails = () => {
             setShowLogModal(false);
             setLoggingTaskId(null);
             fetchData();
-        } catch (error) {
+        } catch {
             toast.error('Failed to log work');
         } finally {
             setIsSubmitting(false);
@@ -288,7 +287,7 @@ const ProjectDetails = () => {
                                                 sessionStorage.removeItem(`project_details_${id}`);
                                                 sessionStorage.removeItem(`project_data_${user?._id}`);
                                                 fetchData();
-                                            } catch (error) {
+                                            } catch {
                                                 toast.error('Failed to delete module');
                                             }
                                         }
@@ -323,7 +322,7 @@ const ProjectDetails = () => {
                                                                 await api.delete(`/projects/tasks/${task._id}`);
                                                                 toast.success('Task Deleted');
                                                                 fetchData();
-                                                            } catch (error) {
+                                                            } catch {
                                                                 toast.error('Failed to delete task');
                                                             }
                                                         }
@@ -414,7 +413,7 @@ const ProjectDetails = () => {
                                                                 await api.delete(`/projects/modules/${module._id}`);
                                                                 toast.success('Module Deleted');
                                                                 fetchData();
-                                                            } catch (error) {
+                                                            } catch {
                                                                 toast.error('Failed');
                                                             }
                                                         }
@@ -456,7 +455,7 @@ const ProjectDetails = () => {
                                                 </td>
                                                 <td className="px-6 py-3">
                                                     <div className="flex -space-x-2">
-                                                        {task.assignees?.map((a, i) => (
+                                                        {task.assignees?.map((a) => (
                                                             <div key={a._id} className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] text-blue-600 font-bold" title={`${a.firstName} ${a.lastName}`}>
                                                                 {a.firstName[0]}{a.lastName[0]}
                                                             </div>
@@ -494,7 +493,7 @@ const ProjectDetails = () => {
                                                                             sessionStorage.removeItem(`project_details_${id}`);
                                                                             sessionStorage.removeItem(`project_data_${user?._id}`);
                                                                             fetchData();
-                                                                        } catch (error) {
+                                                                        } catch {
                                                                             toast.error('Failed');
                                                                         }
                                                                     }

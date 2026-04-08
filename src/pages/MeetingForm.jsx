@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
 import { Save, X, Plus, Trash2, Calendar, Clock, AlignLeft } from 'lucide-react';
@@ -35,14 +35,7 @@ const MeetingForm = () => {
         status: 'Draft'
     });
 
-    useEffect(() => {
-        fetchUsers();
-        if (isEdit) {
-            fetchMeeting();
-        }
-    }, [id]);
-
-    const fetchUsers = async () => {
+    const fetchUsers = useCallback(async () => {
         try {
             const res = await api.get('/projects/employees'); // Assuming this returns basic user details
             setUsers(res.data);
@@ -50,9 +43,9 @@ const MeetingForm = () => {
             console.error(error);
             toast.error('Failed to load users');
         }
-    };
+    }, []);
 
-    const fetchMeeting = async () => {
+    const fetchMeeting = useCallback(async () => {
         try {
             const res = await api.get(`/meetings/${id}`);
             const m = res.data;
@@ -77,7 +70,14 @@ const MeetingForm = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [id, navigate]);
+
+    useEffect(() => {
+        fetchUsers();
+        if (isEdit) {
+            fetchMeeting();
+        }
+    }, [fetchMeeting, fetchUsers, isEdit]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;

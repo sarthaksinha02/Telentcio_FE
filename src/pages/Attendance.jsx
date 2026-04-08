@@ -7,10 +7,12 @@ import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay, subDays, startOfDay } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, subDays, startOfDay } from 'date-fns';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+
+const ATTENDANCE_CACHE_TTL_MS = 20 * 1000;
 
 const Attendance = () => {
     const { user, hasModule } = useAuth();
@@ -29,7 +31,6 @@ const Attendance = () => {
     // Task Integration
     const [assignedTasks, setAssignedTasks] = useState([]);
     const [recentLogs, setRecentLogs] = useState([]);
-    const [showLogModal, setShowLogModal] = useState(false);
     const [logForm, setLogForm] = useState({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
     const [loggingTaskId, setLoggingTaskId] = useState(null);
     const [weeklyOffs, setWeeklyOffs] = useState(['Saturday', 'Sunday']);
@@ -80,10 +81,6 @@ const Attendance = () => {
         || (user?.directReports && user.directReports.length > 0)
         || user?.role === 'Manager';
 
-    const fetchApprovals = async () => {
-        // Removed for move to Timesheet page
-    };
-
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
@@ -113,7 +110,7 @@ const Attendance = () => {
                     const res = await api.get('/admin/users/team');
                     setUsersList(res.data);
                     setUsersLoaded(true);
-                } catch (e) {
+                } catch {
                     setUsersList(user.directReports || []);
                     setUsersLoaded(true);
                 }
@@ -155,7 +152,7 @@ const Attendance = () => {
         };
 
         fetchTargetUser();
-    }, [selectedUserId, usersList, user?._id]); // Use user._id instead of user object
+    }, [selectedUserId, user, usersList]);
 
     const fetchRegularizations = async () => {
         try {
@@ -284,21 +281,6 @@ const Attendance = () => {
         }
     };
 
-    const fetchAssignedTasks = async () => {
-        try {
-            if (!user) return;
-            // Fetch tasks assigned to current user
-            const res = await api.get(`/projects/tasks?assignees=${user._id}`);
-            // Filter out completed tasks if backend doesn't
-            const activeTasks = res.data.filter(t => t.module?.status !== 'COMPLETED' && (!t.status || t.status !== 'COMPLETED'));
-            setAssignedTasks(activeTasks);
-        } catch (error) {
-            console.error('Error fetching tasks', error);
-        }
-    };
-
-
-
     const fetchMonthHistory = async (year, month, options = {}) => {
         try {
             const userId = selectedUserId || user._id;
@@ -419,23 +401,11 @@ const Attendance = () => {
         }
     };
 
-    const fetchHolidays = async () => {
-        try {
-            const res = await api.get('/holidays');
-            setHolidays(res.data);
-        } catch (error) {
-            console.error('Error fetching holidays', error);
-        }
-    };
-
-
-
     // useRef guard: prevents React StrictMode from firing the effect twice.
     // StrictMode intentionally mounts → unmounts → remounts in dev. The cleanup
     // function sets the ref to false, which cancels the AbortController and
     // prevents the second invocation from writing stale state.
     const didFetchRef = useRef(false);
-    const ATTENDANCE_CACHE_TTL_MS = 20 * 1000;
 
     useEffect(() => {
         if (!user?._id) return;
@@ -501,7 +471,9 @@ const Attendance = () => {
                 }, fingerprint);
 
                 sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
-            } catch { }
+            } catch {
+                // Ignore cache write failures.
+            }
         };
 
         const buildFingerprint = (data) => {
@@ -617,7 +589,7 @@ const Attendance = () => {
                     tasksFetchedRef.current = false; // allow retry on fail
                 });
         }
-    }, [activeTab, user?._id]);
+    }, [activeTab, hasModule, user?._id]);
 
     // Fetch Regularizations only when that tab is clicked
     useEffect(() => {
@@ -625,16 +597,6 @@ const Attendance = () => {
             fetchRegularizations();
         }
     }, [activeTab, user?._id]);
-
-    // Check if a task has a log for today
-    const getTodayLogForTask = (taskId) => {
-        const today = new Date().toISOString().split('T')[0];
-        return recentLogs.find(log =>
-            log.task &&
-            log.task._id === taskId &&
-            new Date(log.date).toISOString().split('T')[0] === today
-        );
-    };
 
     const handleClockIn = async () => {
         const attSettings = user?.company?.settings?.attendance || {};
@@ -669,7 +631,7 @@ const Attendance = () => {
                             accuracy: position.coords.accuracy
                         });
                     },
-                    (error) => {
+                    () => {
                         console.log('Location access denied or failed.');
                         toast.error('Please enable location permission in your browser to clock in.');
                         setLoadingLocation(false);
@@ -702,7 +664,7 @@ const Attendance = () => {
                     setLoadingLocation(false);
                 });
             },
-            (error) => {
+            () => {
                 toast.error('Please Enable location to proceed with clock-in (Required by your company).');
                 setLoadingLocation(false);
             },
@@ -771,7 +733,7 @@ const Attendance = () => {
                                             lng: position.coords.longitude,
                                             accuracy: position.coords.accuracy
                                         }),
-                                        (error) => {
+                                        () => {
                                             toast.error('Please enable location permission in your browser to checkout.');
                                             setLoadingLocation(false);
                                         },
@@ -802,7 +764,7 @@ const Attendance = () => {
                                         setLoadingLocation(false);
                                     });
                                 },
-                                (error) => {
+                                () => {
                                     toast.error('Please Enable location to proceed with checkout (Required by your company).');
                                     setLoadingLocation(false);
                                 },
@@ -857,7 +819,7 @@ const Attendance = () => {
             await api.delete(`/projects/worklogs/${logId}`);
             toast.success('Work Log Deleted');
             fetchRecentLogs();
-        } catch (error) {
+        } catch {
             toast.error('Failed to delete log');
         }
     };
@@ -1101,7 +1063,7 @@ const Attendance = () => {
         const exportUser = viewUser || user;
 
         // 1. Header Info (Rows 1-4)
-        const titleStyle = { font: { bold: true, size: 12 }, alignment: { vertical: 'middle', horizontal: 'left' } };
+        const _titleStyle = { font: { bold: true, size: 12 }, alignment: { vertical: 'middle', horizontal: 'left' } };
 
         sheet.mergeCells('A1:C1');
         sheet.getCell('A1').value = `User Name: ${exportUser.firstName} ${exportUser.lastName || ''}`;
@@ -1124,8 +1086,8 @@ const Attendance = () => {
         headerRow.alignment = { horizontal: 'center' };
 
         // 3. Data Generation
-        const currentYear = new Date().getFullYear(); // Or use a selected date state if calendar navigation is tracked
-        const currentMonth = new Date().getMonth();
+        const _currentYear = new Date().getFullYear(); // Or use a selected date state if calendar navigation is tracked
+        const _currentMonth = new Date().getMonth();
         // Note: Ideally we should use the month currently displayed in 'history', but 'history' only gives us data, not the month itself explicitly unless we track it.
         // Assuming 'history' contains records for the *displayed* month. If 'history' is empty, we default to current month.
         // Let's infer month from the first history record or fallback to current.
@@ -1207,7 +1169,7 @@ const Attendance = () => {
         saveAs(new Blob([buffer]), fileName);
     };
 
-    const handleExportTeamReport = async () => {
+    const _handleExportTeamReport = async () => {
         try {
             const currentYear = new Date().getFullYear(); // Or based on selected navigation if implemented
             const currentMonth = new Date().getMonth() + 1;
@@ -1872,7 +1834,6 @@ const AssignedTasksView = ({
     logForm,
     setLogForm,
     expandedLogTaskId,
-    setExpandedLogTaskId,
     recentLogs,
     onDeleteLog,
     toggleLogForm,

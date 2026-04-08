@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -24,7 +24,7 @@ const Projects = () => {
     const cacheKey = `project_data_${user?._id}`;
     const [employees, setEmployees] = useState([]);
 
-    const fetchData = async ({ force = false } = {}) => {
+    const fetchData = useCallback(async ({ force = false } = {}) => {
         try {
             const cachedData = readSessionCache(cacheKey);
 
@@ -85,13 +85,13 @@ const Projects = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [PROJECT_CACHE_TTL_MS, cacheKey]);
 
     useEffect(() => {
         if (initialFetchDoneRef.current) return;
         initialFetchDoneRef.current = true;
         fetchData();
-    }, []);
+    }, [fetchData]);
 
     const [editingId, setEditingId] = useState(null);
     const [openMenuId, setOpenMenuId] = useState(null);
@@ -129,7 +129,7 @@ const Projects = () => {
             setFormData({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
             setEditingId(null);
             fetchData({ force: true });
-        } catch (error) {
+        } catch {
             toast.error(editingId ? 'Failed to update' : 'Failed to create');
         } finally {
             setSubmitLoading(false);
@@ -166,7 +166,7 @@ const Projects = () => {
             toast.success(`Project marked as ${newStatus}`);
             sessionStorage.removeItem(`project_data_${user?._id}`);
             await fetchData({ force: true });
-        } catch (error) {
+        } catch {
             toast.error('Failed to update project status');
         } finally {
             setActionLoading(null);
@@ -321,7 +321,7 @@ const Projects = () => {
                                                                                          toast.success('Project deleted');
                                                                                          sessionStorage.removeItem(`project_data_${user?._id}`);
                                                                                          await fetchData();
-                                                                                     } catch (error) {
+                                                                                     } catch {
                                                                                          toast.error('Failed to delete project');
                                                                                      } finally {
                                                                                          setActionLoading(null);

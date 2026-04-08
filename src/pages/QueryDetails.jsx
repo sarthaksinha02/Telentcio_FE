@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -32,7 +32,7 @@ const QueryDetails = () => {
 
     const commentsEndRef = useRef(null);
 
-    const fetchQueryDetails = async () => {
+    const fetchQueryDetails = useCallback(async () => {
         if (id === 'new') return; // Don't attempt to fetch if it's the old 'new' URL
         try {
             const res = await api.get(`/helpdesk/${id}`);
@@ -43,11 +43,11 @@ const QueryDetails = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [id]);
 
     useEffect(() => {
         fetchQueryDetails();
-    }, [id]);
+    }, [fetchQueryDetails]);
 
     useEffect(() => {
         const socket = io(SOCKET_URL, {
@@ -113,7 +113,7 @@ const QueryDetails = () => {
             // Optional: Re-fetch if socket doesn't update fast enough, but socket should handle it
             const res = await api.get(`/helpdesk/${id}`);
             setQuery(res.data.data || res.data);
-        } catch (error) {
+        } catch {
             toast.error('Failed to add comment');
         } finally {
             setSubmittingComment(false);

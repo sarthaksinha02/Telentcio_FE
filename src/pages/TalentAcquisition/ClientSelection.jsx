@@ -39,7 +39,7 @@ const ClientSelection = () => {
             }
         };
         fetchClients();
-    }, []);
+    }, [CLIENT_CACHE_KEY, CLIENT_CACHE_TTL_MS]);
 
     const totalActive = clients.reduce((sum, c) => sum + (c.activePositions || 0), 0);
     const totalPending = clients.reduce((sum, c) => sum + (c.pendingPositions || 0), 0);

@@ -66,7 +66,7 @@ const PreOnboardingPortal = () => {
         return prevIds === nextIds ? prev : filtered;
       });
     }
-  }, [profile]);
+  }, [profile, reqDocsLabels, reqSectionsLabels]);
 
   // Safety clamp to ensure currentStep is always within bounds of visibleSteps
   useEffect(() => {
@@ -100,7 +100,7 @@ const PreOnboardingPortal = () => {
       }
       hasNavigatedInitial.current = true;
     }
-  }, [profile, visibleSteps, reqDocsLabels]);
+  }, [profile, reqDocsLabels, reqSectionsLabels, visibleSteps]);
 
   // Form states
   const [personalDetails, setPersonalDetails] = useState({});
@@ -166,6 +166,7 @@ const PreOnboardingPortal = () => {
       }
     }, 30000);
     return () => clearTimeout(autoSaveTimer.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unsavedChanges, personalDetails, emergencyContact, bankDetails, offerDeclaration, currentStep]);
 
   // Handle countdown for success screen
@@ -178,6 +179,7 @@ const PreOnboardingPortal = () => {
       handleLogout();
     }
     return () => clearTimeout(logoutTimerRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSuccessScreen, logoutCountdown]);
 
   const getSectionData = (sectionId) => {
@@ -238,7 +240,7 @@ const PreOnboardingPortal = () => {
 
   const handleAddDocSlot = async (type, label) => {
     try {
-      const res = await axios.post(`${API_URL}/my-profile/add-document-slot`, { type, label }, { headers: getHeaders() });
+      await axios.post(`${API_URL}/my-profile/add-document-slot`, { type, label }, { headers: getHeaders() });
       toast.success('Additional slot added!');
       fetchProfile();
     } catch (err) {
@@ -270,7 +272,7 @@ const PreOnboardingPortal = () => {
       link.click();
       window.URL.revokeObjectURL(blobUrl);
       toast.success('Downloaded!', { id: 'template-dl' });
-    } catch (err) {
+    } catch {
       toast.error('Download failed', { id: 'template-dl' });
     }
   };
@@ -280,7 +282,7 @@ const PreOnboardingPortal = () => {
       await axios.post(`${API_URL}/my-profile/templates/${templateId}/accept`, {}, { headers: getHeaders() });
       toast.success('Document accepted!');
       fetchProfile();
-    } catch (err) {
+    } catch {
       toast.error('Failed to accept document');
     }
   };
@@ -298,7 +300,7 @@ const PreOnboardingPortal = () => {
       toast.success('Uploaded!');
       setBankDetails(prev => ({ ...prev, cancelledChequeUrl: res.data.url }));
       fetchProfile();
-    } catch (err) {
+    } catch {
       toast.dismiss('cheque');
       toast.error('Upload failed');
     }
@@ -309,7 +311,7 @@ const PreOnboardingPortal = () => {
       await axios.post(`${API_URL}/my-profile/policies/${policyId}/accept`, {}, { headers: getHeaders() });
       toast.success('Policy accepted');
       fetchProfile();
-    } catch (err) {
+    } catch {
       toast.error('Failed to accept policy');
     }
   };
@@ -321,7 +323,7 @@ const PreOnboardingPortal = () => {
       if (visibleSteps[currentStep]?.id !== 'documents') {
         await handleSaveSection(visibleSteps[currentStep].id);
       }
-      const res = await axios.post(`${API_URL}/my-profile/submit`, {}, { headers: getHeaders() });
+      await axios.post(`${API_URL}/my-profile/submit`, {}, { headers: getHeaders() });
       toast.success('Submitted successfully!');
       fetchProfile();
     } catch (err) {
@@ -369,7 +371,7 @@ const PreOnboardingPortal = () => {
 
   const [accepting, setAccepting] = useState(false);
 
-  const handleDownloadDocx = async (type) => {
+  const handleDownloadDocx = async () => {
     try {
       toast.loading(`Downloading offer letter...`, { id: 'docx' });
       const res = await axios.get(`${API_URL}/my-offer-letter`, { headers: getHeaders(), responseType: 'blob' });
@@ -381,7 +383,7 @@ const PreOnboardingPortal = () => {
       window.URL.revokeObjectURL(url);
       toast.dismiss('docx');
       toast.success('Downloaded!');
-    } catch (err) {
+    } catch {
       toast.dismiss('docx');
       toast.error('Download failed');
     }

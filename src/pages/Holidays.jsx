@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Edit2, Trash2, Calendar, X, Save, CalendarCheck, CalendarOff, CalendarDays } from 'lucide-react';
@@ -31,13 +31,7 @@ const Holidays = () => {
     const canEditHoliday = isAdmin || user?.permissions?.includes('holiday.edit') || user?.hasAllPermissions;
     const canDeleteHoliday = isAdmin || user?.permissions?.includes('holiday.delete') || user?.hasAllPermissions;
 
-    useEffect(() => {
-        if (initialFetchDoneRef.current) return;
-        initialFetchDoneRef.current = true;
-        fetchHolidays();
-    }, []);
-
-    const fetchHolidays = async (isBackground = false, force = false) => {
+    const fetchHolidays = useCallback(async (isBackground = false, force = false) => {
         const CACHE_KEY = `holiday_data_${user?._id}_${new Date().getFullYear()}`;
 
         // Helper: Generate fingerprint for change detection
@@ -87,7 +81,13 @@ const Holidays = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [HOLIDAY_CACHE_TTL_MS, user?._id]);
+
+    useEffect(() => {
+        if (initialFetchDoneRef.current) return;
+        initialFetchDoneRef.current = true;
+        fetchHolidays();
+    }, [fetchHolidays]);
 
     const handleOpenModal = (holiday = null) => {
         if (holiday) {
@@ -127,7 +127,7 @@ const Holidays = () => {
             await api.delete(`/holidays/${id}`);
             toast.success("Holiday deleted");
             fetchHolidays(false, true); // Force refresh cache
-        } catch (error) {
+        } catch {
             toast.error("Failed to delete holiday");
         }
     };

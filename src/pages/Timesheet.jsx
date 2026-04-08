@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText } from 'lucide-react';
@@ -11,6 +11,8 @@ import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
+const TIMESHEET_CACHE_TTL_MS = 20 * 1000;
+
 const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false }) => {
     const { user } = useAuth();
     const [viewDate, setViewDate] = useState(() => {
@@ -21,15 +23,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [timesheet, setTimesheet] = useState(null);
     const [attendanceLogs, setAttendanceLogs] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [projects, setProjects] = useState([]);
+    const [, setProjects] = useState([]);
     const [viewUser, setViewUser] = useState(user);
     const [holidays, setHolidays] = useState([]);
     const [usersList, setUsersList] = useState([]); // List of users for dropdown
     const [weeklyOffs, setWeeklyOffs] = useState(['Sunday']);
     const lastFetchKeyRef = useRef('');
-    const TIMESHEET_CACHE_TTL_MS = 20 * 1000;
-
-
     // Approval Logic
     const [activeTab, setActiveTab] = useState(initialTab || 'timesheet');
     const [pendingApprovals, setPendingApprovals] = useState([]);
@@ -89,7 +88,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             toast.success('Timesheet rejection processed');
             setShowRejectModal(false);
             fetchApprovals();
-        } catch (error) {
+        } catch {
             toast.error('Failed to process rejection');
         }
     };
@@ -121,18 +120,6 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [filteredModules, setFilteredModules] = useState([]);
     const [filteredTasks, setFilteredTasks] = useState([]);
     const [availableProjects, setAvailableProjects] = useState([]);
-
-
-    const calculateHours = (start, end) => {
-        if (start && end) {
-            const s = new Date(`2000/01/01 ${start}`);
-            const e = new Date(`2000/01/01 ${end}`);
-            let diff = (e - s) / 3600000; // milliseconds to hours
-            if (diff < 0) diff += 24;
-            return diff.toFixed(2);
-        }
-        return null;
-    };
 
     const handleEditClick = (entry) => {
         if (!isEditableTimesheetStatus) {
@@ -342,7 +329,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             await api.put(`/timesheet/${ts._id}/approve`, { status });
             toast.success(`Timesheet ${status.toLowerCase()}`);
             fetchApprovals(); // Refresh list
-        } catch (error) {
+        } catch {
             toast.error('Action failed');
         }
     };
@@ -351,7 +338,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         if (canApprove && activeTab === 'approvals') {
             fetchApprovals();
         }
-    }, [user, activeTab]);
+    }, [activeTab, canApprove]);
 
 
     // Check for userId in URL (for Manager view)
@@ -374,12 +361,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         return `timesheet_${user?._id}_${targetUserId || 'self'}_${formattedMonth}_${cycle}`;
     };
 
-    const refreshTimesheetData = async () => {
-        sessionStorage.removeItem(getCurrentTimesheetCacheKey());
-        await fetchData(true);
-    };
-
-    const fetchData = async (skipCache = false) => {
+    const fetchData = useCallback(async (skipCache = false) => {
         const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
         let formattedMonth;
         if (cycle === 'Weekly') {
@@ -523,6 +505,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         } finally {
             setLoading(false);
         }
+    }, [targetUserId, user, viewDate]);
+
+    const refreshTimesheetData = async () => {
+        sessionStorage.removeItem(getCurrentTimesheetCacheKey());
+        await fetchData(true);
     };
 
     // Load Modules/Tasks when Project Changes for New Entry
@@ -624,7 +611,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         // Background polling for real-time timesheet status/entry updates
         const pollInterval = setInterval(() => fetchData(true), 30000);
         return () => clearInterval(pollInterval);
-    }, [viewDate, targetUserId]); // Re-fetch when month or user changes
+    }, [fetchData, targetUserId, viewDate]); // Re-fetch when month or user changes
 
     // Generate days for current view (Monthly)
     const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
@@ -656,8 +643,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             return entryDateKey === dateKey && String(entryProjectId) === String(selectedProjectId);
         });
 
+        const hasSameLogs = (selectedCell.logs || []).length === refreshedLogs.length
+            && (selectedCell.logs || []).every((log, index) => log?._id === refreshedLogs[index]?._id);
+        if (hasSameLogs) return;
+
         setSelectedCell(prev => prev ? { ...prev, logs: refreshedLogs } : prev);
-    }, [timesheet, selectedCell?.date, selectedCell?.project]);
+    }, [selectedCell, timesheet]);
 
     const handleExportAttendance = async () => {
         // Use the component-level targetUserId which already accounts for propUserId or query params
@@ -711,7 +702,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             const days = eachDayOfInterval({ start, end });
 
             // Helpers
-            const formatTime = (dateString, istString) => {
+            const formatTime = (dateString) => {
                 if (!dateString) return '--:--';
                 return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
             };
@@ -1735,7 +1726,6 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
                                                         const start = log.clockIn ? new Date(log.clockIn) : null;
                                                         const end = log.clockOut ? new Date(log.clockOut) : null;
-                                                        const duration = start && end ? ((end - start) / 3600000).toFixed(2) : '0.0';
                                                         const attendanceMeta = getAttendanceStatusMeta(log);
 
                                                         return (

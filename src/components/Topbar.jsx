@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell, Calendar, Clock, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
@@ -22,7 +22,7 @@ const Topbar = ({ toggleSidebar }) => {
         showDropdownRef.current = showDropdown;
     }, [showDropdown]);
 
-    const fetchNotificationBootstrap = async () => {
+    const fetchNotificationBootstrap = useCallback(async () => {
         try {
             const res = await api.get('/notifications/bootstrap', {
                 params: { includeInterviews: hasTalentAcquisition }
@@ -32,15 +32,19 @@ const Topbar = ({ toggleSidebar }) => {
         } catch (error) {
             console.error('Failed to fetch notification bootstrap:', error);
         }
-    };
+    }, [hasTalentAcquisition]);
 
     useEffect(() => {
         if (!user) return;
         if (lastBootstrapUserIdRef.current === user._id) return;
 
         lastBootstrapUserIdRef.current = user._id;
-        fetchNotificationBootstrap();
-    }, [user?._id]);
+        const bootstrapTimer = setTimeout(() => {
+            fetchNotificationBootstrap();
+        }, 0);
+
+        return () => clearTimeout(bootstrapTimer);
+    }, [fetchNotificationBootstrap, user]);
 
     useEffect(() => {
         if (!user) return;
@@ -77,7 +81,7 @@ const Topbar = ({ toggleSidebar }) => {
             socket.off('interview_update', handleInterviewUpdate);
             window.removeEventListener('refreshNotifications', handleRefresh);
         };
-    }, [user?._id, hasTalentAcquisition]);
+    }, [fetchNotificationBootstrap, hasTalentAcquisition, user]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {

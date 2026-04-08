@@ -25,7 +25,7 @@ const decisionColor = (d) => {
     }
 };
 
-const OpeningSection = ({ opening, openingNum, hiringRequestId, onTransfer, users }) => {
+const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
     const [expanded, setExpanded] = useState(openingNum === 1); // most recent expanded by default
     const [activePhase, setActivePhase] = useState(1);
     const [activeMenu, setActiveMenu] = useState(null);

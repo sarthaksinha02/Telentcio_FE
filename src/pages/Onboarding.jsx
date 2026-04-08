@@ -8,6 +8,9 @@ import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
+const ONBOARDING_EMPLOYEE_CACHE_TTL_MS = 20 * 1000;
+const ONBOARDING_SETTINGS_CACHE_TTL_MS = 60 * 1000;
+
 const STATUS_COLORS = {
   Pending: { bg: '#fef3c7', text: '#92400e', dot: '#f59e0b' },
   'In Progress': { bg: '#dbeafe', text: '#1e40af', dot: '#3b82f6' },
@@ -57,8 +60,6 @@ const Onboarding = () => {
   const customFileInputRef = useRef(null);
   const initialEmployeesFetchDoneRef = useRef(false);
   const initialSettingsFetchDoneRef = useRef(false);
-  const ONBOARDING_EMPLOYEE_CACHE_TTL_MS = 20 * 1000;
-  const ONBOARDING_SETTINGS_CACHE_TTL_MS = 60 * 1000;
 
   // Close menu when clicking outside or scrolling
   useEffect(() => {
@@ -261,7 +262,7 @@ const Onboarding = () => {
         templates: settings.dynamicTemplates?.length || 0
       });
       sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload(settings, fingerprint)));
-    } catch (err) {
+    } catch {
       console.error('Failed to fetch onboarding settings');
     }
   }, [user?._id]);
@@ -299,7 +300,7 @@ const Onboarding = () => {
       await api.delete(`/onboarding/settings/templates/dynamic/${id}`);
       toast.success('Template deleted');
       fetchSettings({ force: true });
-    } catch (err) {
+    } catch {
       toast.error('Failed to delete template');
     }
   };
@@ -315,7 +316,7 @@ const Onboarding = () => {
       initialSettingsFetchDoneRef.current = true;
       fetchSettings();
     }
-  }, [fetchEmployees, fetchSettings, activeTab]);
+  }, [activeTab, fetchEmployees, fetchSettings, page, searchTerm, statusFilter]);
 
   const handleTemplateUpload = async (e, type) => {
     const file = e.target.files[0];
@@ -370,7 +371,7 @@ const Onboarding = () => {
       await api.delete(`/onboarding/settings/policies/${policyId}`);
       toast.success('Policy deleted');
       fetchSettings({ force: true });
-    } catch (err) {
+    } catch {
       toast.error('Failed to delete policy');
     }
   };
@@ -511,7 +512,7 @@ const Onboarding = () => {
       const res = await api.get(`/onboarding/employees/${emp._id}`);
       setSelectedEmployee(res.data);
       setEmailDeadline(res.data.documentDeadline ? res.data.documentDeadline.split('T')[0] : '');
-    } catch (err) {
+    } catch {
       toast.error('Failed to load details');
     } finally {
       setDetailLoading(false);
@@ -531,7 +532,7 @@ const Onboarding = () => {
         setSelectedEmployee(updatedEmp);
         setEmployees(prev => prev.map(e => e._id === empId ? { ...e, status: updatedEmp.status } : e));
       }
-    } catch (err) {
+    } catch {
       toast.error('Failed to flag');
     }
   };
@@ -547,7 +548,7 @@ const Onboarding = () => {
         setSelectedEmployee(updatedEmp);
         setEmployees(prev => prev.map(e => e._id === empId ? { ...e, status: updatedEmp.status } : e));
       }
-    } catch (err) {
+    } catch {
       toast.error('Failed to approve');
     }
   };
@@ -564,7 +565,7 @@ const Onboarding = () => {
       window.URL.revokeObjectURL(url);
       toast.dismiss('zip');
       toast.success('Downloaded!');
-    } catch (err) {
+    } catch {
       toast.dismiss('zip');
       toast.error('Download failed');
     }
@@ -619,7 +620,7 @@ const Onboarding = () => {
     try {
       const res = await api.post(`/onboarding/employees/${empId}/regenerate-credentials`);
       toast.success(
-        (t) => (
+        () => (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <span style={{ fontWeight: 700 }}>Credentials Regenerated!</span>
             <div style={{ fontSize: '13px' }}>
@@ -632,26 +633,8 @@ const Onboarding = () => {
         { duration: 10000 }
       );
       fetchEmployees();
-    } catch (err) {
+    } catch {
       toast.error('Failed to regenerate credentials');
-    }
-  };
-
-  const handleDownloadDocx = async (empId, type) => {
-    try {
-      toast.loading(`Generating document...`, { id: 'docx' });
-      const res = await api.get(`/onboarding/employees/${empId}/${type}`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${type}_${empId}.docx`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-      toast.dismiss('docx');
-      toast.success('Downloaded!');
-    } catch (err) {
-      toast.dismiss('docx');
-      toast.error('Download failed');
     }
   };
 
@@ -681,7 +664,7 @@ const Onboarding = () => {
     try {
       const res = await api.post(`/onboarding/employees/${empId}/transfer-to-active`);
       toast.success(
-        (t) => (
+        () => (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <span style={{ fontWeight: 700 }}>Employee Activated!</span>
             <div style={{ fontSize: '13px' }}>
@@ -1316,7 +1299,7 @@ const Onboarding = () => {
                       <AlertTriangle size={16} />
                       <strong>Candidate Requested New Credentials:</strong> {selectedEmployee.credentialRegenerationRequest.reason || 'Expired or lost'}
                     </div>
-                    <button onClick={() => handleGenerateCredentials(selectedEmployee._id)} style={{ padding: '4px 10px', fontSize: '12px', fontWeight: '600', color: '#fff', background: '#dc2626', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                    <button onClick={() => handleRegenerateCredentials(selectedEmployee._id)} style={{ padding: '4px 10px', fontSize: '12px', fontWeight: '600', color: '#fff', background: '#dc2626', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
                       Regenerate & Resolve
                     </button>
                   </div>
@@ -1333,18 +1316,18 @@ const Onboarding = () => {
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={async () => {
                         try {
-                          await axios.post(`${API_URL}/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Rejected' }, { headers: getHeaders() });
+                          await api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Rejected' });
                           toast.success('Extension rejected');
                           fetchEmployees();
                           setSelectedEmployee(prev => ({ ...prev, extensionRequests: prev.extensionRequests.map(r => r._id === ext._id ? { ...r, status: 'Rejected' } : r) }));
-                        } catch (e) { toast.error('Failed to reject extension'); }
+                        } catch { toast.error('Failed to reject extension'); }
                       }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#1d4ed8', background: 'none', border: '1px solid #1d4ed8', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
                       <button onClick={() => {
                         // Open edit modal to let HR extend deadline, then we resolve it.
                         // For simplicity, let's just approve it right here by adding days to current deadline.
                         const currentDeadline = selectedEmployee.documentDeadline ? new Date(selectedEmployee.documentDeadline) : new Date();
                         currentDeadline.setDate(currentDeadline.getDate() + ext.requestedDays);
-                        axios.post(`${API_URL}/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Approved', newDeadline: currentDeadline.toISOString() }, { headers: getHeaders() })
+                        api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Approved', newDeadline: currentDeadline.toISOString() })
                           .then(() => {
                             toast.success(`Extension approved. New deadline: ${currentDeadline.toLocaleDateString()}`);
                             fetchEmployees();
@@ -1752,7 +1735,7 @@ const Onboarding = () => {
             </div>
 
             <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#fff', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button onClick={() => { setShowPreviewModal(false); setPreviewHtml(''); }} style={{ padding: '10px 24px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', color: '#475569' }}>
+              <button onClick={() => { setShowPreviewModal(false); }} style={{ padding: '10px 24px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', color: '#475569' }}>
                 Close Preview
               </button>
               <button 

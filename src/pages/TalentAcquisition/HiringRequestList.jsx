@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -17,7 +17,7 @@ const HiringRequestList = () => {
     const [totalPages, setTotalPages] = useState(1);
     const navigate = useNavigate();
 
-    const fetchRequests = async () => {
+    const fetchRequests = useCallback(async () => {
         try {
             setLoading(true);
             const [reqRes, clientRes] = await Promise.all([
@@ -44,7 +44,7 @@ const HiringRequestList = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [clientName, filterStatus, page]);
 
     const handleFilterChange = (status) => {
         setFilterStatus(status === 'All' ? 'All' : status === 'Pending' ? 'Pending_Approval' : status);
@@ -53,7 +53,7 @@ const HiringRequestList = () => {
 
     useEffect(() => {
         fetchRequests();
-    }, [filterStatus, page]);
+    }, [fetchRequests]);
 
     const getClientIdByName = (name) => {
         const client = clients.find(c => c.name === name);

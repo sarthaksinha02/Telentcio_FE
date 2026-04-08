@@ -4,14 +4,12 @@ import { ArrowLeft, Users, ThumbsUp, ThumbsDown, CheckCircle, Clock, UserCheck, 
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import { Filter, Search, X } from 'lucide-react';
 
 const UserTADashboard = ({ providedUserName }) => {
     const { userName: routeUserName } = useParams();
     const navigate = useNavigate();
-    const { user } = useAuth();
 
     // Use the provided name (if used as embedded component) or the route param
     const userName = providedUserName || routeUserName;
@@ -27,12 +25,6 @@ const UserTADashboard = ({ providedUserName }) => {
     const [filterStatus, setFilterStatus] = useState('');
     const [showFilters, setShowFilters] = useState(false);
 
-    useEffect(() => {
-        if (userName) {
-            fetchUserCandidates();
-        }
-    }, [userName]);
-
     const fetchUserCandidates = useCallback(async () => {
         try {
             setLoading(true);
@@ -45,6 +37,12 @@ const UserTADashboard = ({ providedUserName }) => {
             setLoading(false);
         }
     }, [userName]);
+
+    useEffect(() => {
+        if (userName) {
+            fetchUserCandidates();
+        }
+    }, [userName, fetchUserCandidates]);
 
     const uniqueProfiles = useMemo(() => {
         const profiles = candidates.map(c => c.hiringRequestId?.roleDetails?.title).filter(Boolean);
@@ -108,16 +106,6 @@ const UserTADashboard = ({ providedUserName }) => {
             onHold: filteredCandidates.filter(c => c.decision === 'On Hold').length,
         };
     }, [filteredCandidates]);
-
-    const getStatusColor = useCallback((status) => {
-        switch (status) {
-            case 'Interested': return 'bg-green-100 text-green-700';
-            case 'Not Interested': return 'bg-red-100 text-red-700';
-            case 'Not Relevant': return 'bg-gray-100 text-gray-700';
-            case 'Not Picking': return 'bg-yellow-100 text-yellow-700';
-            default: return 'bg-blue-100 text-blue-700';
-        }
-    }, []);
 
     const getDecisionColor = useCallback((decision) => {
         switch (decision) {

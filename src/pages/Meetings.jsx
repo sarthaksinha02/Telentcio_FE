@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import api from '../api/axios';
 import { Calendar, Plus, Clock, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
 import { createCachePayload } from '../utils/cache';
@@ -18,7 +18,7 @@ const Meetings = () => {
     const [meetings, setMeetings] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchMeetings = async (isBackground = false) => {
+    const fetchMeetings = useCallback(async (isBackground = false) => {
         const CACHE_KEY = `meeting_data_${user?._id}`;
 
         // Helper: Generate fingerprint for change detection
@@ -36,7 +36,7 @@ const Meetings = () => {
                     const parsed = JSON.parse(cached);
                     setMeetings(parsed.data || parsed);
                     setLoading(false);
-                } catch (e) {
+                } catch {
                     sessionStorage.removeItem(CACHE_KEY);
                 }
             }
@@ -77,11 +77,11 @@ const Meetings = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user?._id]);
 
     useEffect(() => {
         fetchMeetings();
-    }, []);
+    }, [fetchMeetings]);
 
     const getStatusBadge = (status) => {
         const styles = {

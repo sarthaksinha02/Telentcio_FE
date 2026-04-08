@@ -7,7 +7,7 @@ import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, C
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
 
-const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propHiringRequestId, isSidePanel, onUpdate }) => {
+const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propHiringRequestId, isSidePanel }) => {
     const { user } = useAuth();
     const params = useParams();
     const hiringRequestId = propHiringRequestId || params.hiringRequestId;
@@ -121,7 +121,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         } finally {
             setActionLoading(false);
         }
-    }, [newRound, selectedInterviewer, candidateId, fetchCandidate]);
+    }, [newRound, selectedInterviewer, candidateId, currentPhase, fetchCandidate]);
 
     const handleEditRound = useCallback(async (roundId) => {
         if (!editingRoundForm.levelName) {
@@ -182,7 +182,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         } finally {
             setActionLoading(false);
         }
-    }, [selectedWorkflow, interviewWorkflows, workflowMapping, candidateId, fetchCandidate]);
+    }, [selectedWorkflow, interviewWorkflows, workflowMapping, candidateId, currentPhase, fetchCandidate]);
 
     const handleDeleteRound = useCallback(async (roundId) => {
         if (!window.confirm('Are you sure you want to delete this round?')) return;
@@ -274,12 +274,12 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         }
     }, []);
 
-    const { isAdmin, userPermissions, hasSuperApprove, canManageRounds } = useMemo(() => {
+    const { hasSuperApprove, canManageRounds } = useMemo(() => {
         const admin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
         const perms = user?.permissions || [];
         const superApprove = perms.includes('ta.super_approve') || perms.includes('*') || admin;
         const manageRounds = admin || perms.includes('ta.edit');
-        return { isAdmin: admin, userPermissions: perms, hasSuperApprove: superApprove, canManageRounds: manageRounds };
+        return { hasSuperApprove: superApprove, canManageRounds: manageRounds };
     }, [user]);
 
     if (loading) {
@@ -435,7 +435,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                 {currentPhase === 1 ? (
                                                     <select
                                                         value={candidate.decision || 'None'}
-                                                        onChange={(e) => {
+                                                        onChange={() => {
                                                             // Currently, list UI handles patch, let's keep consistency or just show it readonly here,
                                                             // But user wants to update from details too if possible.
                                                             // For now, list is main place, but we can add patch if missing.
@@ -453,7 +453,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                 ) : currentPhase === 2 ? (
                                                     <select
                                                         value={candidate.phase2Decision || 'None'}
-                                                        onChange={(e) => {
+                                                        onChange={() => {
                                                             toast.error("Please update Phase 2 decision from Candidate List page.");
                                                         }}
                                                         disabled

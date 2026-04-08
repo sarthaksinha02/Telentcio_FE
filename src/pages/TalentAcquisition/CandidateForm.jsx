@@ -1,13 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Upload, Loader, ArrowLeft, Plus, Trash, CheckCircle, ChevronDown, Search, Eye, EyeOff } from 'lucide-react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
 const CandidateForm = () => {
-    const { user } = useAuth();
     const { hiringRequestId, candidateId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
@@ -58,9 +56,6 @@ const CandidateForm = () => {
 
     const [sourceOptions, setSourceOptions] = useState([]);
     const [users, setUsers] = useState([]);
-    const [showAddSource, setShowAddSource] = useState(false);
-    const [newSourceName, setNewSourceName] = useState('');
-    const [addingSource, setAddingSource] = useState(false);
     const [showSourceDropdown, setShowSourceDropdown] = useState(false);
     const [sourceSearch, setSourceSearch] = useState('');
     const dropdownRef = useRef(null);
@@ -80,17 +75,7 @@ const CandidateForm = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    useEffect(() => {
-        fetchSourceOptions();
-        fetchUsers();
-        if (candidateId) {
-            fetchCandidateDetails();
-        } else if (hiringRequestId) {
-            fetchRequisitionSkills();
-        }
-    }, [candidateId, hiringRequestId]);
-
-    const fetchUsers = async () => {
+    const fetchUsers = useCallback(async () => {
         try {
             const res = await api.get('/admin/users');
             let fetchedUsers = [];
@@ -126,9 +111,9 @@ const CandidateForm = () => {
         } catch (error) {
             console.error('Failed to fetch users', error);
         }
-    };
+    }, []);
 
-    const fetchRequisitionSkills = async () => {
+    const fetchRequisitionSkills = useCallback(async () => {
         try {
             const res = await api.get(`/ta/hiring-request/${hiringRequestId}`);
             let reqData = res.data;
@@ -145,9 +130,9 @@ const CandidateForm = () => {
         } catch (error) {
             console.error('Failed to fetch requisition skills', error);
         }
-    };
+    }, [hiringRequestId]);
 
-    const fetchSourceOptions = async () => {
+    const fetchSourceOptions = useCallback(async () => {
         try {
             const res = await api.get('/ta/candidates/sources');
             // Backend now returns [{ name, _id, isCustom }]
@@ -160,66 +145,11 @@ const CandidateForm = () => {
                 { name: 'Other', isCustom: false }
             ]);
         }
-    };
+    }, []);
 
-    const handleAddSource = async () => {
-        if (!newSourceName.trim()) return;
-        try {
-            setAddingSource(true);
-            const res = await api.post('/ta/candidates/sources', { name: newSourceName.trim() });
-            if (res.data) {
-                toast.success('Source added successfully');
-                setNewSourceName('');
-                setShowAddSource(false);
-                fetchSourceOptions();
-                setFormData(prev => ({ ...prev, source: newSourceName.trim() }));
-                setShowSourceDropdown(false);
-                setSourceSearch('');
-            }
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to add source');
-        } finally {
-            setAddingSource(false);
-        }
-    };
-
-    const handleDeleteSource = async (id, e) => {
-        e.stopPropagation();
-        if (!window.confirm('Are you sure you want to delete this source?')) return;
-        try {
-            await api.delete(`/ta/candidates/sources/${id}`);
-            toast.success('Source deleted successfully');
-            fetchSourceOptions();
-            if (formData.source === sourceOptions.find(s => s._id === id)?.name) {
-                setFormData(prev => ({ ...prev, source: '' }));
-            }
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to delete source');
-        }
-    };
-
-    const fetchCandidateDetails = async () => {
+    const fetchCandidateDetails = useCallback(async () => {
         try {
             setFetching(true);
-            const response = await api.get(`/ta/candidates/${hiringRequestId}`);
-            // The API returns all candidates for a request. We need to find the specific one or fetch by ID if endpoint exists.
-            // Based on previous code, there is likely a Get Single Candidate endpoint or we filter.
-            // Let's try fetching specific candidate if endpoint exists, otherwise filter. 
-            // Actually, best to check if there is a get by ID. 
-            // WORKAROUND: The previous code passed `candidateToEdit`. current API usage in list is `/ta/candidates/${hiringRequestId}`.
-            // There isn't a clear "get candidate by ID" endpoint visible in previous context, but usually `api.put('/ta/candidates/:id')` exists.
-            // I will assume logic to filter from the list or I should check if there is a single get endpoint.
-            // Let's try to fetch the single candidate using the list endpoint and filtering for now to be safe,
-            // or better, let's assume standard REST patterns. 
-            // Wait, looking at `CandidateList.jsx`: `api.delete('/ta/candidates/${candidateId}')` exists.
-            // So `api.get('/ta/candidates/${candidateId}')` might exist? 
-            // Let's stick to fetching all and filtering for this iteration to ensuring no 404s if I guess wrong.
-            // Actually, the `CandidateForm` props previously took `candidateToEdit`. 
-            // Let's try to fetch the specific candidate. 
-            // If I look at `CandidateForm.jsx` previously: `api.put('/ta/candidates/${candidateToEdit._id}')` 
-            // I'll try fetching the single candidate.
-
-            // To be safe regarding endpoints, I will fetch the list and find the candidate.
             const res = await api.get(`/ta/candidates/${hiringRequestId}`);
             const candidate = res.data.candidates.find(c => c._id === candidateId);
 
@@ -266,7 +196,17 @@ const CandidateForm = () => {
         } finally {
             setFetching(false);
         }
-    };
+    }, [candidateId, hiringRequestId, navigate]);
+
+    useEffect(() => {
+        fetchSourceOptions();
+        fetchUsers();
+        if (candidateId) {
+            fetchCandidateDetails();
+        } else if (hiringRequestId) {
+            fetchRequisitionSkills();
+        }
+    }, [candidateId, hiringRequestId, fetchCandidateDetails, fetchRequisitionSkills, fetchSourceOptions, fetchUsers]);
 
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
@@ -394,15 +334,6 @@ const CandidateForm = () => {
         }
     };
 
-    const handleSourceChange = (e) => {
-        const { value } = e.target;
-        if (value === 'Other') {
-            setFormData(prev => ({ ...prev, source: '' })); // Clear for input
-        } else {
-            setFormData(prev => ({ ...prev, source: value }));
-        }
-    };
-
     const handleAddExperience = () => {
         setFormData(prev => ({
             ...prev,
@@ -484,7 +415,7 @@ const CandidateForm = () => {
                     uploadedResumeUrl = uploadData.resumeUrl;
                     uploadedResumePublicId = uploadData.resumePublicId;
                     toast.success('Resume uploaded successfully');
-                } catch (uploadError) {
+                } catch {
                     toast.error('Failed to upload resume. Please try again.');
                     setLoading(false);
                     return; // Stop submission

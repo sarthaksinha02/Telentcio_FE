@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
 import { LifeBuoy, Plus, Clock, CheckCircle, AlertCircle, MessageSquare, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Skeleton from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
@@ -25,7 +24,7 @@ const QueryFormModal = ({ isOpen, onClose, onSuccess }) => {
         try {
             const res = await api.get('/helpdesk/types');
             setQueryTypes(res.data.data.filter(qt => qt.isActive));
-        } catch (error) {
+        } catch {
             toast.error('Failed to load query types');
         }
     };
@@ -170,7 +169,7 @@ const HelpDesk = () => {
     const getCacheFieldForTab = (tab) =>
         tab === 'my-queries' ? 'myQueries' : tab === 'assigned' ? 'assignedQueries' : 'escalatedQueries';
 
-    const fetchTabData = async (tab, force = false, isBackground = false) => {
+    const fetchTabData = useCallback(async (tab, force = false, isBackground = false) => {
         if (!force && !isBackground && loadedTabs.current.has(tab)) return; 
         
         const CACHE_KEY = `helpdesk_data_${user?._id}_admin_${isAdmin}`;
@@ -284,9 +283,9 @@ const HelpDesk = () => {
         } finally {
             setTabLoading(false);
         }
-    };
+    }, [HELPDESK_CACHE_TTL_MS, isAdmin, user?._id]);
 
-    const fetchBootstrap = async (force = false) => {
+    const fetchBootstrap = useCallback(async (force = false) => {
         const CACHE_KEY = `helpdesk_data_${user?._id}_admin_${isAdmin}`;
         const cached = readSessionCache(CACHE_KEY);
 
@@ -353,7 +352,7 @@ const HelpDesk = () => {
         } finally {
             setTabLoading(false);
         }
-    };
+    }, [HELPDESK_CACHE_TTL_MS, isAdmin, isResolverRole, user?._id]);
 
     // Refresh only the currently active tab (called after raising a new query)
     const refreshTab = () => {
@@ -370,7 +369,7 @@ const HelpDesk = () => {
         if (initialBootstrapDoneRef.current) return;
         initialBootstrapDoneRef.current = true;
         fetchBootstrap();
-    }, [isResolverRole]);
+    }, [fetchBootstrap]);
 
     // Fetch data whenever the active tab changes (for tabs not fetched on mount)
     useEffect(() => {
@@ -381,7 +380,7 @@ const HelpDesk = () => {
         if (!alreadyFetched) {
             fetchTabData(activeTab);
         }
-    }, [activeTab, isResolverRole]);
+    }, [activeTab, fetchTabData, isAdmin, isResolverRole]);
 
     const getStatusBadge = (status) => {
         const lowerS = status?.toLowerCase() || '';
@@ -545,15 +544,6 @@ const HelpDesk = () => {
             </div>
         );
     };
-
-    if (false) return (
-        <div className="min-h-screen bg-slate-50 p-6 md:p-10">
-            <div className="max-w-6xl mx-auto space-y-6">
-                <Skeleton className="h-8 w-48 mb-2" />
-                <Skeleton className="h-64 w-full rounded-xl" />
-            </div>
-        </div>
-    );
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans p-4 sm:p-6 md:p-10">

@@ -109,7 +109,7 @@ const GlobalTADashboard = () => {
 
     const {
         topMetrics, pipelineDistribution, recruitmentFunnel,
-        departmentAnalysis, clientAnalysis, recruiterPerformance,
+        departmentAnalysis, recruiterPerformance,
         positionPerformance, timeMetrics, sourceAnalysis, monthlyTrend,
         filterOptions // New: dynamic options for dropdowns
     } = data || {};

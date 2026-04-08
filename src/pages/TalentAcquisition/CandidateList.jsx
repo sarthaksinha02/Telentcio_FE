@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -65,19 +65,12 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
         };
     }, []);
 
-    useEffect(() => {
-        if (hiringRequestId) {
-            fetchCandidates();
-        }
-        fetchUsers();
-    }, [hiringRequestId]); // Removed page dependency
-
     // Reset page to 1 when any filter changes
     useEffect(() => {
         setPage(1);
     }, [filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
 
-    const fetchUsers = async () => {
+    const fetchUsers = useCallback(async () => {
         try {
             const res = await api.get('/admin/users');
             let fetchedUsers = [];
@@ -109,7 +102,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
         } catch (error) {
             console.error('Failed to fetch users', error);
         }
-    };
+    }, []);
 
     // Base filter applies global filters (Preference, Experience, Rating, PulledBy) but NOT Status/Decision/InterviewStatus
     // This allows the cards to show correct overall metrics even when a specific card (which sets Status/Decision) is clicked.
@@ -334,9 +327,12 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
         }
     }, [hiringRequestId, isLegacyView]);
 
-    const hEdit = useCallback((candidate) => {
-        navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/edit`);
-    }, [navigate, hiringRequestId]);
+    useEffect(() => {
+        if (hiringRequestId) {
+            fetchCandidates();
+        }
+        fetchUsers();
+    }, [hiringRequestId, fetchCandidates, fetchUsers]);
 
     const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
 
@@ -407,7 +403,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
         if (!window.confirm("Are you sure you want to transfer this candidate to the onboarding pipeline? This will create a new onboarding record for them.")) return;
 
         try {
-            const res = await api.post(`/ta/candidates/${candidateId}/transfer-to-onboarding`);
+            await api.post(`/ta/candidates/${candidateId}/transfer-to-onboarding`);
             toast.success('Candidate transferred successfully to onboarding.');
             fetchCandidates();
         } catch (error) {
@@ -543,21 +539,6 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
         } catch (error) {
             console.error('Error exporting excel:', error);
             toast.error('Failed to export excel');
-        }
-    };
-
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'Interested':
-                return 'bg-green-100 text-green-700';
-            case 'Not Interested':
-                return 'bg-red-100 text-red-700';
-            case 'Not Relevant':
-                return 'bg-gray-100 text-gray-700';
-            case 'Not Picking':
-                return 'bg-yellow-100 text-yellow-700';
-            default:
-                return 'bg-blue-100 text-blue-700';
         }
     };
 
@@ -1479,12 +1460,9 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
 
                                                                 const hasFailed = rounds.some(r => r.status === 'Failed');
                                                                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                                                                let avgRating = null;
-
-                                                                if (!hasFailed && ratedRounds.length > 0) {
-                                                                    const total = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                                                                    avgRating = Number.isInteger(total) ? total.toString() : total.toFixed(1);
-                                                                }
+                                                                const averageRating = !hasFailed && ratedRounds.length > 0
+                                                                    ? ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length
+                                                                    : null;
 
                                                                 return (
                                                                     <div className="flex flex-col gap-1.5 items-start">
@@ -1503,7 +1481,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                                                                                 ))}
                                                                                 {ratedRounds.length > 2 && (
                                                                                     <span
-                                                                                        className="text-[10px] font-bold text-amber-600 flex items-center justify-center bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors"
+                                                                                        className={`text-[10px] font-bold flex items-center justify-center px-1.5 py-0.5 rounded border cursor-pointer hover:bg-amber-100 transition-colors ${averageRating !== null ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-slate-500 bg-slate-50 border-slate-200'}`}
                                                                                         onClick={(e) => { e.stopPropagation(); handleView(candidate); }}
                                                                                         title="View all rounds"
                                                                                     >

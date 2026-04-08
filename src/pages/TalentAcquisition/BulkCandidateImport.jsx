@@ -1,11 +1,11 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import * as ExcelJS from 'exceljs';
 import { X, Upload, FileText, CheckCircle, XCircle, AlertCircle, Loader, ArrowRight } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
 const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess }) => {
-    const [file, setFile] = useState(null);
+    const [, setFile] = useState(null);
     const [previewData, setPreviewData] = useState([]);
     const [isParsing, setIsParsing] = useState(false);
     const [importing, setImporting] = useState(false);
@@ -16,20 +16,30 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
     const [existingCandidates, setExistingCandidates] = useState([]);
     
     const fileInputRef = useRef(null);
-    const [hiringRequest, setHiringRequest] = useState(null);
+
+    const normalizeUsers = (payload) => {
+        if (payload?.success && Array.isArray(payload.data)) return payload.data;
+        if (Array.isArray(payload)) return payload;
+        return [];
+    };
+
+    const normalizeCandidates = (payload) => {
+        if (Array.isArray(payload?.candidates)) return payload.candidates;
+        if (Array.isArray(payload?.data)) return payload.data;
+        if (Array.isArray(payload)) return payload;
+        return [];
+    };
 
     React.useEffect(() => {
         if (isOpen) {
             const fetchData = async () => {
                 try {
-                    const [usersRes, hrRes, candidatesRes] = await Promise.all([
-                        api.get('/users'),
-                        api.get(`/ta/hiring-requests/${hiringRequestId}`),
+                    const [usersRes, candidatesRes] = await Promise.all([
+                        api.get('/admin/users'),
                         api.get(`/ta/candidates/${hiringRequestId}`)
                     ]);
-                    setUsers(usersRes.data);
-                    setHiringRequest(hrRes.data);
-                    setExistingCandidates(candidatesRes.data);
+                    setUsers(normalizeUsers(usersRes.data));
+                    setExistingCandidates(normalizeCandidates(candidatesRes.data));
                 } catch (error) {
                     console.error('Error fetching import data:', error);
                 }
@@ -96,8 +106,8 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             let currentUsers = users;
             if (currentUsers.length === 0) {
                 try {
-                    const res = await api.get('/users');
-                    currentUsers = res.data;
+                    const res = await api.get('/admin/users');
+                    currentUsers = normalizeUsers(res.data);
                     setUsers(currentUsers);
                 } catch (e) {
                     console.error('Failed to load users for import', e);
@@ -223,7 +233,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                             const excelEpoch = new Date(1899, 11, 30);
                             mappedRow.lastWorkingDay = new Date(excelEpoch.getTime() + dateVal * 86400000);
                         }
-                    } catch (e) {
+                    } catch {
                         mappedRow.lastWorkingDay = null;
                     }
                 }

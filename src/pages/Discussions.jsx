@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, Eye, EyeOff, Edit, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -52,7 +52,7 @@ const Discussions = () => {
     const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
     const SUPERVISOR_CACHE_TTL_MS = 60 * 1000;
 
-    const fetchDiscussions = async (page, force = false, isBackground = false) => {
+    const fetchDiscussions = useCallback(async (page, force = false, isBackground = false) => {
         const CACHE_KEY = `discussion_data_${user?._id}_p${page}`;
 
         // 1. Initial Load from Cache
@@ -122,9 +122,9 @@ const Discussions = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [DISCUSSION_CACHE_TTL_MS, limit, user?._id]);
 
-    const fetchSupervisors = async () => {
+    const fetchSupervisors = useCallback(async () => {
         const SUPERVISOR_CACHE_KEY = `supervisors_data_${user?._id}`;
         
         // Load from cache first
@@ -156,14 +156,14 @@ const Discussions = () => {
         } catch (error) {
             console.error('Error fetching supervisors:', error);
         }
-    };
+    }, [SUPERVISOR_CACHE_TTL_MS, user?._id]);
 
     useEffect(() => {
         if (currentPage === 1 && initialFetchDoneRef.current) return;
         if (currentPage === 1) initialFetchDoneRef.current = true;
         fetchDiscussions(currentPage);
         if (currentPage === 1) fetchSupervisors();
-    }, [currentPage]);
+    }, [currentPage, fetchDiscussions, fetchSupervisors]);
 
     // Close export menu when clicking outside
     useEffect(() => {

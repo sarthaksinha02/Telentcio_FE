@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { Calendar, Clock, MapPin, Users, CheckSquare, Edit, List, Info, Briefcase, FileText, AlignLeft } from 'lucide-react';
@@ -16,7 +16,7 @@ const MeetingDetails = () => {
 
     const canEdit = user?.roles?.includes('Admin') || user?.permissions?.includes('meeting.edit') || meeting?.host?._id === user?._id;
 
-    const fetchMeeting = async () => {
+    const fetchMeeting = useCallback(async () => {
         try {
             setLoading(true);
             const res = await api.get(`/meetings/${id}`);
@@ -28,11 +28,11 @@ const MeetingDetails = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [id, navigate]);
 
     useEffect(() => {
         fetchMeeting();
-    }, [id]);
+    }, [fetchMeeting]);
 
     const updateActionStatus = async (itemIndex, newStatus) => {
         try {

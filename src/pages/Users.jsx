@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Search, Edit2, Shield, Calendar, Download, FileText, MoreVertical, Eye } from 'lucide-react';
-import { createPortal } from 'react-dom';
+import { UserPlus, Search, Shield, Download } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -19,7 +18,7 @@ const Users = () => {
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [editingUser, setEditingUser] = useState(null);
-    const [holidays, setHolidays] = useState([]);
+    const [_holidays, _setHolidays] = useState([]);
 
     // Export Options State
     const [showExportModal, setShowExportModal] = useState(false);
@@ -69,7 +68,7 @@ const Users = () => {
         return `${hours}h ${minutes}m`;
     };
 
-    const handleExportAttendance = async (targetUser) => {
+    const _handleExportAttendance = async (targetUser) => {
         const toastId = toast.loading('Generating Report...');
         try {
             const now = new Date();
@@ -282,7 +281,7 @@ const Users = () => {
                 const leavesRow = { name: '   ↳ Leaves' };
 
                 // Color Map for Cells
-                const cellRefMap = {}; // store cell refs to apply color later (or apply directly if possible)
+                const _cellRefMap = {}; // store cell refs to apply color later (or apply directly if possible)
 
                 for (let d = 1; d <= daysInMonth; d++) {
                     const dateObj = new Date(year, month - 1, d);
@@ -299,38 +298,38 @@ const Users = () => {
                     const holidayName = holidayMap[dateStr];
 
                     // -- Calculate Duration First --
-                    let durationHours = 0;
+                    let _durationHours = 0;
                     if (record && record.clockIn && record.clockOut) {
                         const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
-                        durationHours = dur / 3600000; // milliseconds to hours
+                        _durationHours = dur / 3600000; // milliseconds to hours
                     }
 
                     // -- 1. Status Logic --
                     let statusShort = 'Absent'; // Default
-                    let cellColor = 'FFF2DCDB'; // Red (Absent)
+                    let _cellColor = 'FFF2DCDB'; // Red (Absent)
 
                     const isOffDay = !!holidayName || isWeeklyOff;
                     const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
 
                     if (isFuture) {
                         statusShort = '-';
-                        cellColor = 'FFFFFFFF'; // White
+                        _cellColor = 'FFFFFFFF'; // White
                     }
                     else if (showLeave) {
                         statusShort = `L (${leaveData.type})`; // Show Leave Type
-                        cellColor = 'FFFFE0B2'; // Orange/Yellowish
+                        _cellColor = 'FFFFE0B2'; // Orange/Yellowish
                     }
                     else if (holidayName) {
                         statusShort = holidayName; // Show Holiday Name
-                        cellColor = 'FFD1F2EB'; // Light Cyan/Greenish
+                        _cellColor = 'FFD1F2EB'; // Light Cyan/Greenish
                     }
                     else if (isWeeklyOff) {
                         statusShort = 'Weekoff';
-                        cellColor = 'FFF2F2F2'; // Light Grey
+                        _cellColor = 'FFF2F2F2'; // Light Grey
                     }
                     else if (record) {
                         statusShort = 'Present';
-                        cellColor = 'FFEBF1DE'; // Light Green
+                        _cellColor = 'FFEBF1DE'; // Light Green
                     }
 
                     if (exportOptions.status) {
@@ -408,10 +407,10 @@ const Users = () => {
                             const isFuture = dateObj > new Date();
 
                             // -- Apply Same Logic for Coloring --
-                            let durationHours = 0;
+                            let _durationHours = 0;
                             if (record && record.clockIn && record.clockOut) {
                                 const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
-                                durationHours = dur / 3600000;
+                                _durationHours = dur / 3600000;
                             }
 
                             let cellColor = 'FFF2DCDB'; // Red
@@ -468,7 +467,7 @@ const Users = () => {
         workLocation: ''
     });
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             const isAdmin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
             const canReadUsers = user?.permissions?.includes('user.read');
@@ -503,7 +502,7 @@ const Users = () => {
                 try {
                     const teamRes = await api.get('/admin/users/team');
                     usersData = teamRes.data;
-                } catch (err) {
+                } catch {
                     console.log('Team fetch failed or empty');
                 }
             }
@@ -513,7 +512,7 @@ const Users = () => {
                 try {
                     const rolesRes = await api.get('/admin/roles');
                     rolesData = rolesRes.data;
-                } catch (err) {
+                } catch {
                     console.log('Roles fetch silenced');
                 }
             }
@@ -557,10 +556,10 @@ const Users = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
 
 
-    const [filterDate, setFilterDate] = useState('');
+    const [filterDate, _setFilterDate] = useState('');
 
     const filteredUsers = users.filter(user => {
         const matchesSearch = (
@@ -577,7 +576,7 @@ const Users = () => {
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [fetchData]);
 
     const canEdit = roles.length > 0; // If we can see roles, we are likely Admin
 
@@ -585,7 +584,7 @@ const Users = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    const handleEdit = (user) => {
+    const _handleEdit = (user) => {
         setEditingUser(user);
         // Find users who currently report to this user
         const currentReports = users.filter(u => u.reportingManagers?.some(rm => rm._id === user._id || rm === user._id)).map(u => u._id);

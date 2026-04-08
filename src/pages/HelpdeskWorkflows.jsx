@@ -93,7 +93,7 @@ const HelpdeskWorkflows = () => {
             await api.delete(`/helpdesk/types/${id}`);
             toast.success('Query Type deleted');
             fetchData();
-        } catch (error) {
+        } catch {
             toast.error('Failed to delete Query Type');
         }
     };

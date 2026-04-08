@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }) => {
               : [])
           };
           setUser(normalisedUser);
-        } catch (e) {
+        } catch {
           localStorage.removeItem('user');
         }
       }
@@ -160,4 +160,5 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => useContext(AuthContext);

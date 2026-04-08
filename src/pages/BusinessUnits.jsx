@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../api/axios';
 import { Building, Plus } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
@@ -19,7 +19,7 @@ const BusinessUnits = () => {
     const BUSINESS_UNIT_CACHE_TTL_MS = 60 * 1000;
     const cacheKey = `business_unit_data_${user?._id}`;
 
-    const fetchUnits = async ({ force = false } = {}) => {
+    const fetchUnits = useCallback(async ({ force = false } = {}) => {
         try {
             const cachedData = readSessionCache(cacheKey);
 
@@ -56,13 +56,13 @@ const BusinessUnits = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [BUSINESS_UNIT_CACHE_TTL_MS, cacheKey]);
 
     useEffect(() => {
         if (initialFetchDoneRef.current) return;
         initialFetchDoneRef.current = true;
         fetchUnits();
-    }, []);
+    }, [fetchUnits]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -79,7 +79,7 @@ const BusinessUnits = () => {
             setFormData({ name: '', description: '' });
             setEditingId(null);
             fetchUnits({ force: true });
-        } catch (error) {
+        } catch {
             toast.error(editingId ? 'Failed to update' : 'Failed to create');
         }
     };

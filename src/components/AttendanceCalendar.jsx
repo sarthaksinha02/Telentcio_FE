@@ -1,15 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Edit2 } from 'lucide-react';
-import { differenceInCalendarDays } from 'date-fns';
 
 const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], date, approvedLeaves = [], onRegularize, isPrivileged = false, weeklyOffs = ['Sunday'] }) => {
-    const [currentDate, setCurrentDate] = useState(date || new Date());
-
-    useEffect(() => {
-        if (date) {
-            setCurrentDate(date);
-        }
-    }, [date]);
+    const [internalDate, setInternalDate] = useState(date || new Date());
+    const currentDate = date || internalDate;
 
     const getDaysInMonth = (date) => {
         const year = date.getFullYear();
@@ -30,13 +24,13 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
 
     const prevMonth = () => {
         const next = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
-        setCurrentDate(next);
+        if (!date) setInternalDate(next);
         onMonthChange(next.getFullYear(), next.getMonth() + 1);
     };
 
     const nextMonth = () => {
         const next = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
-        setCurrentDate(next);
+        if (!date) setInternalDate(next);
         onMonthChange(next.getFullYear(), next.getMonth() + 1);
     };
 

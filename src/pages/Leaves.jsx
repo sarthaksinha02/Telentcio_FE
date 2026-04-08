@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
     Calendar, Plus, RefreshCw, User, CheckCircle, XCircle,
-    Check, X, Infinity, ChevronDown, Clock, AlertCircle, Layers,
+    Check, X, ChevronDown, Clock, AlertCircle, Layers,
     Eye, FileText
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -99,7 +99,7 @@ const Leaves = () => {
     const LEAVES_CACHE_TTL_MS = 20 * 1000;
 
 
-    const fetchData = async (page = 1, skipCache = false) => {
+    const fetchData = useCallback(async (page = 1, skipCache = false) => {
         // Cache Key: Scoped by User and Date
         const CACHE_KEY = `leaves_${user?._id}_${new Date().toISOString().slice(0, 10)}`;
 
@@ -198,7 +198,7 @@ const Leaves = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [LEAVES_CACHE_TTL_MS, user?._id]);
 
     const fetchOnlyRequests = async (page = 1) => {
         setLoading(true);
@@ -233,7 +233,7 @@ const Leaves = () => {
         // Add background polling for real-time leave status updates
         const pollInterval = setInterval(() => fetchData(1, true), 30000);
         return () => clearInterval(pollInterval);
-    }, [user?._id]);
+    }, [fetchData, user?._id]);
 
     const handleChange = (e) => {
         const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;

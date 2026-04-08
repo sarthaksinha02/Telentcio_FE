@@ -1,10 +1,8 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { X, CheckCircle, XCircle, Clock, Calendar, MessageSquare, User } from 'lucide-react';
 import { format } from 'date-fns';
 
 const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
-    if (!candidate) return null;
-
     const getStatusBadgeColor = (status) => {
         switch (status) {
             case 'Passed': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
@@ -27,15 +25,13 @@ const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
     // Derived Timelines based on phase
     // Phase 1: Only interested/pre-screened, and L1 rounds
     // Phase 2: All rounds + Selection/Hired logic
-    const displayedRounds = useMemo(() => {
-        if (!candidate.interviewRounds) return [];
-        if (phase === 1) {
-            // Keep it simple for phase 1 - maybe just show up to L1 or earlier rounds
-            return candidate.interviewRounds.filter((r, idx) => idx < 2); 
-        }
-        // Phase 2: Show everything
-        return candidate.interviewRounds;
-    }, [candidate, phase]);
+    const displayedRounds = !candidate?.interviewRounds
+        ? []
+        : phase === 1
+            ? candidate.interviewRounds.filter((r, idx) => idx < 2)
+            : candidate.interviewRounds;
+
+    if (!candidate) return null;
 
     return (
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">

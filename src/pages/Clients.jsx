@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../api/axios';
 import { Users, Plus } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import Skeleton from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
@@ -13,33 +12,29 @@ const Clients = () => {
     const canCreate = user?.roles?.includes('Admin') || user?.permissions?.includes('client.create');
     const canUpdate = user?.roles?.includes('Admin') || user?.permissions?.includes('client.update');
     const [clients, setClients] = useState([]);
-    const [businessUnits, setBusinessUnits] = useState([]);
     const [loading, setLoading] = useState(true);
     const initialFetchDoneRef = useRef(false);
     const CLIENT_CACHE_TTL_MS = 45 * 1000;
     const cacheKey = `client_data_${user?._id}`;
 
-    const fetchData = async ({ force = false } = {}) => {
+    const fetchData = useCallback(async ({ force = false } = {}) => {
         try {
             const cachedData = readSessionCache(cacheKey);
 
             if (cachedData) {
                 const data = cachedData.data || cachedData;
                 setClients(data.clients || []);
-                setBusinessUnits(data.businessUnits || []);
                 setLoading(false);
                 if (!force && isCacheFresh(cachedData, CLIENT_CACHE_TTL_MS)) return;
             }
 
             const bootstrapRes = await api.get('/projects/bootstrap');
             const clientData = bootstrapRes.data?.clients || [];
-            const buData = bootstrapRes.data?.businessUnits || [];
 
-            const newFingerprint = JSON.stringify({ c: clientData.length, b: buData.length });
+            const newFingerprint = JSON.stringify({ c: clientData.length, first: clientData[0]?._id });
             const oldFingerprint = cachedData?.fingerprint || null;
 
             setClients(clientData);
-            setBusinessUnits(buData);
 
             if (newFingerprint !== oldFingerprint || force) {
                 const minimalClients = clientData.map(c => ({
@@ -50,14 +45,8 @@ const Clients = () => {
                     businessUnit: c.businessUnit ? { _id: c.businessUnit._id, name: c.businessUnit.name } : null
                 }));
 
-                const minimalBUs = buData.map(bu => ({
-                    _id: bu._id,
-                    name: bu.name
-                }));
-
-                const payload = createCachePayload({ 
-                    clients: minimalClients, 
-                    businessUnits: minimalBUs 
+                const payload = createCachePayload({
+                    clients: minimalClients
                 }, newFingerprint);
                 sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
@@ -67,13 +56,13 @@ const Clients = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [CLIENT_CACHE_TTL_MS, cacheKey]);
 
     useEffect(() => {
         if (initialFetchDoneRef.current) return;
         initialFetchDoneRef.current = true;
         fetchData();
-    }, []);
+    }, [fetchData]);
 
 
 

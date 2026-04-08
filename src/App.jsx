@@ -160,8 +160,9 @@ function App() {
 
 export default App;
 
-const UsersAccessWrapper = ({ Component = Users }) => {
+const UsersAccessWrapper = ({ Component: ComponentProp }) => {
   const { user } = useAuth();
+  const Component = ComponentProp || Users;
 
   if (!user) return null;
 
@@ -172,8 +173,9 @@ const UsersAccessWrapper = ({ Component = Users }) => {
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
 };
 
-const OnboardingAccessWrapper = ({ Component = Onboarding }) => {
+const OnboardingAccessWrapper = ({ Component: ComponentProp }) => {
   const { user } = useAuth();
+  const Component = ComponentProp || Onboarding;
 
   if (!user) return null;
 

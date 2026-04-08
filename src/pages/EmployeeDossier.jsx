@@ -250,7 +250,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
             // But usually formData is the whole profile for simplicity in this component.
             setFormData(JSON.parse(JSON.stringify(profile)));
         }
-    }, [editMode, profile]);
+    }, [editMode, formData, profile]);
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -463,7 +463,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
         if (isManager && activeTab === 'requests') {
             fetchHRISRequests();
         }
-    }, [activeTab, currentUser]);
+    }, [activeTab, canApprove, currentUser]);
 
     const tabs = [
         { id: 'personal', label: 'Personal', icon: User },
@@ -1592,7 +1592,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
         if (!profile) return null;
         const isEditing = editMode === 'hris';
         const isAdmin = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin');
-        const isManager = profile.employment?.reportingManager?._id === currentUser?._id || profile.employment?.reportingManager === currentUser?._id;
+        const _isManager = profile.employment?.reportingManager?._id === currentUser?._id || profile.employment?.reportingManager === currentUser?._id;
         const hrisStatus = profile.hris?.status || 'Draft';
 
         return (
