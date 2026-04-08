@@ -351,16 +351,16 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                             </div>
                         </div>
                         <div className="flex gap-3 flex-wrap">
-                            {candidate.resumeUrl && String(candidate.resumeUrl).trim() !== '' && String(candidate.resumeUrl) !== 'null' && String(candidate.resumeUrl) !== 'undefined' && (
-                                <a
-                                    href={candidate.resumeUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors border border-slate-200"
-                                >
-                                    <Download size={18} /> View Resume
-                                </a>
-                            )}
+                             {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
+                                 <a
+                                     href={candidate.resumeUrl}
+                                     target="_blank"
+                                     rel="noopener noreferrer"
+                                     className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors border border-slate-200"
+                                 >
+                                     <Download size={18} /> View Resume
+                                 </a>
+                             )}
                             {canManageRounds && (
                                 <button
                                     onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
@@ -595,7 +595,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                     </div>
 
                     {/* Inline Resume Viewer */}
-                    {candidate.resumeUrl && String(candidate.resumeUrl).trim() !== '' && String(candidate.resumeUrl) !== 'null' && String(candidate.resumeUrl) !== 'undefined' && (
+                    {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[500px] h-[calc(100vh-250px)]">
                             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
                                 <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">

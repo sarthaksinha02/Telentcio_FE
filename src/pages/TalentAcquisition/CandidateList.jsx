@@ -414,131 +414,249 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
 
     const handleExportExcel = async () => {
         try {
+            toast.loading('Preparing export...', { id: 'export-excel' });
+
+            // 1. Fetch Requisition Details for Dynamic Skills
+            let softSkillsFromReq = [];
+            let techSkillsFromReq = [];
+
+            try {
+                const reqRes = await api.get(`/ta/hiring-request/${hiringRequestId}`);
+                const data = reqRes.data || {};
+                const requirements = data.requirements || {};
+                const mustHave = requirements.mustHaveSkills || {};
+
+                softSkillsFromReq = Array.isArray(mustHave.softSkills) ? mustHave.softSkills : [];
+                techSkillsFromReq = Array.isArray(mustHave.technical) ? mustHave.technical :
+                    (Array.isArray(mustHave) ? mustHave : []);
+            } catch (err) {
+                console.error('Failed to fetch requisition for dynamic skills', err);
+            }
+
+            // 2. Prepare Sections for Dynamic Header Generation
+            const softSkillsHeaders = Array.isArray(softSkillsFromReq) ? softSkillsFromReq : [];
+            const techSkillsHeaders = Array.isArray(techSkillsFromReq) ? techSkillsFromReq : [];
+
+            // 3. Determine Maximum Interview Rounds among all candidates for sizing the table
+            const dataToExport = activeList;
+            let maxRoundsCount = 1;
+            dataToExport.forEach(candidate => {
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
+                if (rounds.length > maxRoundsCount) maxRoundsCount = rounds.length;
+            });
+
+            const roundSections = [];
+            for (let i = 1; i <= maxRoundsCount; i++) {
+                roundSections.push({
+                    title: `Round ${i}`,
+                    subHeaders: [
+                        'Interviewer Feedback',
+                        'Interview date',
+                        'Interviewer Name',
+                        ...softSkillsHeaders,
+                        ...techSkillsHeaders
+                    ],
+                    width: 3 + softSkillsHeaders.length + techSkillsHeaders.length
+                });
+            }
+
+            // Define sections to iterate over for building Row 1, Row 2 and rowData
+            // width: span of columns under this title
+            const excelSections = [
+                { title: 'Basic Info', subHeaders: ['S.no', 'Submission Date', 'Source', 'Profile pulled by', 'Calling by', 'Name of Candidate', 'Total Experience'], width: 7 },
+                { title: 'Internal Round', subHeaders: ['TAT', 'Rate', 'Remarks'], width: 3 },
+                { title: 'Experience', subHeaders: ['Relevant Experience'], width: 1 },
+                { title: 'Technical Skills (Experience)', subHeaders: techSkillsHeaders, width: techSkillsHeaders.length },
+                { title: 'Education & Employment', subHeaders: ['Qualification', 'Company'], width: 2 },
+                { title: 'Compensation', subHeaders: ['CTC', 'Expected CTC'], width: 2 },
+                { title: 'Availability & Location', subHeaders: ['Notice Period', 'Location', 'Preferred Location'], width: 3 },
+                { title: 'Contact Details', subHeaders: ['Email', 'Mobile No.'], width: 2 },
+                { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
+                { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
+                ...roundSections,
+                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Interview Status', 'Reason', 'Decision Status (Auto-calculated)'], width: 6 }
+            ].filter(sec => sec.width > 0);
+
             const workbook = new ExcelJS.Workbook();
             const sheet = workbook.addWorksheet('Candidates');
 
-            const dataToExport = activeList;
+            // Row 1: MAIN HEADINGS
+            const row1Data = [];
+            excelSections.forEach(sec => {
+                row1Data.push(sec.title);
+                for (let i = 1; i < sec.width; i++) row1Data.push('');
+            });
+            const row1 = sheet.addRow(row1Data);
 
-            // 1. Collect all unique Must-Have skills from the data
-            const uniqueSkills = new Set();
-            dataToExport.forEach(candidate => {
-                (candidate.mustHaveSkills || []).forEach(s => {
-                    if (s.skill) uniqueSkills.add(s.skill);
+            // Row 2: SUB-HEADERS
+            const row2Data = [];
+            excelSections.forEach(sec => {
+                sec.subHeaders.forEach(sub => row2Data.push(sub));
+            });
+            const row2 = sheet.addRow(row2Data);
+
+            // Merging Row 1 for Main Headings
+            let currentCol = 1;
+            excelSections.forEach(sec => {
+                if (sec.width > 1) {
+                    sheet.mergeCells(1, currentCol, 1, currentCol + sec.width - 1);
+                }
+                currentCol += sec.width;
+            });
+
+            // Set Column Widths and Formatting
+            row2Data.forEach((_, i) => {
+                const col = sheet.getColumn(i + 1);
+                col.width = 18; // default
+                if (i === 0) col.width = 8; // S.no
+                if (row2Data[i] === 'Remarks' || row2Data[i] === 'Interviewer Feedback') col.width = 35;
+                if (row2Data[i] === 'Name of Candidate' || row2Data[i].includes('Skill')) col.width = 25;
+
+                col.alignment = { wrapText: true, vertical: 'middle' };
+            });
+
+            // Formatting headers (Moved after column formatting to prevent alignment override)
+            [row1, row2].forEach((row, rowIndex) => {
+                row.font = { bold: true };
+                row.alignment = { horizontal: 'center', vertical: 'middle' };
+                row.eachCell((cell) => {
+                    // Explicitly set alignment on each cell to ensure centering
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    cell.fill = {
+                        type: 'pattern',
+                        pattern: 'solid',
+                        fgColor: { argb: rowIndex === 0 ? 'FFD9EAD3' : 'FFE0E0E0' }
+                    };
+                    cell.border = {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    };
                 });
             });
-            const skillColumnsList = Array.from(uniqueSkills).sort();
 
-            // 2. Define headers dynamically
-            const columns = [
-                { header: 'Serial No.', key: 'slNo', width: 10 },
-                { header: 'Submission Date', key: 'submissionDate', width: 15 },
-                { header: 'Source', key: 'source', width: 15 },
-                { header: 'Pulled By', key: 'pulledBy', width: 20 },
-                { header: 'Called By', key: 'calledBy', width: 20 },
-                { header: 'Rate', key: 'rate', width: 10 },
-                { header: 'Name of Candidate', key: 'name', width: 25 },
-                { header: 'TAT To Join', key: 'tatToJoin', width: 15 },
-                { header: 'Notice Period', key: 'noticePeriod', width: 15 },
-                { header: 'Status', key: 'status', width: 15 },
-                { header: 'Remark', key: 'remark', width: 25 },
-                { header: 'Comprehensive Skill Assessment', key: 'compSkillAssessment', width: 30 },
-                { header: 'Interviewer Name', key: 'interviewerName', width: 25 },
-            ];
+            // Freeze top 2 rows
+            sheet.views = [{ state: 'frozen', ySplit: 2 }];
 
-            // Add dynamic skill columns
-            skillColumnsList.forEach(skill => {
-                columns.push({ header: skill, key: `skill_${skill}`, width: 15 });
-            });
+            // Add Filters to Row 2
+            sheet.autoFilter = {
+                from: { row: 2, column: 1 },
+                to: { row: 2, column: row2Data.length }
+            };
 
-            // Add remaining columns (Note: Removed Nice-to-Have Skills)
-            columns.push(
-                { header: 'CTC', key: 'ctc', width: 15 },
-                { header: 'Expected CTC', key: 'expectedCtc', width: 15 },
-                { header: 'Total Experience', key: 'experience', width: 15 },
-                { header: 'Qualification', key: 'qualification', width: 20 },
-                { header: 'Company', key: 'company', width: 20 },
-                { header: 'Location', key: 'location', width: 15 },
-                { header: 'Preferred Location', key: 'prefLocation', width: 20 },
-                { header: 'Email', key: 'email', width: 25 },
-                { header: 'Mobile No.', key: 'mobile', width: 15 },
-                { header: 'Offer Company', key: 'offerCompany', width: 20 },
-                { header: 'Date Of Joining', key: 'dateOfJoining', width: 15 },
-                { header: 'Interview Details', key: 'interviewDetails', width: 30 },
-                { header: 'Interview Remark', key: 'interviewRemark', width: 30 }
-            );
+                dataToExport.forEach((candidate, index) => {
+                    const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
 
-            sheet.columns = columns;
+                    const techSkillRatings = techSkillsHeaders.map(skillName => {
+                        const skillEntry = (candidate.mustHaveSkills || []).find(s => s.skill === skillName);
+                        if (skillEntry) return `${skillEntry.experience}y`;
 
-            // Style headers
-            sheet.getRow(1).font = { bold: true };
-            sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+                        const rating = (candidate.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
+                        return rating !== undefined ? `${rating}/10` : '-';
+                    });
 
-            dataToExport.forEach((candidate, index) => {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
-                const interviewDetails = rounds.map((r, i) => `R${i + 1} (${r.levelName}): ${r.status}${r.rating ? ` - ${r.rating}/10` : ''}`).join('\n');
-                const interviewRemark = rounds.map((r, i) => r.feedback ? `R${i + 1}: ${r.feedback}` : null).filter(Boolean).join('\n');
+                    // Collect data for each round
+                    const roundsData = [];
+                    for (let i = 0; i < maxRoundsCount; i++) {
+                        const r = rounds[i];
+                        if (r) {
+                            const feedback = r.feedback || '-';
+                            const date = r.scheduledDate ? format(new Date(r.scheduledDate), 'dd-MMM-yyyy') : '-';
+                            const interviewer = r.evaluatedBy ? `${r.evaluatedBy.firstName} ${r.evaluatedBy.lastName}` : (r.interviewerName || '-');
 
-                const rowData = {
-                    slNo: index + 1,
-                    submissionDate: candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'dd-MMM-yyyy') : '-',
-                    source: candidate.source || '-',
-                    pulledBy: candidate.profilePulledBy || '-',
-                    calledBy: candidate.calledBy || '-',
-                    rate: candidate.rate !== undefined ? candidate.rate : '-',
-                    name: candidate.candidateName || '-',
-                    tatToJoin: candidate.tatToJoin ? `${candidate.tatToJoin} days` : '-',
-                    noticePeriod: candidate.noticePeriod ? `${candidate.noticePeriod} days` : '-',
-                    status: candidate.status || '-',
-                    remark: candidate.remark || '-',
-                    ctc: candidate.currentCTC ? `${candidate.currentCTC}` : '-',
-                    expectedCtc: candidate.expectedCTC ? `${candidate.expectedCTC}` : '-',
-                    experience: candidate.totalExperience ? `${candidate.totalExperience} yrs` : '-',
-                    qualification: candidate.qualification || '-',
-                    company: candidate.currentCompany || '-',
-                    location: candidate.currentLocation || '-',
-                    prefLocation: candidate.preferredLocation || '-',
-                    email: candidate.email || '-',
-                    mobile: candidate.mobile || '-',
-                    offerCompany: candidate.inHandOffer ? (candidate.offerCompany || 'Yes') : 'No',
-                    dateOfJoining: candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : '-',
-                    interviewDetails: interviewDetails || '-',
-                    interviewRemark: interviewRemark || '-',
-                    compSkillAssessment: rounds.map((r, i) => {
-                        let text = r.rating ? `R${i + 1}: ${r.rating}/10` : `R${i + 1}: -`;
-                        if (r.skillRatings && r.skillRatings.length > 0) {
-                            const filterSkills = r.skillRatings.filter(sr => sr.rating > 0);
-                            if (filterSkills.length > 0) {
-                                const skillsInfo = filterSkills.map(sr => `${sr.skill}: ${sr.rating}/10`).join(', ');
-                                text += ` (${skillsInfo})`;
-                            }
+                            const rSoftSkillRatings = softSkillsHeaders.map(skillName => {
+                                const rating = (r.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
+                                return rating !== undefined ? `${rating}/10` : '-';
+                            });
+
+                            const rTechSkillRatings = techSkillsHeaders.map(skillName => {
+                                const sr = (r.skillRatings || []).find(s => s.skill === skillName);
+                                return sr ? `${sr.rating}/10` : '-';
+                            });
+
+                            roundsData.push(feedback, date, interviewer, ...rSoftSkillRatings, ...rTechSkillRatings);
+                        } else {
+                            // Empty round padding
+                            const fieldCount = 3 + softSkillsHeaders.length + techSkillsHeaders.length;
+                            for (let j = 0; j < fieldCount; j++) roundsData.push('-');
                         }
-                        return text;
-                    }).join('\n') || '-',
-                    interviewerName: rounds.map((r, i) => r.evaluatedBy ? `R${i + 1}: ${r.evaluatedBy.firstName} ${r.evaluatedBy.lastName}` : null).filter(Boolean).join('\n') || '-'
+                    }
+
+                    const profileShortlisted = candidate.decision === 'Shortlisted' ? 'Yes' : 'No';
+                    const statusSummary = getInterviewStatusSummary(rounds);
+                    const interviewStatusLabel = statusSummary.label || '-';
+
+                    // Construct row data according to sections order
+                    const rowData = [
+                        index + 1,
+                        candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'dd-MMM-yyyy') : '-',
+                        candidate.source || '-',
+                        candidate.profilePulledBy || '-',
+                        candidate.calledBy || '-',
+                        candidate.candidateName || '-',
+                        candidate.totalExperience || '-',
+
+                        candidate.tatToJoin || '-',
+                        candidate.rate || '-',
+                        candidate.remark || '-',
+
+                        candidate.relevantExperience || '-',
+                        ...techSkillRatings,
+
+                        candidate.qualification || '-',
+                        candidate.currentCompany || '-',
+
+                        candidate.currentCTC || '-',
+                        candidate.expectedCTC || '-',
+
+                        candidate.noticePeriod || '-',
+                        candidate.currentLocation || '-',
+                        candidate.preferredLocation || '-',
+
+                        candidate.email || '-',
+                        candidate.mobile || '-',
+
+                        candidate.offerCompany || '-',
+                        candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : '-',
+
+                        candidate.status || 'Interested',
+                        candidate.remark || '-',
+                        candidate.customRemark || '-',
+
+                        ...roundsData,
+
+                        profileShortlisted,
+                        '-', // Final Scoring
+                        '-', // Profile Shared
+                        interviewStatusLabel,
+                        candidate.rejectionReason || '-',
+                        '' // Decision Status
+                    ];
+
+                const row = sheet.addRow(rowData);
+
+                // Calculate Formula Indexes Dynamically
+                // Profile Shortlisted is the 1st column of the last section
+                // Decision Status is the 6th column (last) of the last section
+                const totalColsBeforeLast = row2Data.length - 6;
+                const profileShortlistedColIndex = totalColsBeforeLast + 1;
+                const decisionStatusColIndex = totalColsBeforeLast + 6;
+
+                const colLetter = sheet.getColumn(profileShortlistedColIndex).letter;
+                const formulaRow = row.number;
+                row.getCell(decisionStatusColIndex).value = {
+                    formula: `IF(${colLetter}${formulaRow}="Yes","Shortlisted","Rejected")`,
+                    result: profileShortlisted === 'Yes' ? 'Shortlisted' : 'Rejected'
                 };
-
-                // Fill dynamic skill columns
-                skillColumnsList.forEach(skill => {
-                    const skillObj = (candidate.mustHaveSkills || []).find(s => s.skill === skill);
-                    rowData[`skill_${skill}`] = skillObj ? (skillObj.experience || 0) : '-';
-                });
-
-                sheet.addRow(rowData);
             });
-
-            // Enable text wrapping for interview columns
-            sheet.getColumn('interviewDetails').alignment = { wrapText: true, vertical: 'top' };
-            sheet.getColumn('interviewRemark').alignment = { wrapText: true, vertical: 'top' };
-            sheet.getColumn('compSkillAssessment').alignment = { wrapText: true, vertical: 'top' };
-            sheet.getColumn('interviewerName').alignment = { wrapText: true, vertical: 'top' };
 
             const buffer = await workbook.xlsx.writeBuffer();
-            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            saveAs(blob, `${positionName || 'Candidates'} Data sheet.xlsx`);
-            toast.success('Excel downloaded successfully');
+            saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${positionName || 'Candidates'} Data Export.xlsx`);
+            toast.success('Excel exported successfully!', { id: 'export-excel' });
         } catch (error) {
-            console.error('Error exporting excel:', error);
-            toast.error('Failed to export excel');
+            console.error('Export error:', error);
+            toast.error('Failed to export Excel', { id: 'export-excel' });
         }
     };
 
@@ -748,13 +866,13 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     )}
                 </div>
             </div>
-            
+
             {/* Layout Wrapper for Split View */}
             <div className={`flex flex-col lg:flex-row gap-6 items-start transition-all duration-300 ${selectedCandidateId ? 'relative' : ''}`}>
-                
+
                 {/* Left Side: Metrics, Filters, and Table */}
                 <div className={`flex-1 min-w-0 transition-all duration-300 space-y-6 ${selectedCandidateId ? 'w-full lg:w-[30%]' : 'w-full'}`}>
-                                        {/* Summary Boxes - Only show when no candidate is selected */}
+                    {/* Summary Boxes - Only show when no candidate is selected */}
                     {!selectedCandidateId &&
                         (activePhase === 1 ? (() => {
                             const funnelCards = [
@@ -1379,13 +1497,13 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                                     <table className="w-full">
                                         <thead className="bg-slate-50 border-b border-slate-200">
                                             <tr key="header-row">
-                                                <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Preference</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled By</th>}
+                                                <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Preference</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled By</th>}
                                                 <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
                                             </tr>
                                         </thead>
@@ -1398,14 +1516,13 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                                                 </tr>
                                             ) : (
                                                 paginatedCandidates.map((candidate) => (
-                                                    <tr 
-                                                        key={candidate._id} 
+                                                    <tr
+                                                        key={candidate._id}
                                                         onClick={() => handleSelectCandidate(candidate._id)}
-                                                        className={`transition-colors border-b border-slate-100 last:border-0 cursor-pointer ${
-                                                            selectedCandidateId === candidate._id 
-                                                                ? 'bg-blue-50 ring-1 ring-inset ring-blue-100' 
-                                                                : 'hover:bg-slate-50 bg-white'
-                                                        }`}
+                                                        className={`transition-colors border-b border-slate-100 last:border-0 cursor-pointer ${selectedCandidateId === candidate._id
+                                                            ? 'bg-blue-50 ring-1 ring-inset ring-blue-100'
+                                                            : 'hover:bg-slate-50 bg-white'
+                                                            }`}
                                                     >
                                                         <td className="px-4 py-4 align-top">
                                                             <div className="flex flex-col gap-1">
@@ -1453,101 +1570,101 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                                                         )}
                                                         {!selectedCandidateId && (
                                                             <td className="px-4 py-4 align-top">
-                                                            {(() => {
-                                                                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
+                                                                {(() => {
+                                                                    const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
 
-                                                                const summary = getInterviewStatusSummary(rounds);
+                                                                    const summary = getInterviewStatusSummary(rounds);
 
-                                                                const hasFailed = rounds.some(r => r.status === 'Failed');
-                                                                const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                                                                const averageRating = !hasFailed && ratedRounds.length > 0
-                                                                    ? ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length
-                                                                    : null;
+                                                                    const hasFailed = rounds.some(r => r.status === 'Failed');
+                                                                    const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
+                                                                    const averageRating = !hasFailed && ratedRounds.length > 0
+                                                                        ? ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length
+                                                                        : null;
 
-                                                                return (
-                                                                    <div className="flex flex-col gap-1.5 items-start">
-                                                                        <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold tracking-wide ${summary.color}`}>
-                                                                            {summary.label}
-                                                                        </span>
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
-                                                                                {rounds.length} rounds total
+                                                                    return (
+                                                                        <div className="flex flex-col gap-1.5 items-start">
+                                                                            <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold tracking-wide ${summary.color}`}>
+                                                                                {summary.label}
                                                                             </span>
-                                                                            <div className="flex flex-wrap gap-1 mt-0.5">
-                                                                                {ratedRounds.length > 0 && ratedRounds.slice(0, 2).map((r, idx) => (
-                                                                                    <span key={r._id || idx} title={r.roundName} className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                                                                                        R{idx + 1}: {r.rating}/10
-                                                                                    </span>
-                                                                                ))}
-                                                                                {ratedRounds.length > 2 && (
-                                                                                    <span
-                                                                                        className={`text-[10px] font-bold flex items-center justify-center px-1.5 py-0.5 rounded border cursor-pointer hover:bg-amber-100 transition-colors ${averageRating !== null ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-slate-500 bg-slate-50 border-slate-200'}`}
-                                                                                        onClick={(e) => { e.stopPropagation(); handleView(candidate); }}
-                                                                                        title="View all rounds"
-                                                                                    >
-                                                                                        ...
-                                                                                    </span>
-                                                                                )}
+                                                                            <div className="flex flex-col gap-1">
+                                                                                <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
+                                                                                    {rounds.length} rounds total
+                                                                                </span>
+                                                                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                                                                    {ratedRounds.length > 0 && ratedRounds.slice(0, 2).map((r, idx) => (
+                                                                                        <span key={r._id || idx} title={r.roundName} className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                                                                            R{idx + 1}: {r.rating}/10
+                                                                                        </span>
+                                                                                    ))}
+                                                                                    {ratedRounds.length > 2 && (
+                                                                                        <span
+                                                                                            className={`text-[10px] font-bold flex items-center justify-center px-1.5 py-0.5 rounded border cursor-pointer hover:bg-amber-100 transition-colors ${averageRating !== null ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-slate-500 bg-slate-50 border-slate-200'}`}
+                                                                                            onClick={(e) => { e.stopPropagation(); handleView(candidate); }}
+                                                                                            title="View all rounds"
+                                                                                        >
+                                                                                            ...
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
                                                                         </div>
-                                                                    </div>
-                                                                )
-                                                            })()}
+                                                                    )
+                                                                })()}
                                                             </td>
                                                         )}
                                                         {!selectedCandidateId && (
                                                             <td className="px-4 py-4 align-top">
                                                                 <div className="relative inline-block w-full max-w-[110px]">
-                                                                {activePhase === 1 ? (
-                                                                    <select
-                                                                        value={candidate.decision || 'None'}
-                                                                        onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
-                                                                        className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
-                                                                        onClick={(e) => e.stopPropagation()}
-                                                                        disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
-                                                                    >
-                                                                        <option value="None" className="text-slate-600">None</option>
-                                                                        <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
-                                                                        <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
-                                                                        <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
-                                                                    </select>
-                                                                ) : activePhase === 2 ? (
-                                                                    <select
-                                                                        value={candidate.phase2Decision || 'None'}
-                                                                        onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
-                                                                        className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
-                                                                        onClick={(e) => e.stopPropagation()}
-                                                                        disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
-                                                                    >
-                                                                        <option value="None" className="text-slate-600">None</option>
-                                                                        <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
-                                                                        <option value="Selected" className="text-purple-600 font-bold">Selected</option>
-                                                                        <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
-                                                                        <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
-                                                                    </select>
-                                                                ) : (
-                                                                    <select
-                                                                        value={candidate.phase3Decision || 'None'}
-                                                                        onChange={(e) => handlePhase3DecisionChange(candidate._id, e.target.value)}
-                                                                        className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase3Decision || 'None')}`}
-                                                                        onClick={(e) => e.stopPropagation()}
-                                                                        disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
-                                                                    >
-                                                                        <option value="None" className="text-slate-600">None</option>
-                                                                        <option value="Offer Sent" className="text-blue-600 font-bold">Offer Sent</option>
-                                                                        <option value="Offer Accepted" className="text-amber-600 font-bold">Offer Accepted</option>
-                                                                        <option value="Joined" className="text-emerald-600 font-bold">Joined</option>
-                                                                        <option value="No Show" className="text-rose-600 font-bold">No Show</option>
-                                                                        <option value="Offer Declined" className="text-rose-600 font-bold">Offer Declined</option>
-                                                                    </select>
-                                                                )}
-                                                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
-                                                                    <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                                                        <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                                                                    </svg>
+                                                                    {activePhase === 1 ? (
+                                                                        <select
+                                                                            value={candidate.decision || 'None'}
+                                                                            onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
+                                                                            className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                        >
+                                                                            <option value="None" className="text-slate-600">None</option>
+                                                                            <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
+                                                                            <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                                            <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
+                                                                        </select>
+                                                                    ) : activePhase === 2 ? (
+                                                                        <select
+                                                                            value={candidate.phase2Decision || 'None'}
+                                                                            onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
+                                                                            className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                        >
+                                                                            <option value="None" className="text-slate-600">None</option>
+                                                                            <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
+                                                                            <option value="Selected" className="text-purple-600 font-bold">Selected</option>
+                                                                            <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                                            <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
+                                                                        </select>
+                                                                    ) : (
+                                                                        <select
+                                                                            value={candidate.phase3Decision || 'None'}
+                                                                            onChange={(e) => handlePhase3DecisionChange(candidate._id, e.target.value)}
+                                                                            className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase3Decision || 'None')}`}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                        >
+                                                                            <option value="None" className="text-slate-600">None</option>
+                                                                            <option value="Offer Sent" className="text-blue-600 font-bold">Offer Sent</option>
+                                                                            <option value="Offer Accepted" className="text-amber-600 font-bold">Offer Accepted</option>
+                                                                            <option value="Joined" className="text-emerald-600 font-bold">Joined</option>
+                                                                            <option value="No Show" className="text-rose-600 font-bold">No Show</option>
+                                                                            <option value="Offer Declined" className="text-rose-600 font-bold">Offer Declined</option>
+                                                                        </select>
+                                                                    )}
+                                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                                                                        <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                                                            <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                                                                        </svg>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        </td>
+                                                            </td>
                                                         )}
                                                         {!selectedCandidateId && (
                                                             <td className="px-4 py-4 align-top">
@@ -1590,16 +1707,18 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                                                                         View Details
                                                                     </button>
 
-                                                                    <a
-                                                                        href={candidate.resumeUrl}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                                                                        onClick={() => setActiveMenu(null)}
-                                                                    >
-                                                                        <FileText size={16} className="text-slate-500" />
-                                                                        View Resume
-                                                                    </a>
+                                                                    {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
+                                                                        <a
+                                                                            href={candidate.resumeUrl}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                                                            onClick={() => setActiveMenu(null)}
+                                                                        >
+                                                                            <FileText size={16} className="text-slate-500" />
+                                                                            View Resume
+                                                                        </a>
+                                                                    )}
 
                                                                     {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
                                                                         <button
@@ -1698,21 +1817,21 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                         {/* Side Panel Header */}
                         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
                             <h2 className="text-lg font-bold text-slate-800">Quick Profile View</h2>
-                            <button 
+                            <button
                                 onClick={handleCloseCandidate}
                                 className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500 hover:text-slate-800 shadow-sm bg-white border border-slate-200"
                             >
                                 <X size={20} />
                             </button>
                         </div>
-                        
+
                         {/* Scrollable Content Area */}
                         <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50">
-                            <CandidateDetails 
+                            <CandidateDetails
                                 key={selectedCandidateId}
-                                candidateId={selectedCandidateId} 
-                                hiringRequestId={hiringRequestId} 
-                                isSidePanel={true} 
+                                candidateId={selectedCandidateId}
+                                hiringRequestId={hiringRequestId}
+                                isSidePanel={true}
                                 onUpdate={fetchCandidates}
                             />
                         </div>

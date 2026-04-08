@@ -275,14 +275,32 @@ const HiringRequestDetails = () => {
                                     </h3>
                                 </div>
                                 <div className="p-5 space-y-5">
-                                    <div>
-                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Must-Have Skills</h4>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {request.requirements.mustHaveSkills?.map(s => (
-                                                <span key={s} className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-semibold shadow-sm hover:shadow transition-shadow cursor-default">
-                                                    {s}
-                                                </span>
-                                            ))}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Must-Have Skills (Technical)</h4>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {(Array.isArray(request.requirements.mustHaveSkills) ? request.requirements.mustHaveSkills : request.requirements.mustHaveSkills?.technical)?.map(s => (
+                                                    <span key={s} className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-semibold shadow-sm hover:shadow transition-shadow cursor-default">
+                                                        {s}
+                                                    </span>
+                                                ))}
+                                                {(!(Array.isArray(request.requirements.mustHaveSkills) ? request.requirements.mustHaveSkills : request.requirements.mustHaveSkills?.technical)?.length) && (
+                                                    <span className="text-slate-400 italic text-xs">None specified</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Must-Have Skills (Soft Skills)</h4>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {request.requirements.mustHaveSkills?.softSkills?.map(s => (
+                                                    <span key={s} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-semibold shadow-sm hover:shadow transition-shadow cursor-default">
+                                                        {s}
+                                                    </span>
+                                                ))}
+                                                {!request.requirements.mustHaveSkills?.softSkills?.length && (
+                                                    <span className="text-slate-400 italic text-xs">None specified</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     <div>

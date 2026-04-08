@@ -1,8 +1,10 @@
 import React, { useState, useRef } from 'react';
 import * as ExcelJS from 'exceljs';
-import { X, Upload, FileText, CheckCircle, XCircle, AlertCircle, Loader, ArrowRight } from 'lucide-react';
+import { X, Upload, FileText, CheckCircle, XCircle, AlertCircle, Loader, ArrowRight, Download } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { saveAs } from 'file-saver';
+import { format } from 'date-fns';
 
 const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess }) => {
     const [, setFile] = useState(null);
@@ -14,6 +16,8 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
     const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'preview', 'summary'
     const [users, setUsers] = useState([]);
     const [existingCandidates, setExistingCandidates] = useState([]);
+    const [request, setRequest] = useState(null);
+    const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
     
     const fileInputRef = useRef(null);
 
@@ -34,12 +38,14 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         if (isOpen) {
             const fetchData = async () => {
                 try {
-                    const [usersRes, candidatesRes] = await Promise.all([
+                    const [usersRes, candidatesRes, requestRes] = await Promise.all([
                         api.get('/admin/users'),
-                        api.get(`/ta/candidates/${hiringRequestId}`)
+                        api.get(`/ta/candidates/${hiringRequestId}`),
+                        api.get(`/ta/hiring-request/${hiringRequestId}`)
                     ]);
                     setUsers(normalizeUsers(usersRes.data));
                     setExistingCandidates(normalizeCandidates(candidatesRes.data));
+                    setRequest(requestRes.data);
                 } catch (error) {
                     console.error('Error fetching import data:', error);
                 }
@@ -76,6 +82,30 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         if (typeof val !== 'string') return 0;
         const matches = val.match(/(\d+(\.\d+)?)/);
         return matches ? parseFloat(matches[1]) : 0;
+    };
+
+    const parseExcelDate = (dateVal) => {
+        if (!dateVal || dateVal === '-') return null;
+        try {
+            let finalDate = null;
+            if (dateVal instanceof Date) {
+                finalDate = dateVal;
+            } else if (typeof dateVal === 'string') {
+                const parsed = new Date(dateVal);
+                if (!isNaN(parsed.getTime())) finalDate = parsed;
+            } else if (typeof dateVal === 'number') {
+                // Excel serial date handle
+                const excelEpoch = new Date(1899, 11, 30);
+                finalDate = new Date(excelEpoch.getTime() + dateVal * 86400000);
+            }
+            
+            if (finalDate && !isNaN(finalDate.getTime())) {
+                return finalDate;
+            }
+        } catch (e) {
+            console.error('Error parsing date:', e);
+        }
+        return null;
     };
 
     const mapSource = (source) => {
@@ -124,19 +154,47 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             
             const rows = [];
             const row1 = worksheet.getRow(1);
+            const row2 = worksheet.getRow(2);
+            
             const headers = {};
-            row1.eachCell((cell, colNumber) => {
-                const val = cell.value?.toString().toLowerCase().trim();
-                if (val) headers[val] = colNumber;
-            });
+            const tier1Headers = {}; // Main categories (Basic Info, Round 1, etc.)
+            
+            // Check if it's a two-tier header format (standard in our new template)
+            const row2Value = row2.getCell(1).value?.toString().toLowerCase();
+            const isTwoTier = row2Value === 'sl no' || row2Value === 's.no' || row2Value === 'serial no';
+
+            if (isTwoTier) {
+                // Tier 1 (Main Headings)
+                row1.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                    const val = cell.value?.toString().trim();
+                    if (val) {
+                        tier1Headers[colNumber] = val;
+                    } else if (tier1Headers[colNumber - 1]) {
+                        // Support merged cells if ExcelJS doesn't explode them
+                        tier1Headers[colNumber] = tier1Headers[colNumber - 1];
+                    }
+                });
+
+                // Tier 2 (Sub-Headers)
+                row2.eachCell((cell, colNumber) => {
+                    const val = cell.value?.toString().toLowerCase().trim();
+                    if (val) headers[val] = colNumber;
+                });
+            } else {
+                // Legacy Single Row Header
+                row1.eachCell((cell, colNumber) => {
+                    const val = cell.value?.toString().toLowerCase().trim();
+                    if (val) headers[val] = colNumber;
+                });
+            }
 
             // Improved Column Mapping (Case-insensitive)
             const columnMapping = {
-                candidateName: ['name', 'candidate name', 'full name', 'name of candidate', 'candidate'],
-                email: ['email', 'email id', 'email address', 'email id'],
-                mobile: ['mobile no.', 'mobile', 'phone', 'contact', 'mobile no', 'mobile number'],
-                qualification: ['qualification', 'degree', 'education', 'qual'],
-                currentLocation: ['current location', 'location', 'city'],
+                candidateName: ['name of candidate', 'candidate name', 'name', 'full name', 'candidate'],
+                email: ['email', 'email id', 'email address'],
+                mobile: ['mobile no.', 'mobile', 'phone', 'contact', 'mobile number'],
+                qualification: ['qualification', 'degree', 'education'],
+                currentLocation: ['location', 'current location', 'city'],
                 preferredLocation: ['preferred location', 'pref location'],
                 source: ['source', 'recruitment source'],
                 profilePulledBy: ['profile pulled by', 'sourcing recruiter', 'pulled by'],
@@ -144,15 +202,15 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 rate: ['rate', 'billing rate'],
                 totalExperience: ['total experience', 'experience', 'exp', 'relevant expe'],
                 currentCompany: ['company', 'current company', 'organization'],
-                currentCTC: ['cctc', 'current ctc', 'ctc'],
-                expectedCTC: ['ectc', 'expected ctc', 'exp ctc'],
+                currentCTC: ['ctc', 'current ctc', 'cctc'],
+                expectedCTC: ['expected ctc', 'exp ctc', 'ectc'],
                 noticePeriod: ['notice period', 'np'],
                 tatToJoin: ['tat', 'tat to join'],
                 inHandOffer: ['any offer in hand', 'offer in hand', 'counter offer'],
-                status: ['round 1', 'status', 'initial status'],
-                remark: ['remarks', 'remark', 'comments'],
+                status: ['status', 'round 1', 'initial status'],
+                remark: ['remark', 'remarks', 'comments'],
                 offerCompany: ['offer company', 'company offered'],
-                lastWorkingDay: ['date of joining', 'last working day', 'doj', 'lwd'],
+                lastWorkingDay: ['date of joining new company', 'date of joining', 'last working day', 'doj', 'lwd'],
                 interviewDetails: ['interview details', 'interviews'],
                 interviewRemark: ['interview remark', 'evaluator feedback', 'interview summary'],
                 compSkillAssessment: ['comprehensive skill assessment', 'skill assessment', 'detailed ratings'],
@@ -160,7 +218,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             };
 
             worksheet.eachRow((row, rowNumber) => {
-                if (rowNumber === 1) return; // Skip headers
+                if (rowNumber === 1 || (isTwoTier && rowNumber === 2)) return; // Skip headers
 
                 const getCellValue = (keys) => {
                     // 1. Try exact matches first
@@ -170,8 +228,9 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                             const cell = row.getCell(colIndex);
                             const val = cell.value;
                             if (val === null || val === undefined) continue;
+                            if (val instanceof Date) return val;
                             if (typeof val === 'object') {
-                                return val.result || val.text || val.richText?.[0]?.text || null;
+                                return val.result !== undefined ? val.result : (val.text || val.richText?.[0]?.text || null);
                             }
                             return val;
                         }
@@ -220,113 +279,152 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     interviewRounds: []
                 };
 
-                // Parse Date of Joining
-                if (mappedRow.lastWorkingDay) {
-                    try {
-                        const dateVal = mappedRow.lastWorkingDay;
-                        if (dateVal instanceof Date) {
-                            mappedRow.lastWorkingDay = dateVal;
-                        } else if (typeof dateVal === 'string') {
-                            mappedRow.lastWorkingDay = new Date(dateVal);
-                        } else if (typeof dateVal === 'number') {
-                            // Excel serial date handle
-                            const excelEpoch = new Date(1899, 11, 30);
-                            mappedRow.lastWorkingDay = new Date(excelEpoch.getTime() + dateVal * 86400000);
-                        }
-                    } catch {
-                        mappedRow.lastWorkingDay = null;
-                    }
-                }
+                // Parse Date of Joining/Last Working Day
+                mappedRow.lastWorkingDay = parseExcelDate(mappedRow.lastWorkingDay);
 
                 // Identify and Parse Must-Have Skills
-                const standardHeaders = [].concat(...Object.values(columnMapping), 'sl no', 'serial no.', 'serial no', 'slno', 'submission date', 'date');
-                Object.keys(headers).forEach(header => {
-                    const h = header.toLowerCase();
-                    if (!standardHeaders.includes(h)) {
-                        const val = row.getCell(headers[header]).value;
-                        if (val !== undefined && val !== null && val !== '') {
-                            mappedRow.mustHaveSkills.push({
-                                skill: header,
-                                experience: extractNumeric(val)
-                            });
-                        }
-                    }
-                });
-
-                // Parse Interview Rounds (the hard part)
-                const rawDetails = getCellValue(columnMapping.interviewDetails)?.toString() || '';
-                const rawRemarks = getCellValue(columnMapping.interviewRemark)?.toString() || '';
-                const rawAssessment = getCellValue(columnMapping.compSkillAssessment)?.toString() || '';
-                const rawInterviewers = getCellValue(columnMapping.interviewerName)?.toString() || '';
-
-                if (rawDetails || rawRemarks || rawAssessment || rawInterviewers) {
-                    // Extract rounds by splitting on R1:, R2:, etc. if they exist, or just use newlines
-                    // This is a naive attempt to reconstruct structured data from strings
-                    // We'll prioritize the 'Interview Details' as the anchor for rounds
-                    // Extra robust split for rounds and interviewers
-                    const splitRegex = /\r?\n|R\d+[:\s]+|Round\s*\d+[:\s]*/i;
-                    const roundLines = rawDetails.split(splitRegex).map(l => l.trim()).filter(l => l.length > 3);
-                    const remarkLines = rawRemarks.split(splitRegex).map(l => l.trim()).filter(l => l.length > 0);
-                    const assessmentLines = rawAssessment.split(splitRegex).map(l => l.trim()).filter(l => l.length > 0);
-                    const interviewerLines = rawInterviewers.split(splitRegex).map(l => l.trim()).filter(l => l.length > 0);
-
-                    const maxRounds = Math.max(roundLines.length, remarkLines.length, assessmentLines.length, interviewerLines.length);
-
-                    for (let i = 0; i < maxRounds; i++) {
-                        const roundObj = {
-                            levelName: `Round ${i + 1}`,
-                            status: 'Passed', // Default if we found data
-                            phase: 1,
-                            feedback: remarkLines[i]?.trim() || '',
-                            rating: null,
-                            skillRatings: []
-                        };
-
-                        // Parse Details Line: "R1 (L1 - Technical): Passed - 9/10"
-                        if (roundLines[i]) {
-                            const line = roundLines[i];
-                            const levelMatch = line.match(/\(([^)]+)\)/);
-                            if (levelMatch) roundObj.levelName = levelMatch[1];
-
-                            const statusMatch = line.match(/:\s*([^-:\n]+)/);
-                            if (statusMatch) {
-                                const s = statusMatch[1].trim();
-                                if (['Passed', 'Failed', 'Scheduled', 'Pending'].includes(s)) roundObj.status = s;
-                            }
-
-                            const ratingMatch = line.match(/(\d+)\/10/);
-                            if (ratingMatch) roundObj.rating = parseInt(ratingMatch[1]);
-                        }
-
-                        // Parse Assessment Line: "R1: 9/10 (DSA: 8/10, C++: 8/10)"
-                        if (assessmentLines[i]) {
-                            const line = assessmentLines[i];
-                            const overallMatch = line.match(/(\d+)\/10/);
-                            if (overallMatch && !roundObj.rating) roundObj.rating = parseInt(overallMatch[1]);
-
-                            const skillMatch = line.match(/\(([^)]+)\)/);
-                            if (skillMatch) {
-                                const skills = skillMatch[1].split(',');
-                                skills.forEach(s => {
-                                    const parts = s.split(':');
-                                    if (parts.length === 2) {
-                                        const rMatch = parts[1].match(/(\d+)\/10/);
-                                        roundObj.skillRatings.push({
-                                            skill: parts[0].trim(),
-                                            rating: rMatch ? parseInt(rMatch[1]) : extractNumeric(parts[1]),
-                                            category: 'Must-Have'
-                                        });
-                                    }
+                const standardHeaders = [].concat(...Object.values(columnMapping), 'sl no', 's.no', 'serial no.', 'serial no', 'slno', 'submission date', 'date', 'relevant experience', 'custom remark', 'profile shortlisted (yes/no)', 'final scoring', 'profile shared', 'interview status', 'reason', 'decision status (auto-calculated)');
+                
+                if (isTwoTier) {
+                    // In two-tier, technical skills are specifically under "Technical Skills (Experience)"
+                    Object.keys(headers).forEach(header => {
+                        const colIdx = headers[header]; // This is already a number from eachCell
+                        const tier1 = tier1Headers[colIdx];
+                        if (tier1 === 'Technical Skills (Experience)') {
+                            const val = row.getCell(colIdx).value;
+                            if (val !== undefined && val !== null && val !== '') {
+                                mappedRow.mustHaveSkills.push({
+                                    skill: header, // Column header is the skill name
+                                    experience: extractNumeric(val)
                                 });
                             }
                         }
-
-                        // Store raw interviewer name for resolution at import time
-                        if (interviewerLines[i]) {
-                            roundObj.rawInterviewer = interviewerLines[i].replace(/^R\d+:\s*/i, '').trim();
+                    });
+                } else {
+                    // Legacy Fallback
+                    Object.keys(headers).forEach(header => {
+                        const h = header.toLowerCase();
+                        if (!standardHeaders.includes(h)) {
+                            const val = row.getCell(headers[header]).value;
+                            if (val !== undefined && val !== null && val !== '') {
+                                mappedRow.mustHaveSkills.push({
+                                    skill: header,
+                                    experience: extractNumeric(val)
+                                });
+                            }
                         }
+                    });
+                }
 
-                        mappedRow.interviewRounds.push(roundObj);
+                // Parse Interview Rounds (Enhanced for two-tier)
+                if (isTwoTier) {
+                    const roundsMap = {}; // { "Round 1": { feedback: ..., date: ... } }
+                    
+                    Object.keys(tier1Headers).forEach(colIdxStr => {
+                        const colIdx = Number(colIdxStr);
+                        const mainHeader = tier1Headers[colIdx];
+                        if (mainHeader && (mainHeader.startsWith('Round ') || mainHeader === 'Internal Round')) {
+                            const roundName = mainHeader;
+                            if (!roundsMap[roundName]) {
+                                roundsMap[roundName] = {
+                                    levelName: roundName,
+                                    status: 'Passed',
+                                    phase: 1,
+                                    skillRatings: []
+                                };
+                            }
+
+                            const subHeader = row2.getCell(colIdx).value?.toString().trim();
+                            const val = row.getCell(colIdx).value;
+                            const lowerSub = subHeader?.toLowerCase();
+
+                            if (lowerSub === 'interviewer feedback' || lowerSub === 'remarks') {
+                                roundsMap[roundName].feedback = val || '';
+                            } else if (lowerSub === 'interview date') {
+                                roundsMap[roundName].scheduledDate = parseExcelDate(val);
+                            } else if (lowerSub === 'interviewer name') {
+                                roundsMap[roundName].rawInterviewer = val;
+                            } else if (subHeader && val !== null && val !== undefined && val !== '') {
+                                // Assume it's a skill rating if not standard
+                                    roundsMap[roundName].skillRatings.push({
+                                        skill: subHeader,
+                                        rating: extractNumeric(val),
+                                        category: 'Additional' // Must match backend enum: 'Must-Have', 'Nice-To-Have', 'Additional'
+                                    });
+                            }
+                        }
+                    });
+
+                    mappedRow.interviewRounds = Object.values(roundsMap).filter(r => r.feedback || r.scheduledDate || r.rawInterviewer || r.skillRatings.length > 0);
+                } else {
+                    // Legacy Split Logic
+                    const rawDetails = getCellValue(columnMapping.interviewDetails)?.toString() || '';
+                    const rawRemarks = getCellValue(columnMapping.interviewRemark)?.toString() || '';
+                    const rawAssessment = getCellValue(columnMapping.compSkillAssessment)?.toString() || '';
+                    const rawInterviewers = getCellValue(columnMapping.interviewerName)?.toString() || '';
+
+                    if (rawDetails || rawRemarks || rawAssessment || rawInterviewers) {
+                        const splitRegex = /\r?\n|R\d+[:\s]+|Round\s*\d+[:\s]*/i;
+                        const roundLines = rawDetails.split(splitRegex).map(l => l.trim()).filter(l => l.length > 3);
+                        const remarkLines = rawRemarks.split(splitRegex).map(l => l.trim()).filter(l => l.length > 0);
+                        const assessmentLines = rawAssessment.split(splitRegex).map(l => l.trim()).filter(l => l.length > 0);
+                        const interviewerLines = rawInterviewers.split(splitRegex).map(l => l.trim()).filter(l => l.length > 0);
+
+                        const maxRoundsCount = Math.max(roundLines.length, remarkLines.length, assessmentLines.length, interviewerLines.length);
+
+                        for (let i = 0; i < maxRoundsCount; i++) {
+                            const roundObj = {
+                                levelName: `Round ${i + 1}`,
+                                status: 'Passed',
+                                phase: 1,
+                                feedback: remarkLines[i]?.trim() || '',
+                                rating: null,
+                                skillRatings: []
+                            };
+
+                            if (roundLines[i]) {
+                                const line = roundLines[i];
+                                const levelMatch = line.match(/\(([^)]+)\)/);
+                                if (levelMatch) roundObj.levelName = levelMatch[1];
+
+                                const statusMatch = line.match(/:\s*([^-:\n]+)/);
+                                if (statusMatch) {
+                                    const s = statusMatch[1].trim();
+                                    if (['Passed', 'Failed', 'Scheduled', 'Pending'].includes(s)) roundObj.status = s;
+                                }
+
+                                const ratingMatch = line.match(/(\d+)\/10/);
+                                if (ratingMatch) roundObj.rating = parseInt(ratingMatch[1]);
+                            }
+
+                            if (assessmentLines[i]) {
+                                const line = assessmentLines[i];
+                                const overallMatch = line.match(/(\d+)\/10/);
+                                if (overallMatch && !roundObj.rating) roundObj.rating = parseInt(overallMatch[1]);
+
+                                const skillMatch = line.match(/\(([^)]+)\)/);
+                                if (skillMatch) {
+                                    const skills = skillMatch[1].split(',');
+                                    skills.forEach(s => {
+                                        const parts = s.split(':');
+                                        if (parts.length === 2) {
+                                            const rMatch = parts[1].match(/(\d+)\/10/);
+                                            roundObj.skillRatings.push({
+                                                skill: parts[0].trim(),
+                                                rating: rMatch ? parseInt(rMatch[1]) : extractNumeric(parts[1]),
+                                                category: 'Must-Have'
+                                            });
+                                        }
+                                    });
+                                }
+                            }
+
+                            if (interviewerLines[i]) {
+                                roundObj.rawInterviewer = interviewerLines[i].replace(/^R\d+:\s*/i, '').trim();
+                            }
+
+                            mappedRow.interviewRounds.push(roundObj);
+                        }
                     }
                 }
 
@@ -380,7 +478,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 // Resolve interviewers right before import using latest users list
                 const processedRounds = (row.data.interviewRounds || []).map(round => {
                     if (round.rawInterviewer && users.length > 0) {
-                        const normalize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const normalize = (s) => (s ? String(s) : '').toLowerCase().replace(/[^a-z0-9]/g, '');
                         const searchName = normalize(round.rawInterviewer);
                         
                         const foundUser = users.find(u => {
@@ -431,6 +529,116 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         onClose();
     };
 
+    const handleDownloadTemplate = async () => {
+        try {
+            setIsDownloadingTemplate(true);
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('Candidate Import Template');
+
+            // Skills from Hiring Request
+            const techSkills = (Array.isArray(request?.requirements?.mustHaveSkills) 
+                ? request.requirements.mustHaveSkills 
+                : request?.requirements?.mustHaveSkills?.technical) || [];
+            
+            const softSkills = ['Communication Skills', 'Behavioral Skills'];
+
+            // Define Sections (Matches Export)
+            const sections = [
+                { title: 'Basic Info', subHeaders: ['S.no', 'Submission Date', 'Source', 'Profile pulled by', 'Calling by', 'Name of Candidate', 'Total Experience'], width: 7 },
+                { title: 'Internal Round', subHeaders: ['TAT', 'Rate', 'Remarks'], width: 3 },
+                { title: 'Experience', subHeaders: ['Relevant Experience'], width: 1 },
+                { title: 'Technical Skills (Experience)', subHeaders: techSkills, width: techSkills.length },
+                { title: 'Education & Employment', subHeaders: ['Qualification', 'Company'], width: 2 },
+                { title: 'Compensation', subHeaders: ['CTC', 'Expected CTC'], width: 2 },
+                { title: 'Availability & Location', subHeaders: ['Notice Period', 'Location', 'Preferred Location'], width: 3 },
+                { title: 'Contact Details', subHeaders: ['Email', 'Mobile No.'], width: 2 },
+                { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
+                { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
+                { 
+                    title: 'Round 1', 
+                    subHeaders: ['Interviewer Feedback', 'Interview date', 'Interviewer Name', ...softSkills, ...techSkills],
+                    width: 3 + softSkills.length + techSkills.length 
+                },
+                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Interview Status', 'Reason', 'Decision Status (Auto-calculated)'], width: 6 }
+            ].filter(s => s.width > 0);
+
+            // Row 1: Main Headings
+            const row1Data = [];
+            sections.forEach(s => {
+                row1Data.push(s.title);
+                for (let i = 1; i < s.width; i++) row1Data.push('');
+            });
+            const row1 = sheet.addRow(row1Data);
+
+            // Row 2: Sub-Headers
+            const row2Data = [];
+            sections.forEach(s => {
+                s.subHeaders.forEach(sub => row2Data.push(sub));
+            });
+            const row2 = sheet.addRow(row2Data);
+
+            // Merging Main Headings
+            let currentCol = 1;
+            sections.forEach(s => {
+                if (s.width > 1) {
+                    sheet.mergeCells(1, currentCol, 1, currentCol + s.width - 1);
+                }
+                currentCol += s.width;
+            });
+
+            // Formatting
+            row2Data.forEach((_, i) => {
+                const col = sheet.getColumn(i + 1);
+                col.width = 20;
+                col.alignment = { wrapText: true, vertical: 'middle', horizontal: 'center' };
+            });
+
+            [row1, row2].forEach((row, idx) => {
+                row.font = { bold: true };
+                row.eachCell(cell => {
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    cell.fill = {
+                        type: 'pattern',
+                        pattern: 'solid',
+                        fgColor: { argb: idx === 0 ? 'FFD9EAD3' : 'FFE0E0E0' }
+                    };
+                    cell.border = {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    };
+                });
+            });
+
+            // Sample Row to show format
+            const sampleRow = row2Data.map(h => {
+                const lower = h.toLowerCase();
+                if (lower === 's.no') return 1;
+                if (lower === 'submission date') return format(new Date(), 'dd-MMM-yyyy');
+                if (lower === 'name of candidate') return 'Sample Candidate';
+                if (lower === 'email') return 'sample@example.com';
+                if (lower === 'mobile no.') return '9876543210';
+                if (lower === 'status') return 'Interested';
+                if (lower === 'profile shortlisted (yes/no)') return 'Yes';
+                if (h.includes('Skill') || techSkills.includes(h)) return '0';
+                return '-';
+            });
+            sheet.addRow(sampleRow);
+
+            sheet.views = [{ state: 'frozen', ySplit: 2 }];
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            saveAs(new Blob([buffer]), `Bulk_Import_Template_${request?.roleDetails?.title || 'Candidates'}.xlsx`);
+            toast.success('Template downloaded successfully');
+        } catch (error) {
+            console.error('Template error:', error);
+            toast.error('Failed to generate template');
+        } finally {
+            setIsDownloadingTemplate(false);
+        }
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -460,7 +668,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                             </div>
                             <h3 className="text-lg font-bold text-slate-800 mb-2">Drag and drop your Excel file here</h3>
                             <p className="text-slate-500 text-center mb-8 max-w-sm">
-                                Support .xlsx and .xls files. Make sure headers match the required structure.
+                                Support .xlsx and .xls files. Use the standard two-tier template for best results.
                             </p>
                             
                             <input 
@@ -471,14 +679,25 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                 className="hidden"
                             />
                             
-                            <button 
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={isParsing}
-                                className="flex items-center gap-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50"
-                            >
-                                {isParsing ? <Loader className="animate-spin" size={20} /> : <FileText size={20} />}
-                                {isParsing ? 'Parsing File...' : 'Browse Files'}
-                            </button>
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <button 
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={isParsing}
+                                    className="flex items-center justify-center gap-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                                >
+                                    {isParsing ? <Loader className="animate-spin" size={20} /> : <FileText size={20} />}
+                                    {isParsing ? 'Parsing File...' : 'Browse Files'}
+                                </button>
+                                
+                                <button 
+                                    onClick={handleDownloadTemplate}
+                                    disabled={isDownloadingTemplate || !request}
+                                    className="flex items-center justify-center gap-2 px-8 py-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                                >
+                                    {isDownloadingTemplate ? <Loader className="animate-spin" size={20} /> : <Download size={20} className="text-blue-600" />}
+                                    Download Template
+                                </button>
+                            </div>
                         </div>
                     )}
 

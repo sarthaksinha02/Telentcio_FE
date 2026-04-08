@@ -503,7 +503,7 @@ const CandidateForm = () => {
                         </h1>
 
                         {/* Toggle Resume Panel Button */}
-                        {(resumeFile || resumeUrl) && (
+                        {(resumeFile || (resumeUrl && String(resumeUrl).startsWith('http'))) && (
                             <button
                                 onClick={() => setShowResumePanel(!showResumePanel)}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${showResumePanel
@@ -519,9 +519,9 @@ const CandidateForm = () => {
                 </div>
             </div>
 
-            <div className={`w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 transition-all duration-500 ${showResumePanel && (resumeFile || resumeUrl) ? 'max-w-full' : 'max-w-7xl'}`}>
+            <div className={`w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 transition-all duration-500 ${(resumeFile || (resumeUrl && String(resumeUrl).startsWith('http'))) && showResumePanel ? 'max-w-full' : 'max-w-7xl'}`}>
                 <div className="flex gap-6 relative">
-                    <div className={`transition-all duration-500 ${showResumePanel && (resumeFile || resumeUrl) ? 'flex-1 h-[calc(100vh-140px)] overflow-y-auto' : 'w-full'}`}>
+                    <div className={`transition-all duration-500 ${(resumeFile || (resumeUrl && String(resumeUrl).startsWith('http'))) && showResumePanel ? 'flex-1 h-[calc(100vh-140px)] overflow-y-auto' : 'w-full'}`}>
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
                             {/* Form */}
                             <form onSubmit={handleSubmit} className="p-6 space-y-4">
