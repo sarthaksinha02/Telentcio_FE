@@ -10,9 +10,10 @@ import Skeleton from '../../components/Skeleton';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import BulkCandidateImport from './BulkCandidateImport';
+import BulkResumeImport from './BulkResumeImport';
 import CandidateDetails from './CandidateDetails';
 
-const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) => {
+const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hiringRequestStatus }) => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
@@ -37,6 +38,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
     const [activeMenu, setActiveMenu] = useState(null);
     const [activePhase, setActivePhase] = useState(1);
     const [showBulkImport, setShowBulkImport] = useState(false);
+    const [showBulkResumeImport, setShowBulkResumeImport] = useState(false);
 
     const handleSelectCandidate = (candId) => {
         const newParams = new URLSearchParams(searchParams);
@@ -150,15 +152,19 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
+                
+                const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
+                const allCompleted = rounds.length > 0 && completedRounds.length === rounds.length;
                 const hasFailed = rounds.some(r => r.status === 'Failed');
-                const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
+                const hasScheduled = rounds.some(r => (r.status === 'Scheduled' || r.status === 'Pending') && !r.feedback);
 
                 matchInterviewStatus = false;
                 if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-                else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0;
-                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
+                else if (filterInterviewStatus === 'Pending') matchInterviewStatus = (rounds.length > 0 && !allCompleted && !hasFailed && !hasScheduled);
+                else if (filterInterviewStatus === 'Scheduled') matchInterviewStatus = hasScheduled;
+                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allCompleted && !hasFailed;
                 else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
-                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && (!candidate.decision || candidate.decision === 'None');
+                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && !allCompleted;
             }
             return matchStatus && matchDecision && matchInterviewStatus;
         });
@@ -219,15 +225,18 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
-                const hasPending = rounds.some(r => r.status === 'Pending' || r.status === 'Scheduled');
+                const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
+                const allCompleted = rounds.length > 0 && completedRounds.length === rounds.length;
                 const hasFailed = rounds.some(r => r.status === 'Failed');
-                const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
+                const hasScheduled = rounds.some(r => (r.status === 'Scheduled' || r.status === 'Pending') && !r.feedback);
+
                 matchInterviewStatus = false;
                 if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-                else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0 && hasPending && !hasFailed;
-                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
+                else if (filterInterviewStatus === 'Pending') matchInterviewStatus = (rounds.length > 0 && !allCompleted && !hasFailed && !hasScheduled);
+                else if (filterInterviewStatus === 'Scheduled') matchInterviewStatus = hasScheduled;
+                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allCompleted && !hasFailed;
                 else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
-                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && (!candidate.phase2Decision || candidate.phase2Decision === 'None');
+                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && !allCompleted;
             }
             return matchDecision && matchInterviewStatus;
         });
@@ -283,14 +292,18 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 3) : [];
+                const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
+                const allCompleted = rounds.length > 0 && completedRounds.length === rounds.length;
                 const hasFailed = rounds.some(r => r.status === 'Failed');
-                const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
+                const hasScheduled = rounds.some(r => (r.status === 'Scheduled' || r.status === 'Pending') && !r.feedback);
+
                 matchInterviewStatus = false;
                 if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-                else if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') matchInterviewStatus = rounds.length > 0;
-                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allPassed;
+                else if (filterInterviewStatus === 'Pending') matchInterviewStatus = (rounds.length > 0 && !allCompleted && !hasFailed && !hasScheduled);
+                else if (filterInterviewStatus === 'Scheduled') matchInterviewStatus = hasScheduled;
+                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allCompleted && !hasFailed;
                 else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
-                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && !['No Show', 'Offer Declined'].includes(candidate.phase3Decision);
+                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && !allCompleted;
             }
             return matchDecision && matchInterviewStatus;
         });
@@ -720,20 +733,33 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
     const getInterviewStatusSummary = (rounds = []) => {
         if (!rounds || rounds.length === 0) return { label: 'None', color: 'text-slate-400 bg-slate-50 border-slate-200' };
 
-        const pending = rounds.filter(r => r.status === 'Pending' || r.status === 'Scheduled').length;
-        const passed = rounds.filter(r => r.status === 'Passed').length;
+        const total = rounds.length;
+        const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
+        const completedCount = completedRounds.length;
+        
         const failedRounds = rounds.filter(r => r.status === 'Failed');
         const failedCount = failedRounds.length;
-        const total = rounds.length;
+
+        const scheduledRounds = rounds.filter(r => (r.status === 'Scheduled' || r.status === 'Pending') && !r.feedback);
 
         if (failedCount > 0) {
             const failedNames = failedRounds.map(r => r.levelName).join(', ');
             return { label: `Failed: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
         }
-        if (pending > 0) return { label: `${passed}/${total} Completed`, color: 'text-amber-700 bg-amber-50 border-amber-200' };
-        if (passed === total) return { label: 'All Passed', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
 
-        return { label: 'In Progress', color: 'text-blue-700 bg-blue-50 border-blue-200' };
+        if (scheduledRounds.length > 0 && completedCount === 0) {
+            return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
+        }
+
+        if (completedCount < total) {
+            return { label: `${completedCount}/${total} Completed`, color: 'text-amber-700 bg-amber-50 border-amber-200' };
+        }
+
+        if (completedCount === total && total > 0) {
+            return { label: 'All Passed', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+        }
+
+        return { label: 'Pending', color: 'text-amber-700 bg-amber-50 border-amber-200' };
     };
 
     if (loading) {
@@ -848,11 +874,20 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     </button>
                     {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
                         <button
+                            onClick={() => setShowBulkResumeImport(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+                        >
+                            <FileText size={18} />
+                            Bulk Upload Resumes
+                        </button>
+                    )}
+                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                        <button
                             onClick={() => setShowBulkImport(true)}
                             className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-medium transition-colors"
                         >
                             <Upload size={18} />
-                            Bulk Import
+                            Bulk Import (Excel)
                         </button>
                     )}
                     {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
@@ -1733,7 +1768,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                                                                         </button>
                                                                     )}
 
-                                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && hiringRequestStatus === 'Closed' && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 handleTransfer(candidate._id);
@@ -1844,6 +1879,15 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false }) 
                     hiringRequestId={hiringRequestId}
                     isOpen={showBulkImport}
                     onClose={() => setShowBulkImport(false)}
+                    onImportSuccess={fetchCandidates}
+                />
+            )}
+            
+            {showBulkResumeImport && (
+                <BulkResumeImport
+                    hiringRequestId={hiringRequestId}
+                    isOpen={showBulkResumeImport}
+                    onClose={() => setShowBulkResumeImport(false)}
                     onImportSuccess={fetchCandidates}
                 />
             )}

@@ -121,10 +121,21 @@ const CandidateForm = () => {
 
             if (reqData?.requirements) {
                 const { mustHaveSkills, niceToHaveSkills } = reqData.requirements;
+                
+                // Safely extract mustHaveSkills (it could be an object { technical: [], softSkills: [] } or just an array)
+                const techSkills = Array.isArray(mustHaveSkills?.technical) ? mustHaveSkills.technical : (Array.isArray(mustHaveSkills) ? mustHaveSkills : []);
+                const softSkills = Array.isArray(mustHaveSkills?.softSkills) ? mustHaveSkills.softSkills : [];
+                const allMustHave = [...techSkills, ...softSkills];
+
+                // Safely extract niceToHaveSkills
+                const niceTech = Array.isArray(niceToHaveSkills?.technical) ? niceToHaveSkills.technical : (Array.isArray(niceToHaveSkills) ? niceToHaveSkills : []);
+                const niceSoft = Array.isArray(niceToHaveSkills?.softSkills) ? niceToHaveSkills.softSkills : [];
+                const allNiceToHave = [...niceTech, ...niceSoft];
+
                 setFormData(prev => ({
                     ...prev,
-                    mustHaveSkills: (mustHaveSkills || []).map(s => ({ skill: s, experience: '' })),
-                    niceToHaveSkills: (niceToHaveSkills || []).map(s => ({ skill: s, experience: '' }))
+                    mustHaveSkills: allMustHave.map(s => ({ skill: s, experience: '' })),
+                    niceToHaveSkills: allNiceToHave.map(s => ({ skill: s, experience: '' }))
                 }));
             }
         } catch (error) {
@@ -198,15 +209,22 @@ const CandidateForm = () => {
         }
     }, [candidateId, hiringRequestId, navigate]);
 
+    // 1. Fetch auxiliary data (Sources, Users) ONCE on mount
     useEffect(() => {
         fetchSourceOptions();
         fetchUsers();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // 2. Fetch specific candidate or requisition data when their IDs change
+    useEffect(() => {
         if (candidateId) {
             fetchCandidateDetails();
         } else if (hiringRequestId) {
             fetchRequisitionSkills();
         }
-    }, [candidateId, hiringRequestId, fetchCandidateDetails, fetchRequisitionSkills, fetchSourceOptions, fetchUsers]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [candidateId, hiringRequestId]);
 
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
@@ -507,8 +525,8 @@ const CandidateForm = () => {
                             <button
                                 onClick={() => setShowResumePanel(!showResumePanel)}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${showResumePanel
-                                        ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                     }`}
                             >
                                 {showResumePanel ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -857,8 +875,8 @@ const CandidateForm = () => {
                                     </div>
                                 </div>
                                 <iframe
-                                    src={(previewUrl || resumeUrl)?.startsWith('blob:') 
-                                        ? (previewUrl || resumeUrl) 
+                                    src={(previewUrl || resumeUrl)?.startsWith('blob:')
+                                        ? (previewUrl || resumeUrl)
                                         : (previewUrl || resumeUrl)?.replace('http://', 'https://')}
                                     className="w-full h-full relative z-10 border-none bg-white"
                                     title="Resume Preview"

@@ -18,7 +18,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
     const [existingCandidates, setExistingCandidates] = useState([]);
     const [request, setRequest] = useState(null);
     const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
-    
+
     const fileInputRef = useRef(null);
 
     const normalizeUsers = (payload) => {
@@ -98,7 +98,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 const excelEpoch = new Date(1899, 11, 30);
                 finalDate = new Date(excelEpoch.getTime() + dateVal * 86400000);
             }
-            
+
             if (finalDate && !isNaN(finalDate.getTime())) {
                 return finalDate;
             }
@@ -151,14 +151,14 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             if (!worksheet) {
                 throw new Error('No worksheets found in the Excel file');
             }
-            
+
             const rows = [];
             const row1 = worksheet.getRow(1);
             const row2 = worksheet.getRow(2);
-            
+
             const headers = {};
             const tier1Headers = {}; // Main categories (Basic Info, Round 1, etc.)
-            
+
             // Check if it's a two-tier header format (standard in our new template)
             const row2Value = row2.getCell(1).value?.toString().toLowerCase();
             const isTwoTier = row2Value === 'sl no' || row2Value === 's.no' || row2Value === 'serial no';
@@ -214,13 +214,25 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 interviewDetails: ['interview details', 'interviews'],
                 interviewRemark: ['interview remark', 'evaluator feedback', 'interview summary'],
                 compSkillAssessment: ['comprehensive skill assessment', 'skill assessment', 'detailed ratings'],
-                interviewerName: ['interviewer name', 'panel name', 'evaluated by']
+                interviewerName: ['interviewer name', 'panel name', 'evaluated by'],
+                isShortlisted: ['profile shortlisted (yes/no)', 'shortlisted', 'shortlisted?', 'profile shortlisted', 'is shortlisted']
             };
+
+            const reqMustHave = request?.requirements?.mustHaveSkills;
+            let techSkills = [];
+            let softSkills = [];
+            if (reqMustHave && typeof reqMustHave === 'object' && !Array.isArray(reqMustHave)) {
+                techSkills = (reqMustHave.technical || []).map(s => typeof s === 'string' ? s : (s?.skill || ''));
+                softSkills = (reqMustHave.softSkills || []).map(s => typeof s === 'string' ? s : (s?.skill || ''));
+            } else if (Array.isArray(reqMustHave)) {
+                techSkills = reqMustHave.map(s => typeof s === 'string' ? s : (s?.skill || ''));
+            }
 
             worksheet.eachRow((row, rowNumber) => {
                 if (rowNumber === 1 || (isTwoTier && rowNumber === 2)) return; // Skip headers
 
                 const getCellValue = (keys) => {
+                    if (!keys || !Array.isArray(keys)) return null;
                     // 1. Try exact matches first
                     for (const key of keys) {
                         const colIndex = headers[key];
@@ -235,10 +247,21 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                             return val;
                         }
                     }
-                    
+
+                    // 1.5 Fuzzy matching for shortlist/decision fields
+                    if (keys.includes('profile shortlisted (yes/no)')) {
+                        const fuzzyKey = Object.keys(headers).find(h => 
+                            h.includes('shortlisted') || (h.includes('profile') && h.includes('yes/no'))
+                        );
+                        if (fuzzyKey) {
+                            const val = row.getCell(headers[fuzzyKey]).value;
+                            return val && typeof val === 'object' ? (val.result || val.text || null) : val;
+                        }
+                    }
+
                     // 2. Fallback for Name: look for any header containing 'name' but not other specific things
                     if (keys.includes('name')) {
-                        const nameHeader = Object.keys(headers).find(h => 
+                        const nameHeader = Object.keys(headers).find(h =>
                             (h.includes('name') && !h.includes('company') && !h.includes('referral') && !h.includes('profile'))
                         );
                         if (nameHeader) {
@@ -275,6 +298,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     hiringRequestId: hiringRequestId,
                     resumeUrl: 'bulk-imported-placeholder',
                     resumePublicId: 'bulk-imported-placeholder',
+                    decision: getCellValue(columnMapping.isShortlisted)?.toString().toLowerCase() === 'yes' ? 'Shortlisted' : 'None',
                     mustHaveSkills: [],
                     interviewRounds: []
                 };
@@ -284,7 +308,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
                 // Identify and Parse Must-Have Skills
                 const standardHeaders = [].concat(...Object.values(columnMapping), 'sl no', 's.no', 'serial no.', 'serial no', 'slno', 'submission date', 'date', 'relevant experience', 'custom remark', 'profile shortlisted (yes/no)', 'final scoring', 'profile shared', 'interview status', 'reason', 'decision status (auto-calculated)');
-                
+
                 if (isTwoTier) {
                     // In two-tier, technical skills are specifically under "Technical Skills (Experience)"
                     Object.keys(headers).forEach(header => {
@@ -319,11 +343,12 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 // Parse Interview Rounds (Enhanced for two-tier)
                 if (isTwoTier) {
                     const roundsMap = {}; // { "Round 1": { feedback: ..., date: ... } }
-                    
+
                     Object.keys(tier1Headers).forEach(colIdxStr => {
                         const colIdx = Number(colIdxStr);
                         const mainHeader = tier1Headers[colIdx];
-                        if (mainHeader && (mainHeader.startsWith('Round ') || mainHeader === 'Internal Round')) {
+                        // Only "Round X" headers are treated as formal timeline rounds
+                        if (mainHeader && mainHeader.startsWith('Round ')) {
                             const roundName = mainHeader;
                             if (!roundsMap[roundName]) {
                                 roundsMap[roundName] = {
@@ -345,17 +370,39 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                             } else if (lowerSub === 'interviewer name') {
                                 roundsMap[roundName].rawInterviewer = val;
                             } else if (subHeader && val !== null && val !== undefined && val !== '') {
-                                // Assume it's a skill rating if not standard
+                                const lowerSubHeader = subHeader.toLowerCase();
+                                if (lowerSubHeader !== 'tat' && lowerSubHeader !== 'rate' && lowerSubHeader !== 'billing rate') {
+                                    // Soft skills and requisition skills should ideally be 'Must-Have'
+                                    const isMustHave = softSkills.some(s => s.toLowerCase() === lowerSubHeader) ||
+                                        techSkills.some(s => s.toLowerCase() === lowerSubHeader);
+
                                     roundsMap[roundName].skillRatings.push({
                                         skill: subHeader,
                                         rating: extractNumeric(val),
-                                        category: 'Additional' // Must match backend enum: 'Must-Have', 'Nice-To-Have', 'Additional'
+                                        category: isMustHave ? 'Must-Have' : 'Additional'
                                     });
+                                }
                             }
                         }
                     });
 
-                    mappedRow.interviewRounds = Object.values(roundsMap).filter(r => r.feedback || r.scheduledDate || r.rawInterviewer || r.skillRatings.length > 0);
+                    mappedRow.interviewRounds = Object.values(roundsMap).filter(r => {
+                        const hasFeedback = r.feedback && r.feedback.toString().trim() !== '';
+                        const hasDate = !!r.scheduledDate;
+                        const hasInterviewer = r.rawInterviewer && r.rawInterviewer.toString().trim() !== '';
+                        const hasValidRatings = r.skillRatings.some(sr => sr.rating > 0);
+
+                        // Calculate overall round rating from constituent skills if they exist
+                        if (hasValidRatings) {
+                            const ratedSkills = r.skillRatings.filter(sr => sr.rating > 0);
+                            if (!r.rating) {
+                                r.rating = ratedSkills.reduce((acc, curr) => acc + curr.rating, 0) / ratedSkills.length;
+                            }
+                        }
+
+                        // Round must have at least one substantial piece of data to be included
+                        return hasFeedback || hasDate || hasInterviewer || hasValidRatings;
+                    });
                 } else {
                     // Legacy Split Logic
                     const rawDetails = getCellValue(columnMapping.interviewDetails)?.toString() || '';
@@ -436,8 +483,8 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 if (!mappedRow.mobile) errors.push('Mobile missing');
                 // Removed Experience check - defaults to 0 if missing
 
-                const isExisting = existingCandidates.some(c => 
-                    (mappedRow.email && c.email.toLowerCase() === mappedRow.email?.toLowerCase()) || 
+                const isExisting = existingCandidates.some(c =>
+                    (mappedRow.email && c.email.toLowerCase() === mappedRow.email?.toLowerCase()) ||
                     (mappedRow.mobile && c.mobile === mappedRow.mobile)
                 );
 
@@ -469,7 +516,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
         setImporting(true);
         setProgress({ current: 0, total: validRows.length, success: 0, failed: 0 });
-        
+
         const results = { imported: [], failed: [] };
 
         for (let i = 0; i < validRows.length; i++) {
@@ -480,17 +527,17 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     if (round.rawInterviewer && users.length > 0) {
                         const normalize = (s) => (s ? String(s) : '').toLowerCase().replace(/[^a-z0-9]/g, '');
                         const searchName = normalize(round.rawInterviewer);
-                        
+
                         const foundUser = users.find(u => {
                             const f = normalize(u.firstName);
                             const l = normalize(u.lastName);
                             const full = f + l;
                             const email = normalize(u.email);
-                            
+
                             // Try matching full name, first name, last name, or email (alphanumeric only)
                             return full === searchName || f === searchName || l === searchName || email === searchName;
                         });
-                        
+
                         if (foundUser) {
                             return { ...round, evaluatedBy: foundUser._id, assignedTo: [foundUser._id] };
                         }
@@ -499,10 +546,10 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 });
 
                 const importPayload = { ...row.data, interviewRounds: processedRounds };
-                
+
                 const response = await api.post('/ta/candidates', importPayload);
-                results.imported.push({ 
-                    ...row, 
+                results.imported.push({
+                    ...row,
                     isUpdate: response.data.isUpdate,
                     updatedFields: response.data.updatedFields || []
                 });
@@ -536,10 +583,10 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             const sheet = workbook.addWorksheet('Candidate Import Template');
 
             // Skills from Hiring Request
-            const techSkills = (Array.isArray(request?.requirements?.mustHaveSkills) 
-                ? request.requirements.mustHaveSkills 
+            const techSkills = (Array.isArray(request?.requirements?.mustHaveSkills)
+                ? request.requirements.mustHaveSkills
                 : request?.requirements?.mustHaveSkills?.technical) || [];
-            
+
             const softSkills = ['Communication Skills', 'Behavioral Skills'];
 
             // Define Sections (Matches Export)
@@ -554,10 +601,10 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 { title: 'Contact Details', subHeaders: ['Email', 'Mobile No.'], width: 2 },
                 { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
                 { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
-                { 
-                    title: 'Round 1', 
+                {
+                    title: 'Round 1',
                     subHeaders: ['Interviewer Feedback', 'Interview date', 'Interviewer Name', ...softSkills, ...techSkills],
-                    width: 3 + softSkills.length + techSkills.length 
+                    width: 3 + softSkills.length + techSkills.length
                 },
                 { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Interview Status', 'Reason', 'Decision Status (Auto-calculated)'], width: 6 }
             ].filter(s => s.width > 0);
@@ -658,7 +705,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6">
                     {activeTab === 'upload' && (
-                        <div 
+                        <div
                             onDragOver={handleDragOver}
                             onDrop={handleDrop}
                             className="h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-2xl bg-slate-50 p-12 transition-all hover:border-blue-400 hover:bg-blue-50/30 group"
@@ -670,17 +717,17 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                             <p className="text-slate-500 text-center mb-8 max-w-sm">
                                 Support .xlsx and .xls files. Use the standard two-tier template for best results.
                             </p>
-                            
-                            <input 
-                                type="file" 
+
+                            <input
+                                type="file"
                                 ref={fileInputRef}
                                 onChange={handleFileChange}
                                 accept=".xlsx, .xls"
                                 className="hidden"
                             />
-                            
+
                             <div className="flex flex-col sm:flex-row gap-3">
-                                <button 
+                                <button
                                     onClick={() => fileInputRef.current?.click()}
                                     disabled={isParsing}
                                     className="flex items-center justify-center gap-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50"
@@ -688,8 +735,8 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                     {isParsing ? <Loader className="animate-spin" size={20} /> : <FileText size={20} />}
                                     {isParsing ? 'Parsing File...' : 'Browse Files'}
                                 </button>
-                                
-                                <button 
+
+                                <button
                                     onClick={handleDownloadTemplate}
                                     disabled={isDownloadingTemplate || !request}
                                     className="flex items-center justify-center gap-2 px-8 py-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50"
@@ -719,13 +766,13 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button 
+                                    <button
                                         onClick={() => setActiveTab('upload')}
                                         className="px-4 py-2 text-slate-600 font-bold hover:bg-white rounded-lg transition-colors"
                                     >
                                         Change File
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={handleImportAll}
                                         disabled={importing || previewData.filter(r => r.isValid).length === 0}
                                         className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition-all shadow-md"
@@ -812,7 +859,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                 <CheckCircle size={64} className="text-emerald-500" />
                             </div>
                             <h3 className="text-2xl font-bold text-slate-800">Import Completed!</h3>
-                            
+
                             <div className="grid grid-cols-3 gap-6 w-full max-w-2xl">
                                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 text-center">
                                     <div className="text-3xl font-black text-emerald-600 mb-1">
@@ -906,7 +953,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                 </div>
                             )}
 
-                            <button 
+                            <button
                                 onClick={handleDone}
                                 className="mt-8 flex items-center gap-2 px-10 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-lg hover:scale-105 active:scale-95"
                             >
@@ -925,7 +972,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                             <span className="text-sm font-bold text-blue-600">{progress.current} / {progress.total}</span>
                         </div>
                         <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden">
-                            <div 
+                            <div
                                 className="h-full bg-blue-500 transition-all duration-300 ease-out"
                                 style={{ width: `${(progress.current / progress.total) * 100}%` }}
                             />

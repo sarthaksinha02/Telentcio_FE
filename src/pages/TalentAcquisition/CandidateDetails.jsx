@@ -255,6 +255,20 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
 
 
+    const getEffectiveRoundStatus = useCallback((round) => {
+        if (round.status === 'Failed') return 'Failed';
+        if (round.status === 'Skipped') return 'Skipped';
+
+        // Only mark as Passed if both feedback and rating are present
+        const isCompleted = round.feedback && (round.rating || round.rating === 0);
+        if (isCompleted) return 'Passed';
+
+        // If not completed, show as Scheduled if a date exists or it's already Scheduled
+        if (round.scheduledDate || round.status === 'Scheduled') return 'Scheduled';
+
+        return 'Pending';
+    }, []);
+
     const getStatusBadgeColor = useCallback((status) => {
         switch (status) {
             case 'Passed': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
@@ -270,6 +284,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             case 'Passed': return <CheckCircle size={16} className="text-emerald-600" />;
             case 'Failed': return <XCircle size={16} className="text-red-600" />;
             case 'Scheduled': return <Calendar size={16} className="text-blue-600" />;
+            case 'Skipped': return <Clock size={16} className="text-slate-500" />;
             default: return <Clock size={16} className="text-amber-600" />;
         }
     }, []);
@@ -351,16 +366,16 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                             </div>
                         </div>
                         <div className="flex gap-3 flex-wrap">
-                             {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
-                                 <a
-                                     href={candidate.resumeUrl}
-                                     target="_blank"
-                                     rel="noopener noreferrer"
-                                     className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors border border-slate-200"
-                                 >
-                                     <Download size={18} /> View Resume
-                                 </a>
-                             )}
+                            {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
+                                <a
+                                    href={candidate.resumeUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors border border-slate-200"
+                                >
+                                    <Download size={18} /> View Resume
+                                </a>
+                            )}
                             {canManageRounds && (
                                 <button
                                     onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
@@ -615,7 +630,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                 type="application/pdf"
                                 className="w-full flex-1"
                             >
-                                <iframe 
+                                <iframe
                                     src={String(candidate.resumeUrl).replace('http://', 'https://')}
                                     className="w-full flex-1 bg-white"
                                     title="Resume Preview"
@@ -624,10 +639,10 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50">
                                         <FileText size={48} className="text-slate-300 mb-4" />
                                         <p className="text-slate-600 font-medium mb-2">Resume preview not available in browser</p>
-                                        <a 
-                                            href={candidate.resumeUrl} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer" 
+                                        <a
+                                            href={candidate.resumeUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
                                             className="text-blue-600 font-bold hover:underline"
                                         >
                                             View / Download Resume
@@ -831,21 +846,21 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                 )}
 
                                                 {/* Dot */}
-                                                <div className={`absolute top-1 left-1.5 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${round.status === 'Passed' ? 'bg-emerald-500' :
-                                                    round.status === 'Failed' ? 'bg-red-500' :
+                                                <div className={`absolute top-1 left-1.5 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${getEffectiveRoundStatus(round) === 'Passed' ? 'bg-emerald-500' :
+                                                    getEffectiveRoundStatus(round) === 'Failed' ? 'bg-red-500' :
                                                         'bg-amber-400'
                                                     }`}></div>
 
                                                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                                                     {/* Round Header */}
-                                                    <div className={`px-5 py-4 border-b flex justify-between items-center ${round.status === 'Passed' ? 'bg-emerald-50/50 border-emerald-100' :
-                                                        round.status === 'Failed' ? 'bg-red-50/50 border-red-100' :
+                                                    <div className={`px-5 py-4 border-b flex justify-between items-center ${getEffectiveRoundStatus(round) === 'Passed' ? 'bg-emerald-50/50 border-emerald-100' :
+                                                        getEffectiveRoundStatus(round) === 'Failed' ? 'bg-red-50/50 border-red-100' :
                                                             'bg-slate-50/50 border-slate-100'
                                                         }`}>
                                                         <div>
                                                             <h4 className="font-bold text-slate-800 flex items-center gap-2">
                                                                 {round.levelName}
-                                                                {getStatusIcon(round.status)}
+                                                                {getStatusIcon(getEffectiveRoundStatus(round))}
                                                             </h4>
                                                             {round.scheduledDate && (
                                                                 <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
@@ -854,8 +869,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                             )}
                                                         </div>
                                                         <div className="flex items-center gap-3">
-                                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(round.status)}`}>
-                                                                {round.status}
+                                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(getEffectiveRoundStatus(round))}`}>
+                                                                {getEffectiveRoundStatus(round)}
                                                             </span>
                                                             {canManageRounds && ['Pending', 'Scheduled'].includes(round.status) && (
                                                                 <div className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1">
@@ -910,8 +925,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                         </div>
 
                                                         {/* Evaluation Results Overlay */}
-                                                        {['Passed', 'Failed'].includes(round.status) && !isEvaluating && (
-                                                            <div className={`rounded-lg p-4 border ${round.status === 'Passed' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-red-50/60 border-red-100'}`}>
+                                                        {['Passed', 'Failed'].includes(getEffectiveRoundStatus(round)) && !isEvaluating && (
+                                                            <div className={`rounded-lg p-4 border ${getEffectiveRoundStatus(round) === 'Passed' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-red-50/60 border-red-100'}`}>
                                                                 <div className="flex items-start gap-2">
                                                                     <MessageSquare size={16} className="text-slate-400 mt-0.5" />
                                                                     <div className="flex-1">
@@ -958,8 +973,15 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                         onClick={() => {
                                                                             setEvaluatingRoundId(round._id);
                                                                             setEvaluationForm({
-                                                                                rating: '',
-                                                                                skillRatings: (candidate.skillRatings || []).map(sr => ({ ...sr, rating: 0 })),
+                                                                                skillRatings: (candidate.skillRatings || [])
+                                                                                    .filter(sr => {
+                                                                                        const s = sr.skill.toLowerCase();
+                                                                                        const isMustHave = sr.category === 'Must-Have';
+                                                                                        return isMustHave && s !== 'tat' && s !== 'rate' && s !== 'billing rate';
+                                                                                    })
+                                                                                    .map(sr => ({ ...sr, rating: 0 })),
+                                                                                feedback: '',
+                                                                                status: 'Passed',
                                                                                 showAssessment: false,
                                                                                 manualSkillName: ''
                                                                             });
@@ -1088,7 +1110,6 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                         {/* Rating dropdown — shown only when Pass is selected */}
                                                                         {evaluationForm.status === 'Passed' && (
                                                                             <>
-                                                                                {/* Skill Ratings inside Evaluation */}
                                                                                 <div className="mb-4">
                                                                                     <button
                                                                                         type="button"
@@ -1109,87 +1130,88 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
                                                                                     {evaluationForm.showAssessment && (
                                                                                         <div className="mt-2 bg-white/80 p-4 rounded-xl border border-blue-100 shadow-inner animate-in fade-in slide-in-from-top-1 duration-200">
-                                                                                            {/* Manual Skill Addition Row */}
-                                                                                            <div className="flex items-center gap-2 mb-4 p-2 bg-blue-50/50 rounded-lg border border-blue-100/50">
-                                                                                                <input
-                                                                                                    type="text"
-                                                                                                    placeholder="Add expert skill (e.g. System Design)..."
-                                                                                                    value={evaluationForm.manualSkillName}
-                                                                                                    onChange={(e) => setEvaluationForm(prev => ({ ...prev, manualSkillName: e.target.value }))}
-                                                                                                    className="flex-1 px-3 py-1.5 text-xs border border-slate-200 rounded-md outline-none focus:border-blue-500"
-                                                                                                />
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    onClick={() => {
-                                                                                                        if (!evaluationForm.manualSkillName.trim()) return;
-                                                                                                        const newSkill = {
-                                                                                                            skill: evaluationForm.manualSkillName.trim(),
-                                                                                                            rating: 0,
-                                                                                                            category: 'Additional'
-                                                                                                        };
-                                                                                                        setEvaluationForm(prev => ({
-                                                                                                            ...prev,
-                                                                                                            skillRatings: [...prev.skillRatings, newSkill],
-                                                                                                            manualSkillName: ''
-                                                                                                        }));
-                                                                                                    }}
-                                                                                                    className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-bold hover:bg-blue-700 transition-colors"
-                                                                                                >
-                                                                                                    Add Skill
-                                                                                                </button>
-                                                                                            </div>
-
                                                                                             <div className="space-y-4">
-                                                                                                {evaluationForm.skillRatings && evaluationForm.skillRatings.length > 0 ? (
-                                                                                                    evaluationForm.skillRatings.map((sr, idx) => (
-                                                                                                        <div key={idx} className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 hover:bg-white rounded-lg transition-colors border-b border-slate-50 last:border-0 pb-3 sm:pb-2">
-                                                                                                            <div className="flex items-center gap-2">
-                                                                                                                <span className="text-sm font-semibold text-slate-700">{sr.skill}</span>
-                                                                                                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase ${sr.category === 'Must-Have' ? 'bg-red-50 text-red-500' :
-                                                                                                                    sr.category === 'Nice-To-Have' ? 'bg-blue-50 text-blue-500' :
-                                                                                                                        'bg-slate-100 text-slate-500'
-                                                                                                                    }`}>
-                                                                                                                    {sr.category}
-                                                                                                                </span>
-                                                                                                            </div>
-                                                                                                            <div className="flex items-center gap-3">
-                                                                                                                <div className="flex items-center gap-1">
-                                                                                                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((star) => (
-                                                                                                                        <button
-                                                                                                                            key={star}
-                                                                                                                            type="button"
-                                                                                                                            onClick={() => {
-                                                                                                                                const newSkills = [...evaluationForm.skillRatings];
-                                                                                                                                newSkills[idx] = { ...newSkills[idx], rating: star };
-                                                                                                                                setEvaluationForm({ ...evaluationForm, skillRatings: newSkills });
-                                                                                                                            }}
-                                                                                                                            className={`w-7 h-7 rounded flex items-center justify-center text-[10px] font-bold transition-all ${star <= sr.rating
-                                                                                                                                ? 'bg-blue-600 text-white shadow-sm scale-110 z-10'
-                                                                                                                                : 'bg-white text-slate-400 border border-slate-200 hover:border-blue-400 hover:text-blue-600'
-                                                                                                                                }`}
-                                                                                                                        >
-                                                                                                                            {star}
-                                                                                                                        </button>
-                                                                                                                    ))}
-                                                                                                                    <span className="ml-2 text-xs font-black text-blue-700 w-8">{sr.rating}/10</span>
-                                                                                                                </div>
-                                                                                                                <button
-                                                                                                                    type="button"
-                                                                                                                    onClick={() => {
-                                                                                                                        const newSkills = evaluationForm.skillRatings.filter((_, i) => i !== idx);
-                                                                                                                        setEvaluationForm({ ...evaluationForm, skillRatings: newSkills });
-                                                                                                                    }}
-                                                                                                                    className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-all"
-                                                                                                                    title="Remove skill from this assessment"
-                                                                                                                >
-                                                                                                                    <Trash2 size={14} />
-                                                                                                                </button>
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                    ))
-                                                                                                ) : (
-                                                                                                    <p className="text-center text-xs text-slate-400 py-4 italic">No skills defined for this candidate yet. Add one above.</p>
-                                                                                                )}
+                                                                                                {/* Manual Add Skills */}
+                                                                                                <div className="flex gap-2 p-1 bg-blue-50/50 rounded-lg border border-blue-100">
+                                                                                                    <input
+                                                                                                        type="text"
+                                                                                                        placeholder="Enter skill name (e.g. Java, Leadership)..."
+                                                                                                        value={evaluationForm.manualSkillName || ''}
+                                                                                                        onChange={(e) => setEvaluationForm({ ...evaluationForm, manualSkillName: e.target.value })}
+                                                                                                        className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm outline-none focus:border-blue-500 shadow-sm"
+                                                                                                    />
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() => {
+                                                                                                            if (!evaluationForm.manualSkillName?.trim()) return;
+                                                                                                            const newSkill = {
+                                                                                                                skill: evaluationForm.manualSkillName.trim(),
+                                                                                                                rating: 0,
+                                                                                                                category: 'Must-Have'
+                                                                                                            };
+                                                                                                            setEvaluationForm({
+                                                                                                                ...evaluationForm,
+                                                                                                                skillRatings: [...(evaluationForm.skillRatings || []), newSkill],
+                                                                                                                manualSkillName: ''
+                                                                                                            });
+                                                                                                        }}
+                                                                                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1"
+                                                                                                    >
+                                                                                                        <Plus size={16} /> <span className="text-xs font-bold uppercase tracking-wider">Add</span>
+                                                                                                    </button>
+                                                                                                </div>
+
+                                                                                                {/* Skills List */}
+                                                                                                <div className="space-y-4">
+                                                                                                    {evaluationForm.skillRatings && evaluationForm.skillRatings
+                                                                                                        .filter(sr => {
+                                                                                                            const s = (sr.skill || '').toLowerCase();
+                                                                                                            return sr.category === 'Must-Have' && s !== 'tat' && s !== 'rate' && s !== 'billing rate';
+                                                                                                        }).length > 0 ? (
+                                                                                                        evaluationForm.skillRatings
+                                                                                                            .filter(sr => {
+                                                                                                                const s = (sr.skill || '').toLowerCase();
+                                                                                                                return sr.category === 'Must-Have' && s !== 'tat' && s !== 'rate' && s !== 'billing rate';
+                                                                                                            })
+                                                                                                            .map((sr, idx) => {
+                                                                                                                const originalIdx = evaluationForm.skillRatings.findIndex(orig => orig.skill === sr.skill);
+                                                                                                                return (
+                                                                                                                    <div key={idx} className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 transition-all hover:bg-white hover:shadow-sm">
+                                                                                                                        <div className="flex items-center gap-2">
+                                                                                                                            <span className="text-sm font-semibold text-slate-700">{sr.skill}</span>
+                                                                                                                            <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase bg-red-50 text-red-500`}>
+                                                                                                                                Must-Have
+                                                                                                                            </span>
+                                                                                                                        </div>
+                                                                                                                        <div className="flex items-center gap-1 mt-2">
+                                                                                                                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(star => (
+                                                                                                                                <button
+                                                                                                                                    key={star}
+                                                                                                                                    type="button"
+                                                                                                                                    onClick={() => {
+                                                                                                                                        const updated = [...evaluationForm.skillRatings];
+                                                                                                                                        if (originalIdx !== -1) {
+                                                                                                                                            updated[originalIdx].rating = star;
+                                                                                                                                            setEvaluationForm({ ...evaluationForm, skillRatings: updated });
+                                                                                                                                        }
+                                                                                                                                    }}
+                                                                                                                                    className={`w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold transition-all ${sr.rating >= star
+                                                                                                                                        ? 'bg-blue-600 text-white shadow-sm'
+                                                                                                                                        : 'bg-white border border-slate-200 text-slate-400 hover:border-blue-400'
+                                                                                                                                        }`}
+                                                                                                                                >
+                                                                                                                                    {star}
+                                                                                                                                </button>
+                                                                                                                            ))}
+                                                                                                                            <span className="ml-2 text-xs font-black text-blue-700 w-8">{sr.rating}/10</span>
+                                                                                                                        </div>
+                                                                                                                    </div>
+                                                                                                                );
+                                                                                                            })
+                                                                                                    ) : (
+                                                                                                        <p className="text-center text-xs text-slate-400 py-4 italic">No must-have skills found for this assessment.</p>
+                                                                                                    )}
+                                                                                                </div>
                                                                                             </div>
                                                                                         </div>
                                                                                     )}

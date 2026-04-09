@@ -172,7 +172,7 @@ const HiringRequestDetails = () => {
                         {/* Left: Back button + Title */}
                         <div className="flex items-center gap-4">
                             <button
-                                onClick={() => navigate('/ta')}
+                                onClick={() => navigate(`/ta/hiring-requests/${encodeURIComponent(request.client)}`)}
                                 className="p-2 hover:bg-slate-100/80 rounded-full text-slate-500 hover:text-slate-700 transition-all duration-200 group"
                                 aria-label="Go back"
                             >
@@ -342,9 +342,9 @@ const HiringRequestDetails = () => {
                                             Detailed Job Description
                                         </h3>
                                         {request.jobDescriptionFile && (
-                                            <a 
-                                                href={request.jobDescriptionFile} 
-                                                target="_blank" 
+                                            <a
+                                                href={request.jobDescriptionFile}
+                                                target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-1.5 px-3 py-1 bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
                                             >
@@ -585,7 +585,7 @@ const HiringRequestDetails = () => {
                 )}
 
                 {activeTab === 'applications' && (
-                    <CandidateList hiringRequestId={id} positionName={request?.positionName} />
+                    <CandidateList hiringRequestId={id} positionName={request?.positionName} hiringRequestStatus={request?.status} />
                 )}
 
                 {activeTab === 'legacy applications' && request.previousRequestId && (

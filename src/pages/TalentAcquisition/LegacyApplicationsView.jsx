@@ -239,7 +239,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                                                             View Resume
                                                         </a>
                                                     )}
-                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && requisition.status === 'Closed' && (
                                                         <>
                                                             <div className="border-t border-slate-100 my-1"></div>
                                                             <button
