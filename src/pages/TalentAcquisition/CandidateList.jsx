@@ -287,7 +287,11 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
             const matchDecision = filterDecision === 'All' ||
                 (filterDecision === 'No Show_Offer Declined'
                     ? (candidate.phase3Decision === 'No Show' || candidate.phase3Decision === 'Offer Declined')
-                    : (candidate.phase3Decision || 'None') === filterDecision);
+                    : filterDecision === 'Offer Sent'
+                        ? ['Offer Sent', 'Offer Accepted', 'Joined'].includes(candidate.phase3Decision)
+                        : filterDecision === 'Offer Accepted'
+                            ? ['Offer Accepted', 'Joined'].includes(candidate.phase3Decision)
+                            : (candidate.phase3Decision || 'None') === filterDecision);
 
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
@@ -312,8 +316,8 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
     const phase3Metrics = useMemo(() => {
         return {
             total: structuralPhase3Candidates.length,
-            offerSent: structuralPhase3Candidates.filter(c => c.phase3Decision === 'Offer Sent').length,
-            offerAccepted: structuralPhase3Candidates.filter(c => c.phase3Decision === 'Offer Accepted').length,
+            offerSent: structuralPhase3Candidates.filter(c => ['Offer Sent', 'Offer Accepted', 'Joined'].includes(c.phase3Decision)).length,
+            offerAccepted: structuralPhase3Candidates.filter(c => ['Offer Accepted', 'Joined'].includes(c.phase3Decision)).length,
             joined: structuralPhase3Candidates.filter(c => c.phase3Decision === 'Joined').length,
             noShow: structuralPhase3Candidates.filter(c => c.phase3Decision === 'No Show' || c.phase3Decision === 'Offer Declined').length
         };
@@ -328,8 +332,8 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
         try {
             setLoading(true);
             const endpoint = isLegacyView
-                ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
-                : `/ta/candidates/${hiringRequestId}`;
+                ? `/ta/hiring-request/${hiringRequestId}/previous-candidates?t=${Date.now()}`
+                : `/ta/candidates/${hiringRequestId}?t=${Date.now()}`;
             const response = await api.get(endpoint);
             setCandidates(isLegacyView ? response.data : response.data.candidates || []);
         } catch (error) {
@@ -1781,7 +1785,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                                                         </button>
                                                                     )}
 
-                                                                    {activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None' && !candidate.isTransferredToOnboarding && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                    {((activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None') || (activePhase === 2 && candidate.phase2Decision === 'Selected')) && !candidate.isTransferredToOnboarding && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 handleTransferToOnboarding(candidate._id);

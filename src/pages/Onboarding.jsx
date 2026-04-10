@@ -182,6 +182,39 @@ const Onboarding = () => {
 
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
+  const syncEmployeeState = useCallback((updatedEmp, mode = 'update') => {
+    setEmployees(prev => {
+      let nextEmployees;
+      if (mode === 'delete') {
+        nextEmployees = prev.filter(e => e._id !== updatedEmp._id);
+      } else if (mode === 'add') {
+        nextEmployees = [updatedEmp, ...prev];
+      } else {
+        nextEmployees = prev.map(e => e._id === updatedEmp._id ? { ...e, ...updatedEmp } : e);
+      }
+      
+      const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${searchTerm || 'all'}`;
+      try {
+        const cached = readSessionCache(cacheKey);
+        if (cached) {
+          const parsed = cached.data || {};
+          let nextCachedEmp = parsed.employees || [];
+          if (mode === 'delete') {
+            nextCachedEmp = nextCachedEmp.filter(e => e._id !== updatedEmp._id);
+          } else if (mode === 'add') {
+            nextCachedEmp = [updatedEmp, ...nextCachedEmp];
+          } else {
+            nextCachedEmp = nextCachedEmp.map(e => e._id === updatedEmp._id ? { ...e, ...updatedEmp } : e);
+          }
+          parsed.employees = nextCachedEmp;
+          sessionStorage.setItem(cacheKey, JSON.stringify({ ...cached, data: parsed }));
+        }
+      } catch (e) {}
+      
+      return nextEmployees;
+    });
+  }, [page, statusFilter, searchTerm, user?._id]);
+
   const fetchEmployees = useCallback(async ({ force = false } = {}) => {
     const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${searchTerm || 'all'}`;
     try {
@@ -491,14 +524,15 @@ const Onboarding = () => {
   const handleAddEmployee = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/onboarding/employees', formData);
+      const res = await api.post('/onboarding/employees', formData);
       toast.success('Employee added! Select sections and Send Email to notify candidate.');
       setShowAddModal(false);
       setFormData({
         ...INITIAL_FORM_DATA,
         salary: { ...INITIAL_FORM_DATA.salary }
       });
-      fetchEmployees();
+      if (res.data?.employee) syncEmployeeState(res.data.employee, 'add');
+      else fetchEmployees();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to add');
     }
@@ -526,11 +560,11 @@ const Onboarding = () => {
       const res = await api.patch(`/onboarding/employees/${empId}/documents/${docId}/flag`, { reason });
       toast.success('Document flagged');
 
-      // Update local state instantly without full refresh
+      // Update local state and cache instantly without full refresh
       const updatedEmp = res.data.employee;
       if (updatedEmp) {
         setSelectedEmployee(updatedEmp);
-        setEmployees(prev => prev.map(e => e._id === empId ? { ...e, status: updatedEmp.status } : e));
+        syncEmployeeState(updatedEmp, 'update');
       }
     } catch {
       toast.error('Failed to flag');
@@ -542,11 +576,11 @@ const Onboarding = () => {
       const res = await api.patch(`/onboarding/employees/${empId}/documents/${docId}/approve`);
       toast.success('Document approved');
 
-      // Update local state instantly without full refresh
+      // Update local state and cache instantly without full refresh
       const updatedEmp = res.data.employee;
       if (updatedEmp) {
         setSelectedEmployee(updatedEmp);
-        setEmployees(prev => prev.map(e => e._id === empId ? { ...e, status: updatedEmp.status } : e));
+        syncEmployeeState(updatedEmp, 'update');
       }
     } catch {
       toast.error('Failed to approve');
@@ -601,7 +635,7 @@ const Onboarding = () => {
   const handleUpdateEmployee = async (e) => {
     e.preventDefault();
     try {
-      await api.patch(`/onboarding/employees/${selectedEmployee._id}`, formData);
+      const res = await api.patch(`/onboarding/employees/${selectedEmployee._id}`, formData);
       toast.success('Employee updated successfully!');
       setShowEditModal(false);
       setFormData({
@@ -609,7 +643,8 @@ const Onboarding = () => {
         salary: { ...INITIAL_FORM_DATA.salary }
       });
       setSelectedEmployee(null);
-      fetchEmployees();
+      if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
+      else fetchEmployees();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update');
     }
@@ -632,7 +667,12 @@ const Onboarding = () => {
         ),
         { duration: 10000 }
       );
-      fetchEmployees();
+      if (res.data?.employee) {
+          syncEmployeeState(res.data.employee, 'update');
+          setSelectedEmployee(prev => prev?._id === empId ? { ...prev, ...res.data.employee } : prev);
+      } else {
+          fetchEmployees();
+      }
     } catch {
       toast.error('Failed to regenerate credentials');
     }
@@ -680,7 +720,7 @@ const Onboarding = () => {
       );
       setShowDetailModal(false);
       setSelectedEmployee(null);
-      fetchEmployees();
+      syncEmployeeState({ _id: empId }, 'delete');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Transfer failed');
     }
@@ -769,11 +809,11 @@ const Onboarding = () => {
                     const progress = getProgressPercent(emp);
                     const sc = STATUS_COLORS[emp.status] || STATUS_COLORS.Pending;
                     return (
-                      <tr 
-                        key={emp._id} 
+                      <tr
+                        key={emp._id}
                         onClick={() => openDetail(emp)}
-                        style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s', cursor: 'pointer' }} 
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} 
+                        style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s', cursor: 'pointer' }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
                         onMouseLeave={(e) => e.currentTarget.style.background = ''}
                       >
                         <td style={{ padding: '14px 16px' }}>
@@ -980,10 +1020,10 @@ const Onboarding = () => {
                           <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>{temp.name}</div>
                           <div style={{ fontSize: '11px', color: '#94a3b8' }}>Custom Dynamic Template</div>
                         </div>
-                         <div style={{ display: 'flex', gap: '8px' }}>
-                           <button onClick={() => handleFilePreview(temp.url, 'dynamic')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex', cursor: 'pointer' }} title="Preview Template"><Eye size={16} /></button>
-                           <button onClick={() => handleDeleteDynamicTemplate(temp._id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex', cursor: 'pointer' }} title="Delete Template"><Trash2 size={16} /></button>
-                         </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button onClick={() => handleFilePreview(temp.url, 'dynamic')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex', cursor: 'pointer' }} title="Preview Template"><Eye size={16} /></button>
+                          <button onClick={() => handleDeleteDynamicTemplate(temp._id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex', cursor: 'pointer' }} title="Delete Template"><Trash2 size={16} /></button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1316,21 +1356,21 @@ const Onboarding = () => {
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={async () => {
                         try {
-                          await api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Rejected' });
+                          const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Rejected' });
                           toast.success('Extension rejected');
-                          fetchEmployees();
+                          if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
+                          else fetchEmployees();
                           setSelectedEmployee(prev => ({ ...prev, extensionRequests: prev.extensionRequests.map(r => r._id === ext._id ? { ...r, status: 'Rejected' } : r) }));
                         } catch { toast.error('Failed to reject extension'); }
                       }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#1d4ed8', background: 'none', border: '1px solid #1d4ed8', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
                       <button onClick={() => {
-                        // Open edit modal to let HR extend deadline, then we resolve it.
-                        // For simplicity, let's just approve it right here by adding days to current deadline.
                         const currentDeadline = selectedEmployee.documentDeadline ? new Date(selectedEmployee.documentDeadline) : new Date();
                         currentDeadline.setDate(currentDeadline.getDate() + ext.requestedDays);
                         api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Approved', newDeadline: currentDeadline.toISOString() })
-                          .then(() => {
+                          .then((res) => {
                             toast.success(`Extension approved. New deadline: ${currentDeadline.toLocaleDateString()}`);
-                            fetchEmployees();
+                            if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
+                            else fetchEmployees();
                             const updatedExt = { ...ext, status: 'Approved' };
                             setSelectedEmployee(prev => ({
                               ...prev,
@@ -1594,19 +1634,19 @@ const Onboarding = () => {
                     <UploadCloud size={18} style={{ color: '#3b82f6' }} /> Send Any File to Candidate
                   </h4>
                   <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#64748b' }}>Upload any manual document (Policies, Info booklets, etc.) to send it directly to the candidate's email.</p>
-                  
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div 
+                    <div
                       onClick={() => customFileInputRef.current?.click()}
                       style={{ padding: '16px', border: '1px solid #cbd5e1', borderRadius: '12px', background: '#fff', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s' }}
                       onMouseOver={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
                       onMouseOut={(e) => e.currentTarget.style.borderColor = '#cbd5e1'}
                     >
-                      <input 
-                        type="file" 
-                        ref={customFileInputRef} 
-                        onChange={(e) => setCustomFile(e.target.files[0])} 
-                        style={{ display: 'none' }} 
+                      <input
+                        type="file"
+                        ref={customFileInputRef}
+                        onChange={(e) => setCustomFile(e.target.files[0])}
+                        style={{ display: 'none' }}
                       />
                       {customFile ? (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
@@ -1738,8 +1778,8 @@ const Onboarding = () => {
               <button onClick={() => { setShowPreviewModal(false); }} style={{ padding: '10px 24px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', color: '#475569' }}>
                 Close Preview
               </button>
-              <button 
-                onClick={handleDownloadCurrent} 
+              <button
+                onClick={handleDownloadCurrent}
                 disabled={!previewBlob}
                 style={{ padding: '10px 24px', border: 'none', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', opacity: previewBlob ? 1 : 0.6 }}
               >

@@ -7,7 +7,7 @@ import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, C
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
 
-const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propHiringRequestId, isSidePanel }) => {
+const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propHiringRequestId, isSidePanel, onUpdate }) => {
     const { user } = useAuth();
     const params = useParams();
     const hiringRequestId = propHiringRequestId || params.hiringRequestId;
@@ -114,6 +114,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             setSelectedInterviewer('');
             setSelectedRoleForRound('');
             fetchCandidate();
+            if (onUpdate) onUpdate();
             window.dispatchEvent(new Event('refreshNotifications'));
         } catch (error) {
             console.error('Error adding round:', error);
@@ -141,6 +142,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             toast.success('Interview round updated');
             setEditingRoundId(null);
             fetchCandidate();
+            if (onUpdate) onUpdate();
             window.dispatchEvent(new Event('refreshNotifications'));
         } catch (error) {
             console.error('Error updating round:', error);
@@ -175,6 +177,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             setSelectedWorkflow('');
             setWorkflowMapping({});
             fetchCandidate();
+            if (onUpdate) onUpdate();
             window.dispatchEvent(new Event('refreshNotifications'));
         } catch (error) {
             console.error(error);
@@ -191,6 +194,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             await api.delete(`/ta/candidates/${candidateId}/rounds/${roundId}`);
             toast.success('Round deleted');
             fetchCandidate();
+            if (onUpdate) onUpdate();
         } catch (error) {
             console.error('Error deleting round:', error);
             toast.error('Failed to delete round');
@@ -218,6 +222,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             setEvaluatingRoundId(null);
             setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
             fetchCandidate();
+            if (onUpdate) onUpdate();
         } catch (error) {
             console.error('Error submitting evaluation:', error);
             toast.error(error.response?.data?.message || 'Failed to submit evaluation');
@@ -231,6 +236,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             await api.patch(`/ta/candidates/${candidateId}/phase3-decision`, { phase3Decision: newDecision });
             toast.success('Phase 3 Decision updated');
             setCandidate(prev => ({ ...prev, phase3Decision: newDecision }));
+            if (onUpdate) onUpdate();
             window.dispatchEvent(new Event('refreshNotifications'));
         } catch (error) {
             console.error('Error updating Phase 3 decision:', error);
@@ -244,6 +250,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             await api.patch(`/ta/candidates/${candidateId}/internal-remark`, { internalRemark: internalRemarkText });
             setCandidate(prev => ({ ...prev, internalRemark: internalRemarkText }));
             setInternalRemarkEditing(false);
+            if (onUpdate) onUpdate();
             toast.success('Internal remark saved successfully');
         } catch (error) {
             console.error('Error saving internal remark:', error);
