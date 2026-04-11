@@ -33,9 +33,9 @@ const QueryFormModal = ({ isOpen, onClose, onSuccess }) => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            await api.post('/helpdesk', formData);
+            const res = await api.post('/helpdesk', formData);
             toast.success('Query submitted successfully');
-            onSuccess();
+            onSuccess(res.data.data); // Pass full populated query back
             onClose();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to submit query');
@@ -169,8 +169,11 @@ const HelpDesk = () => {
     const getCacheFieldForTab = (tab) =>
         tab === 'my-queries' ? 'myQueries' : tab === 'assigned' ? 'assignedQueries' : 'escalatedQueries';
 
-    const fetchTabData = useCallback(async (tab, force = false, isBackground = false) => {
-        if (!force && !isBackground && loadedTabs.current.has(tab)) return; 
+    const fetchTabData = useCallback(async (tab, options = {}) => {
+        const force = options === true || !!options.force;
+        const silent = typeof options === 'object' ? !!options.silent : false;
+
+        if (!force && !silent && loadedTabs.current.has(tab)) return; 
         
         const CACHE_KEY = `helpdesk_data_${user?._id}_admin_${isAdmin}`;
 
@@ -182,7 +185,7 @@ const HelpDesk = () => {
         };
 
         // 1. Initial Load from Cache
-        if (!isBackground && !force) {
+        if (!silent && !force) {
             const parsed = readSessionCache(CACHE_KEY);
             if (parsed) {
                 const data = parsed.data || parsed;
@@ -194,16 +197,12 @@ const HelpDesk = () => {
                 if (tab === 'escalated' && data.escalatedQueries) setEscalatedQueries(data.escalatedQueries);
                 if (data[getCacheFieldForTab(tab)]) {
                     setTabLoading(false);
-                    if (isCacheFresh(parsed, HELPDESK_CACHE_TTL_MS)) {
-                        loadedTabs.current.add(tab);
-                        return;
-                    }
                 }
             }
         }
 
         try {
-            if (!isBackground && !readSessionCache(CACHE_KEY)) setTabLoading(true);
+            if (!silent && !readSessionCache(CACHE_KEY)) setTabLoading(true);
             
             let freshData = null;
             let freshAllData = null;
@@ -279,17 +278,20 @@ const HelpDesk = () => {
             loadedTabs.current.add(tab);
         } catch (error) {
             console.error(error);
-            if (!isBackground) toast.error('Failed to load helpdesk queries');
+            if (!silent) toast.error('Failed to load helpdesk queries');
         } finally {
-            setTabLoading(false);
+            if (!silent) setTabLoading(false);
         }
-    }, [HELPDESK_CACHE_TTL_MS, isAdmin, user?._id]);
+    }, [isAdmin, user?._id]);
 
-    const fetchBootstrap = useCallback(async (force = false) => {
+    const fetchBootstrap = useCallback(async (options = {}) => {
+        const force = options === true || !!options.force;
+        const silent = typeof options === 'object' ? !!options.silent : false;
+
         const CACHE_KEY = `helpdesk_data_${user?._id}_admin_${isAdmin}`;
         const cached = readSessionCache(CACHE_KEY);
 
-        if (!force && cached) {
+        if (!force && !silent && cached) {
             const data = cached.data || cached;
             setQueries(data.myQueries || []);
             setAssignedQueries(data.assignedQueries || []);
@@ -297,14 +299,10 @@ const HelpDesk = () => {
             setEscalatedQueries(data.escalatedQueries || []);
             setTabLoading(false);
             loadedTabs.current = new Set(['my-queries', ...(isResolverRole ? ['assigned'] : []), ...(isAdmin ? ['escalated'] : [])]);
-
-            if (isCacheFresh(cached, HELPDESK_CACHE_TTL_MS)) {
-                return;
-            }
         }
 
         try {
-            if (!cached) setTabLoading(true);
+            if (!silent && !readSessionCache(CACHE_KEY)) setTabLoading(true);
             const res = await api.get('/helpdesk/bootstrap');
             const payload = {
                 myQueries: res.data.myQueries || [],
@@ -348,20 +346,37 @@ const HelpDesk = () => {
             loadedTabs.current = new Set(['my-queries', ...(isResolverRole ? ['assigned'] : []), ...(isAdmin ? ['escalated'] : [])]);
         } catch (error) {
             console.error(error);
-            toast.error('Failed to load helpdesk queries');
+            if (!silent) toast.error('Failed to load helpdesk queries');
         } finally {
-            setTabLoading(false);
+            if (!silent) setTabLoading(false);
         }
-    }, [HELPDESK_CACHE_TTL_MS, isAdmin, isResolverRole, user?._id]);
+    }, [isAdmin, isResolverRole, user?._id]);
 
     // Refresh only the currently active tab (called after raising a new query)
-    const refreshTab = () => {
+    const refreshTab = (newEntry = null) => {
+        if (newEntry) {
+            const currentUserId = String(user?._id || user?.id || '');
+            const raiserId = String(newEntry.raisedBy?._id || newEntry.raisedBy || '');
+
+            // Instant state update if raiser is current user
+            if (raiserId === currentUserId) {
+                setQueries(prev => {
+                    const exists = prev.some(q => q._id === newEntry._id);
+                    if (exists) return prev;
+                    return [newEntry, ...prev];
+                });
+            }
+            // Switch to my-queries to show the new ticket
+            setActiveTab('my-queries');
+        }
+
         loadedTabs.current.delete(activeTab);
         if (activeTab === 'my-queries' || activeTab === 'assigned' || activeTab === 'escalated') {
-            fetchBootstrap(true);
+            // Background sync - the backend cache fix ensures this won't overwrite with stale data
+            fetchBootstrap({ silent: true });
             return;
         }
-        fetchTabData(activeTab, true);
+        fetchTabData(activeTab, { silent: true });
     };
 
     // Initial fetch on mount
@@ -677,7 +692,7 @@ const HelpDesk = () => {
 
             </div>
 
-            <QueryFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={refreshTab} />
+            <QueryFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={(q) => refreshTab(q)} />
         </div>
     );
 };

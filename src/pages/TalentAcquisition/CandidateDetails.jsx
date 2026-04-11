@@ -3,11 +3,11 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, FileText } from 'lucide-react';
+import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, FileText, ExternalLink, Maximize2 } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
 
-const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propHiringRequestId, isSidePanel, onUpdate }) => {
+const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propHiringRequestId, isSidePanel, onUpdate, isSidePanelMaximized, onToggleMaximize }) => {
     const { user } = useAuth();
     const params = useParams();
     const hiringRequestId = propHiringRequestId || params.hiringRequestId;
@@ -49,8 +49,15 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const [selectedInterviewer, setSelectedInterviewer] = useState('');
     const [roles, setRoles] = useState([]);
     const [selectedRoleForRound, setSelectedRoleForRound] = useState('');
+    const [isResumeFullView, setIsResumeFullView] = useState(false);
 
-
+    const toggleFullScreen = () => {
+        if (isSidePanel && onToggleMaximize) {
+            onToggleMaximize();
+        } else {
+            setIsResumeFullView(!isResumeFullView);
+        }
+    };
 
     useEffect(() => {
         const initializeData = async () => {
@@ -618,30 +625,37 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
                     {/* Inline Resume Viewer */}
                     {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[500px] h-[calc(100vh-250px)]">
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[500px] h-[1250px]">
                             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
                                 <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                                     <FileText size={16} className="text-blue-500" /> Resume Preview
                                 </h3>
-                                <a
-                                    href={candidate.resumeUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
-                                >
-                                    Open in full screen
-                                </a>
+                                <div className="flex items-center gap-3">
+                                    <a
+                                        href={candidate.resumeUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 shadow-sm"
+                                    >
+                                        <ExternalLink size={14} /> Open in new tab
+                                    </a>
+                                    <button
+                                        onClick={toggleFullScreen}
+                                        className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 hover:text-slate-800 transition-colors bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm hover:bg-slate-50"
+                                    >
+                                        <Maximize2 size={14} /> {isSidePanelMaximized ? 'Exit Full screen' : 'Full screen'}
+                                    </button>
+                                </div>
                             </div>
                             <object
-                                data={String(candidate.resumeUrl).replace('http://', 'https://')}
+                                data={`${String(candidate.resumeUrl).replace('http://', 'https://')}#toolbar=0&navpanes=0`}
                                 type="application/pdf"
                                 className="w-full flex-1"
                             >
                                 <iframe
-                                    src={String(candidate.resumeUrl).replace('http://', 'https://')}
-                                    className="w-full flex-1 bg-white"
+                                    src={`${String(candidate.resumeUrl).replace('http://', 'https://')}#toolbar=0&navpanes=0`}
+                                    className="w-full h-full border-none"
                                     title="Resume Preview"
-                                    frameBorder="0"
                                 >
                                     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50">
                                         <FileText size={48} className="text-slate-300 mb-4" />

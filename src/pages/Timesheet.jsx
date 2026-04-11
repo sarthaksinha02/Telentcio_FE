@@ -88,6 +88,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             toast.success('Timesheet rejection processed');
             setShowRejectModal(false);
             fetchApprovals();
+            await refreshTimesheetData(true); // Silent Refresh
         } catch {
             toast.error('Failed to process rejection');
         }
@@ -298,7 +299,36 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 toast.success('Entry updated');
             }
             setEntryToEdit(null);
-            await refreshTimesheetData();
+            
+            // Local Sync for immediate UI feedback
+            if (entryToEdit.type === 'ATTENDANCE' || entryToEdit.type === 'ATTENDANCE_CREATE') {
+                const baseDate = format(new Date(entryToEdit.date), 'yyyy-MM-dd');
+                const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}:00`) : null;
+                const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}:00`) : null;
+                
+                if (entryToEdit.type === 'ATTENDANCE') {
+                    setAttendanceLogs(prev => prev.map(l => 
+                        l._id === entryToEdit._id ? { ...l, clockIn: inTime?.toISOString(), clockOut: outTime?.toISOString() } : l
+                    ));
+                } else {
+                    // Create local placeholder for new attendance
+                    const newLog = { 
+                        _id: Date.now().toString(), // temporary id
+                        date: entryToEdit.date, 
+                        clockIn: inTime?.toISOString(), 
+                        clockOut: outTime?.toISOString(),
+                        status: 'Present' 
+                    };
+                    setAttendanceLogs(prev => [...prev, newLog]);
+                }
+            } else if (timesheet) {
+                const refreshedEntries = (timesheet.entries || []).map(e =>
+                    e._id === entryToEdit._id ? { ...e, hours: parseFloat(editHours || 0) + (parseFloat(editMinutes || 0) / 60), description: editDescription, status: 'PENDING' } : e
+                );
+                setTimesheet({ ...timesheet, entries: refreshedEntries });
+            }
+
+            await refreshTimesheetData(true); // Silent Refresh
         } catch (error) {
             console.error(error);
             toast.error(error.response?.data?.message || 'Failed to update entry');
@@ -328,7 +358,13 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         try {
             await api.put(`/timesheet/${ts._id}/approve`, { status });
             toast.success(`Timesheet ${status.toLowerCase()}`);
+
+            // Local State Update
+            if (timesheet && ts._id === timesheet._id) {
+                setTimesheet({ ...timesheet, status });
+            }
             fetchApprovals(); // Refresh list
+            await refreshTimesheetData(true); // Silent Refresh
         } catch {
             toast.error('Action failed');
         }
@@ -361,7 +397,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         return `timesheet_${user?._id}_${targetUserId || 'self'}_${formattedMonth}_${cycle}`;
     };
 
-    const fetchData = useCallback(async (skipCache = false) => {
+    const fetchData = useCallback(async (options = {}) => {
+        const skipCache = typeof options === 'boolean' ? options : !!options.skipCache;
+        const silent = typeof options === 'object' ? !!options.silent : false;
+
         const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
         let formattedMonth;
         if (cycle === 'Weekly') {
@@ -469,6 +508,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             applyData(cached.data);
             setLoading(false);
             if (isCacheFresh(cached, TIMESHEET_CACHE_TTL_MS)) return;
+        } else if (skipCache && (timesheet || silent)) {
+            // Background refresh - don't show loading spinner if we already have data or silent is requested
         } else {
             setLoading(true);
         }
@@ -501,15 +542,16 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             }
         } catch (error) {
             console.error('Timesheet fetch error', error);
-            if (!cached?.data) toast.error('Failed to load timesheet');
+            if (!cached?.data && !silent) toast.error('Failed to load timesheet');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
-    }, [targetUserId, user, viewDate]);
+    }, [targetUserId, user, viewDate, timesheet]);
 
-    const refreshTimesheetData = async () => {
-        sessionStorage.removeItem(getCurrentTimesheetCacheKey());
-        await fetchData(true);
+    const refreshTimesheetData = async (silent = false) => {
+        // When silent, we don't clear cache manually, fetchData will overwrite it
+        if (!silent) sessionStorage.removeItem(getCurrentTimesheetCacheKey());
+        await fetchData({ skipCache: true, silent });
     };
 
     // Load Modules/Tasks when Project Changes for New Entry
@@ -573,7 +615,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             toast.success("Work Log Added");
             setIsAddingEntry(false);
             setNewEntry({ projectId: '', moduleId: '', taskId: '', hours: '', minutes: '', description: '' });
-            await refreshTimesheetData();
+            await refreshTimesheetData(true); // Silent Refresh
             // Update selected cell logs? fetchData will update timesheet, but we might need to locally update selectedCell or close it.
             // Closing it is easiest to ensure consistency.
             setSelectedCell(null);
@@ -609,7 +651,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         fetchData();
 
         // Background polling for real-time timesheet status/entry updates
-        const pollInterval = setInterval(() => fetchData(true), 30000);
+        const pollInterval = setInterval(() => fetchData({ skipCache: true, silent: true }), 30000);
         return () => clearInterval(pollInterval);
     }, [fetchData, targetUserId, viewDate]); // Re-fetch when month or user changes
 
@@ -847,7 +889,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             const formattedMonth = format(viewDate, 'yyyy-MM');
             await api.post('/timesheet/submit', { month: formattedMonth });
             toast.success('Timesheet Submitted Successfully');
-            await refreshTimesheetData();
+            // Local State Update
+            if (timesheet) {
+                setTimesheet({ ...timesheet, status: 'SUBMITTED', submittedAt: new Date().toISOString() });
+            }
+            await refreshTimesheetData(true); // Silent Refresh
         } catch (error) {
             console.error(error);
             toast.error(error.response?.data?.message || 'Failed to submit timesheet');
@@ -1131,7 +1177,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     return (
         <div className={`${isEmbedded ? 'w-full' : 'min-h-screen bg-slate-100 p-6 md:p-10'} font-sans overflow-x-hidden`}>
-            <div className={`w-full ${isEmbedded ? '' : 'max-w-7xl mx-auto space-y-6'} overflow-x-hidden`}>
+            <div className={`w-full ${isEmbedded ? '' : 'max-w-7xl mx-auto space-y-6'} overflow-x-hidden rounded-xl`}>
 
                 {/* Tabs & Header */}
                 <div className="flex flex-col space-y-4">
@@ -1240,6 +1286,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 <span className={`font-bold ${timesheet?.status === 'APPROVED' ? 'text-emerald-600' : timesheet?.status === 'REJECTED' ? 'text-red-600' : 'text-blue-600'}`}>
                                                     {timesheet?.status || 'DRAFT'}
                                                 </span>
+                                                {timesheet?.submittedAt && (
+                                                    <span className="text-[10px] text-slate-400 font-medium">
+                                                        (Submitted: {format(new Date(timesheet.submittedAt), 'dd MMM, hh:mm a')})
+                                                    </span>
+                                                )}
                                                 {targetUserName && <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-bold">Manager View</span>}
                                             </div>
                                         </div>

@@ -52,11 +52,14 @@ const Discussions = () => {
     const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
     const SUPERVISOR_CACHE_TTL_MS = 60 * 1000;
 
-    const fetchDiscussions = useCallback(async (page, force = false, isBackground = false) => {
+    const fetchDiscussions = useCallback(async (page, options = {}) => {
+        const force = options === true || !!options.force;
+        const silent = typeof options === 'object' ? !!options.silent : false;
+        
         const CACHE_KEY = `discussion_data_${user?._id}_p${page}`;
 
         // 1. Initial Load from Cache
-        if (!isBackground && !force) {
+        if (!silent && !force) {
             const cached = readSessionCache(CACHE_KEY);
             if (cached) {
                 const data = cached.data || cached;
@@ -64,12 +67,12 @@ const Discussions = () => {
                 setTotalPages(data.totalPages || 1);
                 setCurrentPage(data.currentPage || page);
                 setLoading(false);
-                if (isCacheFresh(cached, DISCUSSION_CACHE_TTL_MS)) return;
+                // Background refresh will continue even if cache is hit
             }
         }
 
         try {
-            if (!isBackground && !readSessionCache(CACHE_KEY)) setLoading(true);
+            if (!silent && !readSessionCache(CACHE_KEY)) setLoading(true);
             const res = await api.get('/discussions/bootstrap', { params: { page, limit } });
             const freshData = {
                 discussions: res.data.discussions || [],
@@ -85,7 +88,7 @@ const Discussions = () => {
                 setDiscussions(freshData.discussions);
                 setCurrentPage(freshData.currentPage);
                 setTotalPages(freshData.totalPages);
-                setSupervisors(freshData.supervisors);
+                if (freshData.supervisors?.length > 0) setSupervisors(freshData.supervisors);
 
                 // Minimal data for caching
                 const minimalDiscussions = freshData.discussions.map(d => ({
@@ -105,22 +108,24 @@ const Discussions = () => {
                 
                 sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
 
-                const minimalSupervisors = freshData.supervisors.map(s => ({
-                    _id: s._id,
-                    firstName: s.firstName,
-                    lastName: s.lastName
-                }));
-                const supervisorFingerprint = minimalSupervisors.map(s => s._id).join('|');
-                sessionStorage.setItem(
-                    `supervisors_data_${user?._id}`,
-                    JSON.stringify(createCachePayload(minimalSupervisors, supervisorFingerprint))
-                );
+                if (freshData.supervisors?.length > 0) {
+                    const minimalSupervisors = freshData.supervisors.map(s => ({
+                        _id: s._id,
+                        firstName: s.firstName,
+                        lastName: s.lastName
+                    }));
+                    const supervisorFingerprint = minimalSupervisors.map(s => s._id).join('|');
+                    sessionStorage.setItem(
+                        `supervisors_data_${user?._id}`,
+                        JSON.stringify(createCachePayload(minimalSupervisors, supervisorFingerprint))
+                    );
+                }
             }
         } catch (error) {
             console.error(error);
-            if (!isBackground) toast.error('Failed to load discussions');
+            if (!silent) toast.error('Failed to load discussions');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [DISCUSSION_CACHE_TTL_MS, limit, user?._id]);
 
@@ -159,8 +164,6 @@ const Discussions = () => {
     }, [SUPERVISOR_CACHE_TTL_MS, user?._id]);
 
     useEffect(() => {
-        if (currentPage === 1 && initialFetchDoneRef.current) return;
-        if (currentPage === 1) initialFetchDoneRef.current = true;
         fetchDiscussions(currentPage);
         if (currentPage === 1) fetchSupervisors();
     }, [currentPage, fetchDiscussions, fetchSupervisors]);
@@ -278,22 +281,28 @@ const Discussions = () => {
     };
 
     const handleStatusChange = async (id, newStatus) => {
+        // Local state update for immediate feedback
+        const updateState = (items) => {
+            const updated = items.map(d => d._id === id ? { ...d, status: newStatus } : d);
+            return updated.sort((a, b) => {
+                const aCompleted = a.status === 'mark as complete';
+                const bCompleted = b.status === 'mark as complete';
+                if (aCompleted && !bCompleted) return 1;
+                if (!aCompleted && bCompleted) return -1;
+                return 0;
+            });
+        };
+
+        setDiscussions(prev => updateState(prev));
+
         try {
             await api.put(`/discussions/${id}`, { status: newStatus });
             toast.success('Status updated');
-            setDiscussions(prev => {
-                const updated = prev.map(d => d._id === id ? { ...d, status: newStatus } : d);
-                return updated.sort((a, b) => {
-                    const aCompleted = a.status === 'mark as complete';
-                    const bCompleted = b.status === 'mark as complete';
-                    if (aCompleted && !bCompleted) return 1;
-                    if (!aCompleted && bCompleted) return -1;
-                    return 0;
-                });
-            });
+            fetchDiscussions(currentPage, { silent: true }); // Sync cache and server state
         } catch (error) {
             console.error('Error updating status:', error);
             toast.error('Failed to update status');
+            fetchDiscussions(currentPage, { force: true }); // Revert on failure
         }
     };
 
@@ -307,12 +316,16 @@ const Discussions = () => {
             const payload = { ...newDiscussion, title: 'Discussion' }; // Setting default title since field is removed
             if (!payload.dueDate) delete payload.dueDate;
 
-            await api.post('/discussions', payload);
+            const res = await api.post('/discussions', payload);
             toast.success('Discussion created');
 
-            // Force refresh the first page and clear cache for it
-            sessionStorage.removeItem(`discussion_data_${user?._id}_p1`);
-            fetchDiscussions(1, true); 
+            // Use the created discussion from response for instant update
+            const createdDiscussion = res.data.discussion;
+            if (createdDiscussion && currentPage === 1) {
+                setDiscussions(prev => [createdDiscussion, ...prev].slice(0, limit));
+            }
+
+            fetchDiscussions(1, { silent: true }); // Sync list and cache
 
             setIsCreating(false);
             setNewDiscussion({
@@ -349,40 +362,23 @@ const Discussions = () => {
             const payload = { ...editData };
             if (!payload.dueDate) delete payload.dueDate;
 
-            await api.put(`/discussions/${id}`, payload);
+            const res = await api.put(`/discussions/${id}`, payload);
             toast.success('Discussion updated');
 
-            // Update local state and push completed to bottom
-            const updatedDiscussions = discussions.map(d => d._id === id ? { ...d, ...payload } : d)
-                .sort((a, b) => {
+            // Update local state using API response and sort
+            const updatedFromApi = res.data.discussion;
+            setDiscussions(prev => {
+                const updated = prev.map(d => d._id === id ? { ...d, ...(updatedFromApi || payload) } : d);
+                return updated.sort((a, b) => {
                     const aCompleted = a.status === 'mark as complete';
                     const bCompleted = b.status === 'mark as complete';
                     if (aCompleted && !bCompleted) return 1;
                     if (!aCompleted && bCompleted) return -1;
                     return 0;
                 });
-            
-            setDiscussions(updatedDiscussions);
+            });
 
-            // Update cache for current page
-            const CACHE_KEY = `discussion_data_${user?._id}_p${currentPage}`;
-            const buildFingerprint = (items) => items.map(d => `${d._id}-${d.status}-${d.discussion?.substring(0, 20)}-${d.dueDate}`).join('|');
-            const newFingerprint = buildFingerprint(updatedDiscussions);
-            
-            const minimalDiscussions = updatedDiscussions.map(d => ({
-                _id: d._id,
-                discussion: d.discussion,
-                status: d.status,
-                dueDate: d.dueDate,
-                createdAt: d.createdAt,
-                supervisor: d.supervisor ? { _id: d.supervisor._id, firstName: d.supervisor.firstName, lastName: d.supervisor.lastName, profilePicture: d.supervisor.profilePicture } : null
-            }));
-
-            sessionStorage.setItem(CACHE_KEY, JSON.stringify(createCachePayload({
-                discussions: minimalDiscussions,
-                totalPages: totalPages,
-                currentPage: currentPage
-            }, newFingerprint)));
+            fetchDiscussions(currentPage, { silent: true }); // Background fetch to update cache
 
             setEditingId(null);
             setEditData(null);
@@ -396,14 +392,17 @@ const Discussions = () => {
 
     const handleDelete = async (id) => {
         if (window.confirm('Are you sure you want to delete this discussion?')) {
+            // Optimistic update
+            setDiscussions(prev => prev.filter(d => d._id !== id));
+
             try {
                 await api.delete(`/discussions/${id}`);
                 toast.success('Discussion deleted');
-                sessionStorage.removeItem(`discussion_data_${user?._id}_p${currentPage}`);
-                fetchDiscussions(currentPage, true);
+                fetchDiscussions(currentPage, { silent: true }); // Re-sync and pull in next page item if needed
             } catch (error) {
                 console.error('Error deleting discussion:', error);
                 toast.error('Failed to delete discussion');
+                fetchDiscussions(currentPage, { force: true }); // Revert on failure
             }
         }
     };

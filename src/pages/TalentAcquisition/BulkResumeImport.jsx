@@ -15,6 +15,33 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
     const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'review', 'summary'
     
     const [progress, setProgress] = useState({ current: 0, total: 0, success: 0, failed: 0 });
+    const [existingCandidates, setExistingCandidates] = useState([]);
+
+    useEffect(() => {
+        if (isOpen && hiringRequestId) {
+            const fetchExisting = async () => {
+                try {
+                    const response = await api.get(`/ta/candidates/${hiringRequestId}`);
+                    if (Array.isArray(response.data?.candidates)) {
+                        setExistingCandidates(response.data.candidates);
+                    } else if (Array.isArray(response.data)) {
+                        setExistingCandidates(response.data);
+                    }
+                } catch (error) {
+                    console.error('Error fetching existing candidates:', error);
+                }
+            };
+            fetchExisting();
+        }
+    }, [isOpen, hiringRequestId]);
+
+    const checkIsExisting = (email, mobile) => {
+        if (!email && !mobile) return false;
+        return existingCandidates.some(c => 
+            (email && c.email?.toLowerCase() === email.toLowerCase().trim()) || 
+            (mobile && c.mobile?.trim() === (typeof mobile === 'string' ? mobile.trim() : mobile))
+        );
+    };
 
     const handleDragOver = (e) => {
         e.preventDefault();
@@ -113,6 +140,7 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                         status: 'Interested', // default
                         niceToHaveSkills: extracted.niceToHaveSkills || [],
                         isValid: !!(extracted.candidateName && extracted.email && extracted.mobile),
+                        isExisting: checkIsExisting(extracted.email, extracted.mobile),
                         importStatus: 'pending' // pending, success, failed
                     });
                     setProgress(p => ({ ...p, current: i + 1, success: p.success + 1 }));
@@ -133,6 +161,7 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                      status: 'Interested',
                      niceToHaveSkills: [],
                      isValid: false,
+                     isExisting: false,
                      importStatus: 'pending',
                      error: 'Parsing Failed'
                 });
@@ -145,11 +174,22 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
     };
 
     const handleDataChange = (index, field, value) => {
-        const newData = [...parsedData];
-        newData[index][field] = value;
-        // Re-validate row
-        newData[index].isValid = !!(newData[index].candidateName && newData[index].email && newData[index].mobile);
-        setParsedData(newData);
+        setParsedData(prev => prev.map((row, i) => {
+            if (i !== index) return row;
+            
+            const updatedRow = { 
+                ...row, 
+                [field]: value,
+                // Reset status to pending so user can retry after editing
+                importStatus: row.importStatus === 'failed' ? 'pending' : row.importStatus
+            };
+
+            // Re-validate and check existing status
+            updatedRow.isValid = !!(updatedRow.candidateName && updatedRow.email && updatedRow.mobile);
+            updatedRow.isExisting = checkIsExisting(updatedRow.email, updatedRow.mobile);
+            
+            return updatedRow;
+        }));
     };
 
     const removeRow = (index) => {
@@ -174,11 +214,10 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
         setActiveTab('summary');
         setProgress({ current: 0, total: validData.length, success: 0, failed: 0 });
 
-        const updatedData = [...parsedData];
+        let anySuccess = false;
 
         for (let i = 0; i < validData.length; i++) {
             const dataItem = validData[i];
-            const originalIndex = updatedData.findIndex(d => d.id === dataItem.id);
             
             try {
                 // 1. Upload Resume
@@ -188,7 +227,7 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                 
                 const { resumeUrl, resumePublicId } = uploadRes.data;
 
-                // 2. Create Candidate
+                // 2. Create/Update Candidate
                 const candidatePayload = {
                     hiringRequestId,
                     candidateName: dataItem.candidateName,
@@ -202,24 +241,33 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                     source: 'Direct Upload'
                 };
 
-                await api.post('/ta/candidates', candidatePayload);
+                const createRes = await api.post('/ta/candidates', candidatePayload);
                 
-                updatedData[originalIndex].importStatus = 'success';
+                // Update specific row in parsedData
+                setParsedData(prev => prev.map(d => 
+                    d.id === dataItem.id 
+                        ? { ...d, importStatus: 'success', isUpdate: createRes.data.isUpdate } 
+                        : d
+                ));
+                
+                anySuccess = true;
                 setProgress(p => ({ ...p, current: i + 1, success: p.success + 1 }));
             } catch (error) {
-                console.error(`Error inventing ${dataItem.fileName}:`, error);
-                updatedData[originalIndex].importStatus = 'failed';
-                updatedData[originalIndex].error = error.response?.data?.message || 'Server error';
+                console.error(`Error importing ${dataItem.fileName}:`, error);
+                
+                setParsedData(prev => prev.map(d => 
+                    d.id === dataItem.id 
+                        ? { ...d, importStatus: 'failed', error: error.response?.data?.message || 'Server error' } 
+                        : d
+                ));
+                
                 setProgress(p => ({ ...p, current: i + 1, failed: p.failed + 1 }));
             }
-            
-            // Update UI iteratively
-            setParsedData([...updatedData]);
         }
 
         setIsImporting(false);
-        if (updatedData.some(d => d.importStatus === 'success')) {
-            toast.success(`Successfully imported resumes!`);
+        if (anySuccess) {
+            toast.success(`Successfully processed resumes!`);
             if (onImportSuccess) onImportSuccess();
         }
     };
@@ -329,12 +377,36 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                                     </div>
                                 )}
                             </div>
+
+                            {activeTab === 'summary' && !isImporting && (
+                                <div className="grid grid-cols-3 gap-4 mb-6 animate-in slide-in-from-top-2 duration-300">
+                                    <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl text-center">
+                                        <div className="text-2xl font-black text-emerald-600 mb-0.5">
+                                            {parsedData.filter(d => d.importStatus === 'success' && !d.isUpdate).length}
+                                        </div>
+                                        <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-tight">Newly Added</div>
+                                    </div>
+                                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-center">
+                                        <div className="text-2xl font-black text-blue-600 mb-0.5">
+                                            {parsedData.filter(d => d.importStatus === 'success' && d.isUpdate).length}
+                                        </div>
+                                        <div className="text-[10px] font-bold text-blue-800 uppercase tracking-tight">Updated</div>
+                                    </div>
+                                    <div className="bg-rose-50 border border-rose-100 p-4 rounded-xl text-center">
+                                        <div className="text-2xl font-black text-rose-600 mb-0.5">
+                                            {parsedData.filter(d => d.importStatus === 'failed').length}
+                                        </div>
+                                        <div className="text-[10px] font-bold text-rose-800 uppercase tracking-tight">Failed</div>
+                                    </div>
+                                </div>
+                            )}
                             
                             <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
                                 <table className="w-full text-left text-sm text-slate-600">
                                     <thead className="bg-slate-50 text-slate-700 font-medium">
                                         <tr>
                                             <th className="px-4 py-3 border-b">File Name</th>
+                                            <th className="px-4 py-3 border-b">Type</th>
                                             <th className="px-4 py-3 border-b">Candidate Name</th>
                                             <th className="px-4 py-3 border-b">Email</th>
                                             <th className="px-4 py-3 border-b">Mobile</th>
@@ -345,9 +417,16 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                                     <tbody className="divide-y divide-slate-100">
                                         {parsedData.map((row, index) => (
                                             <tr key={index} className={row.isValid ? 'hover:bg-slate-50/50' : 'bg-red-50/30'}>
-                                                <td className="px-4 py-3 max-w-[200px] truncate font-medium text-slate-800" title={row.fileName}>
+                                                <td className="px-4 py-3 max-w-[180px] truncate font-medium text-slate-800" title={row.fileName}>
                                                     {row.fileName}
                                                     {row.error && activeTab === 'review' && <p className="text-xs text-red-500 mt-1">{row.error}</p>}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    {row.isExisting ? (
+                                                        <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded text-[10px]">UPDATE</span>
+                                                    ) : (
+                                                        <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded text-[10px]">NEW</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     {activeTab === 'review' ? (
@@ -395,9 +474,20 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                                                 )}
                                                 {activeTab === 'summary' && (
                                                     <td className="px-4 py-3">
-                                                        {row.importStatus === 'success' && <div className="flex items-center gap-1 text-emerald-600 font-medium"><CheckCircle size={16}/> Success</div>}
-                                                        {row.importStatus === 'failed' && <div className="flex items-center gap-1 text-red-600 font-medium" title={row.error}><XCircle size={16}/> Failed (Hover)</div>}
-                                                        {row.importStatus === 'pending' && <div className="flex items-center gap-1 text-slate-500"><Loader size={16} className="animate-spin"/> Pending</div>}
+                                                        {row.importStatus === 'success' ? (
+                                                            <div className="flex items-center gap-1.5 text-emerald-600 font-bold">
+                                                                <CheckCircle size={16}/> 
+                                                                {row.isUpdate ? 'Updated' : 'Created'}
+                                                            </div>
+                                                        ) : row.importStatus === 'failed' ? (
+                                                            <div className="flex items-center gap-1.5 text-red-600 font-medium" title={row.error}>
+                                                                <XCircle size={16}/> Failed
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                                                                <Loader size={16} className="animate-spin"/> Pending
+                                                            </div>
+                                                        )}
                                                     </td>
                                                 )}
                                             </tr>

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell, Calendar, Clock, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
-import toast from 'react-hot-toast';
 import api from '../api/axios';
 import socket from '../api/socket';
 import { useAuth } from '../context/AuthContext';
@@ -16,7 +15,6 @@ const Topbar = ({ toggleSidebar }) => {
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef(null);
     const showDropdownRef = useRef(false);
-    const lastBootstrapUserIdRef = useRef(null);
 
     useEffect(() => {
         showDropdownRef.current = showDropdown;
@@ -35,37 +33,19 @@ const Topbar = ({ toggleSidebar }) => {
     }, [hasTalentAcquisition]);
 
     useEffect(() => {
-        if (!user) return;
-        if (lastBootstrapUserIdRef.current === user._id) return;
-
-        lastBootstrapUserIdRef.current = user._id;
-        const bootstrapTimer = setTimeout(() => {
-            fetchNotificationBootstrap();
-        }, 0);
-
-        return () => clearTimeout(bootstrapTimer);
-    }, [fetchNotificationBootstrap, user]);
+        if (!user?._id) return;
+        fetchNotificationBootstrap();
+    }, [fetchNotificationBootstrap, user?._id]);
 
     useEffect(() => {
         if (!user) return;
 
         const handleSocketNotification = (newNotif) => {
             setNotifications(prev => [newNotif, ...prev]);
-            if (!showDropdownRef.current) {
-                toast.success(`New Notification: ${newNotif.title}`, {
-                    position: 'top-right'
-                });
-            }
         };
 
         const handleInterviewUpdate = (data) => {
             fetchNotificationBootstrap();
-
-            if (data.type === 'EVALUATED') {
-                toast.success(`Interview for ${data.candidateName} has been evaluated`, {
-                    position: 'top-right'
-                });
-            }
         };
 
         const handleRefresh = () => {
@@ -105,13 +85,17 @@ const Topbar = ({ toggleSidebar }) => {
     };
 
     const handleMarkAsRead = async (id, link) => {
+        // Navigate immediately — don't block on the API call.
+        // A failure to mark-as-read is non-critical and should never prevent navigation.
+        if (link) {
+            navigate(link);
+        }
+        setShowDropdown(false);
+
+        // Fire-and-forget: mark as read in the background
         try {
             await api.patch(`/notifications/${id}/read`);
             setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
-            if (link) {
-                navigate(link);
-            }
-            setShowDropdown(false);
         } catch (error) {
             console.error('Failed to mark notification as read:', error);
         }

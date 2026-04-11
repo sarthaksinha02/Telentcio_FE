@@ -40,10 +40,13 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showBulkResumeImport, setShowBulkResumeImport] = useState(false);
 
+    const [isSidePanelMaximized, setIsSidePanelMaximized] = useState(false);
+
     const handleSelectCandidate = (candId) => {
         const newParams = new URLSearchParams(searchParams);
         if (selectedCandidateId === candId) {
             newParams.delete('candidateId');
+            setIsSidePanelMaximized(false);
         } else {
             newParams.set('candidateId', candId);
         }
@@ -53,8 +56,13 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
     const handleCloseCandidate = () => {
         const newParams = new URLSearchParams(searchParams);
         newParams.delete('candidateId');
+        setIsSidePanelMaximized(false);
         setSearchParams(newParams);
     };
+
+    const handleToggleMaximize = useCallback(() => {
+        setIsSidePanelMaximized(prev => !prev);
+    }, []);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -152,7 +160,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
-                
+
                 const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
                 const allCompleted = rounds.length > 0 && completedRounds.length === rounds.length;
                 const hasFailed = rounds.some(r => r.status === 'Failed');
@@ -562,94 +570,94 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                 to: { row: 2, column: row2Data.length }
             };
 
-                dataToExport.forEach((candidate, index) => {
-                    const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
+            dataToExport.forEach((candidate, index) => {
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
 
-                    const techSkillRatings = techSkillsHeaders.map(skillName => {
-                        const skillEntry = (candidate.mustHaveSkills || []).find(s => s.skill === skillName);
-                        if (skillEntry) return `${skillEntry.experience}y`;
+                const techSkillRatings = techSkillsHeaders.map(skillName => {
+                    const skillEntry = (candidate.mustHaveSkills || []).find(s => s.skill === skillName);
+                    if (skillEntry) return `${skillEntry.experience}y`;
 
-                        const rating = (candidate.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
-                        return rating !== undefined ? `${rating}/10` : '-';
-                    });
+                    const rating = (candidate.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
+                    return rating !== undefined ? `${rating}/10` : '-';
+                });
 
-                    // Collect data for each round
-                    const roundsData = [];
-                    for (let i = 0; i < maxRoundsCount; i++) {
-                        const r = rounds[i];
-                        if (r) {
-                            const feedback = r.feedback || '-';
-                            const date = r.scheduledDate ? format(new Date(r.scheduledDate), 'dd-MMM-yyyy') : '-';
-                            const interviewer = r.evaluatedBy ? `${r.evaluatedBy.firstName} ${r.evaluatedBy.lastName}` : (r.interviewerName || '-');
+                // Collect data for each round
+                const roundsData = [];
+                for (let i = 0; i < maxRoundsCount; i++) {
+                    const r = rounds[i];
+                    if (r) {
+                        const feedback = r.feedback || '-';
+                        const date = r.scheduledDate ? format(new Date(r.scheduledDate), 'dd-MMM-yyyy') : '-';
+                        const interviewer = r.evaluatedBy ? `${r.evaluatedBy.firstName} ${r.evaluatedBy.lastName}` : (r.interviewerName || '-');
 
-                            const rSoftSkillRatings = softSkillsHeaders.map(skillName => {
-                                const rating = (r.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
-                                return rating !== undefined ? `${rating}/10` : '-';
-                            });
+                        const rSoftSkillRatings = softSkillsHeaders.map(skillName => {
+                            const rating = (r.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
+                            return rating !== undefined ? `${rating}/10` : '-';
+                        });
 
-                            const rTechSkillRatings = techSkillsHeaders.map(skillName => {
-                                const sr = (r.skillRatings || []).find(s => s.skill === skillName);
-                                return sr ? `${sr.rating}/10` : '-';
-                            });
+                        const rTechSkillRatings = techSkillsHeaders.map(skillName => {
+                            const sr = (r.skillRatings || []).find(s => s.skill === skillName);
+                            return sr ? `${sr.rating}/10` : '-';
+                        });
 
-                            roundsData.push(feedback, date, interviewer, ...rSoftSkillRatings, ...rTechSkillRatings);
-                        } else {
-                            // Empty round padding
-                            const fieldCount = 3 + softSkillsHeaders.length + techSkillsHeaders.length;
-                            for (let j = 0; j < fieldCount; j++) roundsData.push('-');
-                        }
+                        roundsData.push(feedback, date, interviewer, ...rSoftSkillRatings, ...rTechSkillRatings);
+                    } else {
+                        // Empty round padding
+                        const fieldCount = 3 + softSkillsHeaders.length + techSkillsHeaders.length;
+                        for (let j = 0; j < fieldCount; j++) roundsData.push('-');
                     }
+                }
 
-                    const profileShortlisted = candidate.decision === 'Shortlisted' ? 'Yes' : 'No';
-                    const statusSummary = getInterviewStatusSummary(rounds);
-                    const interviewStatusLabel = statusSummary.label || '-';
+                const profileShortlisted = candidate.decision === 'Shortlisted' ? 'Yes' : 'No';
+                const statusSummary = getInterviewStatusSummary(rounds);
+                const interviewStatusLabel = statusSummary.label || '-';
 
-                    // Construct row data according to sections order
-                    const rowData = [
-                        index + 1,
-                        candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'dd-MMM-yyyy') : '-',
-                        candidate.source || '-',
-                        candidate.profilePulledBy || '-',
-                        candidate.calledBy || '-',
-                        candidate.candidateName || '-',
-                        candidate.totalExperience || '-',
+                // Construct row data according to sections order
+                const rowData = [
+                    index + 1,
+                    candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'dd-MMM-yyyy') : '-',
+                    candidate.source || '-',
+                    candidate.profilePulledBy || '-',
+                    candidate.calledBy || '-',
+                    candidate.candidateName || '-',
+                    candidate.totalExperience || '-',
 
-                        candidate.tatToJoin || '-',
-                        candidate.rate || '-',
-                        candidate.remark || '-',
+                    candidate.tatToJoin || '-',
+                    candidate.rate || '-',
+                    candidate.remark || '-',
 
-                        candidate.relevantExperience || '-',
-                        ...techSkillRatings,
+                    candidate.relevantExperience || '-',
+                    ...techSkillRatings,
 
-                        candidate.qualification || '-',
-                        candidate.currentCompany || '-',
+                    candidate.qualification || '-',
+                    candidate.currentCompany || '-',
 
-                        candidate.currentCTC || '-',
-                        candidate.expectedCTC || '-',
+                    candidate.currentCTC || '-',
+                    candidate.expectedCTC || '-',
 
-                        candidate.noticePeriod || '-',
-                        candidate.currentLocation || '-',
-                        candidate.preferredLocation || '-',
+                    candidate.noticePeriod || '-',
+                    candidate.currentLocation || '-',
+                    candidate.preferredLocation || '-',
 
-                        candidate.email || '-',
-                        candidate.mobile || '-',
+                    candidate.email || '-',
+                    candidate.mobile || '-',
 
-                        candidate.offerCompany || '-',
-                        candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : '-',
+                    candidate.offerCompany || '-',
+                    candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : '-',
 
-                        candidate.status || 'Interested',
-                        candidate.remark || '-',
-                        candidate.customRemark || '-',
+                    candidate.status || 'Interested',
+                    candidate.remark || '-',
+                    candidate.customRemark || '-',
 
-                        ...roundsData,
+                    ...roundsData,
 
-                        profileShortlisted,
-                        '-', // Final Scoring
-                        '-', // Profile Shared
-                        interviewStatusLabel,
-                        candidate.rejectionReason || '-',
-                        '' // Decision Status
-                    ];
+                    profileShortlisted,
+                    '-', // Final Scoring
+                    '-', // Profile Shared
+                    interviewStatusLabel,
+                    candidate.rejectionReason || '-',
+                    '' // Decision Status
+                ];
 
                 const row = sheet.addRow(rowData);
 
@@ -740,7 +748,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
         const total = rounds.length;
         const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
         const completedCount = completedRounds.length;
-        
+
         const failedRounds = rounds.filter(r => r.status === 'Failed');
         const failedCount = failedRounds.length;
 
@@ -766,7 +774,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
         return { label: 'Pending', color: 'text-amber-700 bg-amber-50 border-amber-200' };
     };
 
-    if (loading) {
+    if (loading && candidates.length === 0) {
         return (
             <div className="space-y-4">
                 <div className="flex justify-between items-center mb-6">
@@ -1852,9 +1860,9 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
 
                 {/* Right Side: Candidate Details Side Panel */}
                 {selectedCandidateId && (
-                    <div className="w-full lg:w-[72%] sticky top-20 h-[calc(100vh-100px)] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col z-10 animate-in slide-in-from-right duration-300">
+                    <div className={`${isSidePanelMaximized ? 'fixed top-0 right-0 bottom-0 left-0 md:left-64 z-[100]' : 'w-full lg:w-[72%] sticky top-20 h-[calc(100vh-100px)]'} bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col animate-in slide-in-from-right duration-300`}>
                         {/* Side Panel Header */}
-                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
+                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0 ">
                             <h2 className="text-lg font-bold text-slate-800">Quick Profile View</h2>
                             <button
                                 onClick={handleCloseCandidate}
@@ -1872,6 +1880,8 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                 hiringRequestId={hiringRequestId}
                                 isSidePanel={true}
                                 onUpdate={fetchCandidates}
+                                isSidePanelMaximized={isSidePanelMaximized}
+                                onToggleMaximize={handleToggleMaximize}
                             />
                         </div>
                     </div>
@@ -1886,7 +1896,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                     onImportSuccess={fetchCandidates}
                 />
             )}
-            
+
             {showBulkResumeImport && (
                 <BulkResumeImport
                     hiringRequestId={hiringRequestId}

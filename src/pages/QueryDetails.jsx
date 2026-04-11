@@ -55,7 +55,11 @@ const QueryDetails = () => {
             transports: ['websocket', 'polling']
         });
 
-        socket.emit('join_query', id);
+        // FIX: emit join_query only once the socket is actually connected.
+        // Emitting before 'connect' fires is a no-op — the message is silently lost.
+        socket.on('connect', () => {
+            socket.emit('join_query', id);
+        });
 
         socket.on('new_comment', (updatedComments) => {
             setQuery(prev => {
