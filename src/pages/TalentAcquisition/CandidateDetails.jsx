@@ -3,13 +3,15 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2 } from 'lucide-react';
+import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, FileText, ExternalLink, Maximize2 } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
 
-const CandidateDetails = () => {
+const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propHiringRequestId, isSidePanel, onUpdate, isSidePanelMaximized, onToggleMaximize }) => {
     const { user } = useAuth();
-    const { hiringRequestId, candidateId } = useParams();
+    const params = useParams();
+    const hiringRequestId = propHiringRequestId || params.hiringRequestId;
+    const candidateId = propCandidateId || params.candidateId;
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const phaseParam = searchParams.get('phase');
@@ -47,8 +49,15 @@ const CandidateDetails = () => {
     const [selectedInterviewer, setSelectedInterviewer] = useState('');
     const [roles, setRoles] = useState([]);
     const [selectedRoleForRound, setSelectedRoleForRound] = useState('');
+    const [isResumeFullView, setIsResumeFullView] = useState(false);
 
-
+    const toggleFullScreen = () => {
+        if (isSidePanel && onToggleMaximize) {
+            onToggleMaximize();
+        } else {
+            setIsResumeFullView(!isResumeFullView);
+        }
+    };
 
     useEffect(() => {
         const initializeData = async () => {
@@ -112,6 +121,7 @@ const CandidateDetails = () => {
             setSelectedInterviewer('');
             setSelectedRoleForRound('');
             fetchCandidate();
+            if (onUpdate) onUpdate();
             window.dispatchEvent(new Event('refreshNotifications'));
         } catch (error) {
             console.error('Error adding round:', error);
@@ -119,7 +129,7 @@ const CandidateDetails = () => {
         } finally {
             setActionLoading(false);
         }
-    }, [newRound, selectedInterviewer, candidateId, fetchCandidate]);
+    }, [newRound, selectedInterviewer, candidateId, currentPhase, fetchCandidate]);
 
     const handleEditRound = useCallback(async (roundId) => {
         if (!editingRoundForm.levelName) {
@@ -139,6 +149,7 @@ const CandidateDetails = () => {
             toast.success('Interview round updated');
             setEditingRoundId(null);
             fetchCandidate();
+            if (onUpdate) onUpdate();
             window.dispatchEvent(new Event('refreshNotifications'));
         } catch (error) {
             console.error('Error updating round:', error);
@@ -173,6 +184,7 @@ const CandidateDetails = () => {
             setSelectedWorkflow('');
             setWorkflowMapping({});
             fetchCandidate();
+            if (onUpdate) onUpdate();
             window.dispatchEvent(new Event('refreshNotifications'));
         } catch (error) {
             console.error(error);
@@ -180,7 +192,7 @@ const CandidateDetails = () => {
         } finally {
             setActionLoading(false);
         }
-    }, [selectedWorkflow, interviewWorkflows, workflowMapping, candidateId, fetchCandidate]);
+    }, [selectedWorkflow, interviewWorkflows, workflowMapping, candidateId, currentPhase, fetchCandidate]);
 
     const handleDeleteRound = useCallback(async (roundId) => {
         if (!window.confirm('Are you sure you want to delete this round?')) return;
@@ -189,6 +201,7 @@ const CandidateDetails = () => {
             await api.delete(`/ta/candidates/${candidateId}/rounds/${roundId}`);
             toast.success('Round deleted');
             fetchCandidate();
+            if (onUpdate) onUpdate();
         } catch (error) {
             console.error('Error deleting round:', error);
             toast.error('Failed to delete round');
@@ -216,6 +229,7 @@ const CandidateDetails = () => {
             setEvaluatingRoundId(null);
             setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
             fetchCandidate();
+            if (onUpdate) onUpdate();
         } catch (error) {
             console.error('Error submitting evaluation:', error);
             toast.error(error.response?.data?.message || 'Failed to submit evaluation');
@@ -229,6 +243,7 @@ const CandidateDetails = () => {
             await api.patch(`/ta/candidates/${candidateId}/phase3-decision`, { phase3Decision: newDecision });
             toast.success('Phase 3 Decision updated');
             setCandidate(prev => ({ ...prev, phase3Decision: newDecision }));
+            if (onUpdate) onUpdate();
             window.dispatchEvent(new Event('refreshNotifications'));
         } catch (error) {
             console.error('Error updating Phase 3 decision:', error);
@@ -242,6 +257,7 @@ const CandidateDetails = () => {
             await api.patch(`/ta/candidates/${candidateId}/internal-remark`, { internalRemark: internalRemarkText });
             setCandidate(prev => ({ ...prev, internalRemark: internalRemarkText }));
             setInternalRemarkEditing(false);
+            if (onUpdate) onUpdate();
             toast.success('Internal remark saved successfully');
         } catch (error) {
             console.error('Error saving internal remark:', error);
@@ -252,6 +268,20 @@ const CandidateDetails = () => {
     };
 
 
+
+    const getEffectiveRoundStatus = useCallback((round) => {
+        if (round.status === 'Failed') return 'Failed';
+        if (round.status === 'Skipped') return 'Skipped';
+
+        // Only mark as Passed if both feedback and rating are present
+        const isCompleted = round.feedback && (round.rating || round.rating === 0);
+        if (isCompleted) return 'Passed';
+
+        // If not completed, show as Scheduled if a date exists or it's already Scheduled
+        if (round.scheduledDate || round.status === 'Scheduled') return 'Scheduled';
+
+        return 'Pending';
+    }, []);
 
     const getStatusBadgeColor = useCallback((status) => {
         switch (status) {
@@ -268,16 +298,17 @@ const CandidateDetails = () => {
             case 'Passed': return <CheckCircle size={16} className="text-emerald-600" />;
             case 'Failed': return <XCircle size={16} className="text-red-600" />;
             case 'Scheduled': return <Calendar size={16} className="text-blue-600" />;
+            case 'Skipped': return <Clock size={16} className="text-slate-500" />;
             default: return <Clock size={16} className="text-amber-600" />;
         }
     }, []);
 
-    const { isAdmin, userPermissions, hasSuperApprove, canManageRounds } = useMemo(() => {
+    const { hasSuperApprove, canManageRounds } = useMemo(() => {
         const admin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
         const perms = user?.permissions || [];
         const superApprove = perms.includes('ta.super_approve') || perms.includes('*') || admin;
         const manageRounds = admin || perms.includes('ta.edit');
-        return { isAdmin: admin, userPermissions: perms, hasSuperApprove: superApprove, canManageRounds: manageRounds };
+        return { hasSuperApprove: superApprove, canManageRounds: manageRounds };
     }, [user]);
 
     if (loading) {
@@ -298,6 +329,7 @@ const CandidateDetails = () => {
                         </div>
                     </div>
                 </div>
+
                 <div className="w-full px-3 sm:px-4 lg:px-6 mt-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
                     <div className="lg:col-span-1 space-y-6">
                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -334,42 +366,61 @@ const CandidateDetails = () => {
     if (!candidate) return <div className="text-center p-8">Candidate not found</div>;
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-12">
-            <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                <div className="w-full px-3 sm:px-4 lg:px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div className="flex items-center gap-4">
-                        <button onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications`)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
-                            <ArrowLeft size={20} />
-                        </button>
-                        <div>
-                            <h1 className="text-xl font-bold text-slate-800">{candidate.candidateName}</h1>
-                            <p className="text-sm text-slate-500">{candidate.email} • {candidate.mobile}</p>
+        <div className={`min-h-screen ${isSidePanel ? 'bg-transparent pb-4' : 'bg-slate-50 pb-12'}`}>
+            {!isSidePanel ? (
+                <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+                    <div className="w-full px-3 sm:px-4 lg:px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications`)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
+                                <ArrowLeft size={20} />
+                            </button>
+                            <div>
+                                <h1 className="text-xl font-bold text-slate-800">{candidate.candidateName}</h1>
+                                <p className="text-sm text-slate-500">{candidate.email} • {candidate.mobile}</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-3 flex-wrap">
+                            {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
+                                <a
+                                    href={candidate.resumeUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors border border-slate-200"
+                                >
+                                    <Download size={18} /> View Resume
+                                </a>
+                            )}
+                            {canManageRounds && (
+                                <button
+                                    onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
+                                    className="flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                                >
+                                    <Edit2 size={18} /> Edit Profile
+                                </button>
+                            )}
                         </div>
                     </div>
-                    <div className="flex gap-3 flex-wrap">
-                        <a
-                            href={candidate.resumeUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors border border-slate-200"
-                        >
-                            <Download size={18} /> View Resume
-                        </a>
-                        {canManageRounds && (
-                            <button
-                                onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
-                                className="flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                            >
-                                <Edit2 size={18} /> Edit Profile
-                            </button>
-                        )}
-                    </div>
                 </div>
-            </div>
+            ) : (
+                <div className="bg-white border-b border-slate-200 p-4 mb-4 rounded-xl shadow-sm mx-4 mt-4 flex justify-between items-center">
+                    <div>
+                        <h1 className="text-lg font-bold text-slate-800">{candidate.candidateName}</h1>
+                        <p className="text-xs text-slate-500">{candidate.email} • {candidate.mobile}</p>
+                    </div>
+                    {canManageRounds && (
+                        <button
+                            onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
+                            className="flex items-center gap-2 px-3 py-1.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm"
+                        >
+                            <Edit2 size={16} /> Edit Profile
+                        </button>
+                    )}
+                </div>
+            )}
 
-            <div className="w-full px-3 sm:px-4 lg:px-6 mt-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <div className={`w-full ${isSidePanel ? 'px-4' : 'px-3 sm:px-4 lg:px-6 mt-6'} ${isSidePanel ? 'flex flex-col' : 'grid grid-cols-1 lg:grid-cols-5'} gap-6`}>
                 {/* Left Column: Basic Details Summary */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className={`${isSidePanel ? 'w-full flex flex-col-reverse space-y-reverse space-y-6' : 'lg:col-span-2 space-y-6'}`}>
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                         <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Profile Summary</h3>
 
@@ -413,7 +464,7 @@ const CandidateDetails = () => {
                                                 {currentPhase === 1 ? (
                                                     <select
                                                         value={candidate.decision || 'None'}
-                                                        onChange={(e) => {
+                                                        onChange={() => {
                                                             // Currently, list UI handles patch, let's keep consistency or just show it readonly here,
                                                             // But user wants to update from details too if possible.
                                                             // For now, list is main place, but we can add patch if missing.
@@ -431,7 +482,7 @@ const CandidateDetails = () => {
                                                 ) : currentPhase === 2 ? (
                                                     <select
                                                         value={candidate.phase2Decision || 'None'}
-                                                        onChange={(e) => {
+                                                        onChange={() => {
                                                             toast.error("Please update Phase 2 decision from Candidate List page.");
                                                         }}
                                                         disabled
@@ -571,10 +622,61 @@ const CandidateDetails = () => {
                             )}
                         </div>
                     </div>
+
+                    {/* Inline Resume Viewer */}
+                    {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[500px] h-[1250px]">
+                            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
+                                <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                    <FileText size={16} className="text-blue-500" /> Resume Preview
+                                </h3>
+                                <div className="flex items-center gap-3">
+                                    <a
+                                        href={candidate.resumeUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 shadow-sm"
+                                    >
+                                        <ExternalLink size={14} /> Open in new tab
+                                    </a>
+                                    <button
+                                        onClick={toggleFullScreen}
+                                        className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 hover:text-slate-800 transition-colors bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm hover:bg-slate-50"
+                                    >
+                                        <Maximize2 size={14} /> {isSidePanelMaximized ? 'Exit Full screen' : 'Full screen'}
+                                    </button>
+                                </div>
+                            </div>
+                            <object
+                                data={`${String(candidate.resumeUrl).replace('http://', 'https://')}#toolbar=0&navpanes=0`}
+                                type="application/pdf"
+                                className="w-full flex-1"
+                            >
+                                <iframe
+                                    src={`${String(candidate.resumeUrl).replace('http://', 'https://')}#toolbar=0&navpanes=0`}
+                                    className="w-full h-full border-none"
+                                    title="Resume Preview"
+                                >
+                                    <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50">
+                                        <FileText size={48} className="text-slate-300 mb-4" />
+                                        <p className="text-slate-600 font-medium mb-2">Resume preview not available in browser</p>
+                                        <a
+                                            href={candidate.resumeUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 font-bold hover:underline"
+                                        >
+                                            View / Download Resume
+                                        </a>
+                                    </div>
+                                </iframe>
+                            </object>
+                        </div>
+                    )}
                 </div>
 
                 {/* Right Column: Interview Workflow Timeline */}
-                <div className="lg:col-span-3 space-y-6">
+                <div className={`${isSidePanel ? 'w-full hidden' : 'lg:col-span-3'} space-y-6`}>
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-slate-800">Interview Timeline</h3>
@@ -765,21 +867,21 @@ const CandidateDetails = () => {
                                                 )}
 
                                                 {/* Dot */}
-                                                <div className={`absolute top-1 left-1.5 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${round.status === 'Passed' ? 'bg-emerald-500' :
-                                                    round.status === 'Failed' ? 'bg-red-500' :
+                                                <div className={`absolute top-1 left-1.5 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${getEffectiveRoundStatus(round) === 'Passed' ? 'bg-emerald-500' :
+                                                    getEffectiveRoundStatus(round) === 'Failed' ? 'bg-red-500' :
                                                         'bg-amber-400'
                                                     }`}></div>
 
                                                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                                                     {/* Round Header */}
-                                                    <div className={`px-5 py-4 border-b flex justify-between items-center ${round.status === 'Passed' ? 'bg-emerald-50/50 border-emerald-100' :
-                                                        round.status === 'Failed' ? 'bg-red-50/50 border-red-100' :
+                                                    <div className={`px-5 py-4 border-b flex justify-between items-center ${getEffectiveRoundStatus(round) === 'Passed' ? 'bg-emerald-50/50 border-emerald-100' :
+                                                        getEffectiveRoundStatus(round) === 'Failed' ? 'bg-red-50/50 border-red-100' :
                                                             'bg-slate-50/50 border-slate-100'
                                                         }`}>
                                                         <div>
                                                             <h4 className="font-bold text-slate-800 flex items-center gap-2">
                                                                 {round.levelName}
-                                                                {getStatusIcon(round.status)}
+                                                                {getStatusIcon(getEffectiveRoundStatus(round))}
                                                             </h4>
                                                             {round.scheduledDate && (
                                                                 <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
@@ -788,8 +890,8 @@ const CandidateDetails = () => {
                                                             )}
                                                         </div>
                                                         <div className="flex items-center gap-3">
-                                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(round.status)}`}>
-                                                                {round.status}
+                                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(getEffectiveRoundStatus(round))}`}>
+                                                                {getEffectiveRoundStatus(round)}
                                                             </span>
                                                             {canManageRounds && ['Pending', 'Scheduled'].includes(round.status) && (
                                                                 <div className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1">
@@ -844,8 +946,8 @@ const CandidateDetails = () => {
                                                         </div>
 
                                                         {/* Evaluation Results Overlay */}
-                                                        {['Passed', 'Failed'].includes(round.status) && !isEvaluating && (
-                                                            <div className={`rounded-lg p-4 border ${round.status === 'Passed' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-red-50/60 border-red-100'}`}>
+                                                        {['Passed', 'Failed'].includes(getEffectiveRoundStatus(round)) && !isEvaluating && (
+                                                            <div className={`rounded-lg p-4 border ${getEffectiveRoundStatus(round) === 'Passed' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-red-50/60 border-red-100'}`}>
                                                                 <div className="flex items-start gap-2">
                                                                     <MessageSquare size={16} className="text-slate-400 mt-0.5" />
                                                                     <div className="flex-1">
@@ -858,7 +960,7 @@ const CandidateDetails = () => {
                                                                             )}
                                                                         </div>
                                                                         <p className="text-sm text-slate-700 whitespace-pre-wrap">{round.feedback}</p>
-                                                                        
+
                                                                         {round.skillRatings && round.skillRatings.some(sr => sr.rating > 0) && (
                                                                             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                                                 {round.skillRatings.map((sr, idx) => (
@@ -891,9 +993,16 @@ const CandidateDetails = () => {
                                                                     <button
                                                                         onClick={() => {
                                                                             setEvaluatingRoundId(round._id);
-                                                                            setEvaluationForm({ 
-                                                                                rating: '',
-                                                                                skillRatings: (candidate.skillRatings || []).map(sr => ({ ...sr, rating: 0 })),
+                                                                            setEvaluationForm({
+                                                                                skillRatings: (candidate.skillRatings || [])
+                                                                                    .filter(sr => {
+                                                                                        const s = sr.skill.toLowerCase();
+                                                                                        const isMustHave = sr.category === 'Must-Have';
+                                                                                        return isMustHave && s !== 'tat' && s !== 'rate' && s !== 'billing rate';
+                                                                                    })
+                                                                                    .map(sr => ({ ...sr, rating: 0 })),
+                                                                                feedback: '',
+                                                                                status: 'Passed',
                                                                                 showAssessment: false,
                                                                                 manualSkillName: ''
                                                                             });
@@ -911,8 +1020,8 @@ const CandidateDetails = () => {
                                                                                 status: round.status,
                                                                                 feedback: round.feedback || '',
                                                                                 rating: round.rating || '',
-                                                                                skillRatings: round.skillRatings && round.skillRatings.length > 0 
-                                                                                    ? round.skillRatings 
+                                                                                skillRatings: round.skillRatings && round.skillRatings.length > 0
+                                                                                    ? round.skillRatings
                                                                                     : (candidate.skillRatings || [])
                                                                             });
                                                                         }}
@@ -1022,19 +1131,17 @@ const CandidateDetails = () => {
                                                                         {/* Rating dropdown — shown only when Pass is selected */}
                                                                         {evaluationForm.status === 'Passed' && (
                                                                             <>
-                                                                                {/* Skill Ratings inside Evaluation */}
                                                                                 <div className="mb-4">
                                                                                     <button
                                                                                         type="button"
                                                                                         onClick={() => setEvaluationForm(prev => ({ ...prev, showAssessment: !prev.showAssessment }))}
-                                                                                        className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${
-                                                                                            evaluationForm.showAssessment 
-                                                                                                ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
-                                                                                                : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
-                                                                                        }`}
+                                                                                        className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${evaluationForm.showAssessment
+                                                                                            ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                                                                                            : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
+                                                                                            }`}
                                                                                     >
                                                                                         <span className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                                                                                            {evaluationForm.showAssessment ? <CheckCircle size={16} /> : <Plus size={16} />} 
+                                                                                            {evaluationForm.showAssessment ? <CheckCircle size={16} /> : <Plus size={16} />}
                                                                                             Comprehensive Skill Assessment
                                                                                         </span>
                                                                                         <span className="text-[10px] opacity-80">
@@ -1044,89 +1151,88 @@ const CandidateDetails = () => {
 
                                                                                     {evaluationForm.showAssessment && (
                                                                                         <div className="mt-2 bg-white/80 p-4 rounded-xl border border-blue-100 shadow-inner animate-in fade-in slide-in-from-top-1 duration-200">
-                                                                                            {/* Manual Skill Addition Row */}
-                                                                                            <div className="flex items-center gap-2 mb-4 p-2 bg-blue-50/50 rounded-lg border border-blue-100/50">
-                                                                                                <input 
-                                                                                                    type="text"
-                                                                                                    placeholder="Add expert skill (e.g. System Design)..."
-                                                                                                    value={evaluationForm.manualSkillName}
-                                                                                                    onChange={(e) => setEvaluationForm(prev => ({ ...prev, manualSkillName: e.target.value }))}
-                                                                                                    className="flex-1 px-3 py-1.5 text-xs border border-slate-200 rounded-md outline-none focus:border-blue-500"
-                                                                                                />
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    onClick={() => {
-                                                                                                        if (!evaluationForm.manualSkillName.trim()) return;
-                                                                                                        const newSkill = {
-                                                                                                            skill: evaluationForm.manualSkillName.trim(),
-                                                                                                            rating: 0,
-                                                                                                            category: 'Additional'
-                                                                                                        };
-                                                                                                        setEvaluationForm(prev => ({
-                                                                                                            ...prev,
-                                                                                                            skillRatings: [...prev.skillRatings, newSkill],
-                                                                                                            manualSkillName: ''
-                                                                                                        }));
-                                                                                                    }}
-                                                                                                    className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-bold hover:bg-blue-700 transition-colors"
-                                                                                                >
-                                                                                                    Add Skill
-                                                                                                </button>
-                                                                                            </div>
-
                                                                                             <div className="space-y-4">
-                                                                                                {evaluationForm.skillRatings && evaluationForm.skillRatings.length > 0 ? (
-                                                                                                    evaluationForm.skillRatings.map((sr, idx) => (
-                                                                                                        <div key={idx} className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 hover:bg-white rounded-lg transition-colors border-b border-slate-50 last:border-0 pb-3 sm:pb-2">
-                                                                                                            <div className="flex items-center gap-2">
-                                                                                                                <span className="text-sm font-semibold text-slate-700">{sr.skill}</span>
-                                                                                                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase ${
-                                                                                                                    sr.category === 'Must-Have' ? 'bg-red-50 text-red-500' :
-                                                                                                                    sr.category === 'Nice-To-Have' ? 'bg-blue-50 text-blue-500' :
-                                                                                                                    'bg-slate-100 text-slate-500'
-                                                                                                                }`}>
-                                                                                                                    {sr.category}
-                                                                                                                </span>
-                                                                                                            </div>
-                                                                                                            <div className="flex items-center gap-3">
-                                                                                                                <div className="flex items-center gap-1">
-                                                                                                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((star) => (
-                                                                                                                        <button
-                                                                                                                            key={star}
-                                                                                                                            type="button"
-                                                                                                                            onClick={() => {
-                                                                                                                                const newSkills = [...evaluationForm.skillRatings];
-                                                                                                                                newSkills[idx] = { ...newSkills[idx], rating: star };
-                                                                                                                                setEvaluationForm({ ...evaluationForm, skillRatings: newSkills });
-                                                                                                                            }}
-                                                                                                                            className={`w-7 h-7 rounded flex items-center justify-center text-[10px] font-bold transition-all ${
-                                                                                                                                star <= sr.rating 
-                                                                                                                                    ? 'bg-blue-600 text-white shadow-sm scale-110 z-10' 
-                                                                                                                                    : 'bg-white text-slate-400 border border-slate-200 hover:border-blue-400 hover:text-blue-600'
-                                                                                                                            }`}
-                                                                                                                        >
-                                                                                                                            {star}
-                                                                                                                        </button>
-                                                                                                                    ))}
-                                                                                                                    <span className="ml-2 text-xs font-black text-blue-700 w-8">{sr.rating}/10</span>
-                                                                                                                </div>
-                                                                                                                <button
-                                                                                                                    type="button"
-                                                                                                                    onClick={() => {
-                                                                                                                        const newSkills = evaluationForm.skillRatings.filter((_, i) => i !== idx);
-                                                                                                                        setEvaluationForm({ ...evaluationForm, skillRatings: newSkills });
-                                                                                                                    }}
-                                                                                                                    className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-all"
-                                                                                                                    title="Remove skill from this assessment"
-                                                                                                                >
-                                                                                                                    <Trash2 size={14} />
-                                                                                                                </button>
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                    ))
-                                                                                                ) : (
-                                                                                                    <p className="text-center text-xs text-slate-400 py-4 italic">No skills defined for this candidate yet. Add one above.</p>
-                                                                                                )}
+                                                                                                {/* Manual Add Skills */}
+                                                                                                <div className="flex gap-2 p-1 bg-blue-50/50 rounded-lg border border-blue-100">
+                                                                                                    <input
+                                                                                                        type="text"
+                                                                                                        placeholder="Enter skill name (e.g. Java, Leadership)..."
+                                                                                                        value={evaluationForm.manualSkillName || ''}
+                                                                                                        onChange={(e) => setEvaluationForm({ ...evaluationForm, manualSkillName: e.target.value })}
+                                                                                                        className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm outline-none focus:border-blue-500 shadow-sm"
+                                                                                                    />
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() => {
+                                                                                                            if (!evaluationForm.manualSkillName?.trim()) return;
+                                                                                                            const newSkill = {
+                                                                                                                skill: evaluationForm.manualSkillName.trim(),
+                                                                                                                rating: 0,
+                                                                                                                category: 'Must-Have'
+                                                                                                            };
+                                                                                                            setEvaluationForm({
+                                                                                                                ...evaluationForm,
+                                                                                                                skillRatings: [...(evaluationForm.skillRatings || []), newSkill],
+                                                                                                                manualSkillName: ''
+                                                                                                            });
+                                                                                                        }}
+                                                                                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1"
+                                                                                                    >
+                                                                                                        <Plus size={16} /> <span className="text-xs font-bold uppercase tracking-wider">Add</span>
+                                                                                                    </button>
+                                                                                                </div>
+
+                                                                                                {/* Skills List */}
+                                                                                                <div className="space-y-4">
+                                                                                                    {evaluationForm.skillRatings && evaluationForm.skillRatings
+                                                                                                        .filter(sr => {
+                                                                                                            const s = (sr.skill || '').toLowerCase();
+                                                                                                            return sr.category === 'Must-Have' && s !== 'tat' && s !== 'rate' && s !== 'billing rate';
+                                                                                                        }).length > 0 ? (
+                                                                                                        evaluationForm.skillRatings
+                                                                                                            .filter(sr => {
+                                                                                                                const s = (sr.skill || '').toLowerCase();
+                                                                                                                return sr.category === 'Must-Have' && s !== 'tat' && s !== 'rate' && s !== 'billing rate';
+                                                                                                            })
+                                                                                                            .map((sr, idx) => {
+                                                                                                                const originalIdx = evaluationForm.skillRatings.findIndex(orig => orig.skill === sr.skill);
+                                                                                                                return (
+                                                                                                                    <div key={idx} className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 transition-all hover:bg-white hover:shadow-sm">
+                                                                                                                        <div className="flex items-center gap-2">
+                                                                                                                            <span className="text-sm font-semibold text-slate-700">{sr.skill}</span>
+                                                                                                                            <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase bg-red-50 text-red-500`}>
+                                                                                                                                Must-Have
+                                                                                                                            </span>
+                                                                                                                        </div>
+                                                                                                                        <div className="flex items-center gap-1 mt-2">
+                                                                                                                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(star => (
+                                                                                                                                <button
+                                                                                                                                    key={star}
+                                                                                                                                    type="button"
+                                                                                                                                    onClick={() => {
+                                                                                                                                        const updated = [...evaluationForm.skillRatings];
+                                                                                                                                        if (originalIdx !== -1) {
+                                                                                                                                            updated[originalIdx].rating = star;
+                                                                                                                                            setEvaluationForm({ ...evaluationForm, skillRatings: updated });
+                                                                                                                                        }
+                                                                                                                                    }}
+                                                                                                                                    className={`w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold transition-all ${sr.rating >= star
+                                                                                                                                        ? 'bg-blue-600 text-white shadow-sm'
+                                                                                                                                        : 'bg-white border border-slate-200 text-slate-400 hover:border-blue-400'
+                                                                                                                                        }`}
+                                                                                                                                >
+                                                                                                                                    {star}
+                                                                                                                                </button>
+                                                                                                                            ))}
+                                                                                                                            <span className="ml-2 text-xs font-black text-blue-700 w-8">{sr.rating}/10</span>
+                                                                                                                        </div>
+                                                                                                                    </div>
+                                                                                                                );
+                                                                                                            })
+                                                                                                    ) : (
+                                                                                                        <p className="text-center text-xs text-slate-400 py-4 italic">No must-have skills found for this assessment.</p>
+                                                                                                    )}
+                                                                                                </div>
                                                                                             </div>
                                                                                         </div>
                                                                                     )}
@@ -1164,9 +1270,9 @@ const CandidateDetails = () => {
                                                                         <div className="flex justify-end gap-2 pt-2">
                                                                             <button
                                                                                 onClick={() => {
-                                                                                     setEvaluatingRoundId(null);
-                                                                                     setEvaluationForm({ status: 'Passed', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
-                                                                                 }}
+                                                                                    setEvaluatingRoundId(null);
+                                                                                    setEvaluationForm({ status: 'Passed', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
+                                                                                }}
                                                                                 className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
                                                                             >
                                                                                 Cancel

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -8,13 +8,13 @@ import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/Button';
-import { format, differenceInDays, addDays, isValid, parseISO } from 'date-fns';
+import { createCachePayload } from '../utils/cache';
+import { format, differenceInDays, addDays, isValid } from 'date-fns';
 
 const ProjectDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const canCreateProject = user?.roles?.includes('Admin') || user?.permissions?.includes('project.create');
     const canUpdateProject = user?.roles?.includes('Admin') || user?.permissions?.includes('project.update');
     const canCreateTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.create');
     const canUpdateTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.update');
@@ -45,17 +45,18 @@ const ProjectDetails = () => {
     const [loggingTaskId, setLoggingTaskId] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             const cacheKey = `project_details_${id}`;
             const cachedData = sessionStorage.getItem(cacheKey);
             
             if (cachedData) {
                 const parsed = JSON.parse(cachedData);
-                setProject(parsed.project);
-                setModules(parsed.modules);
-                setTasks(parsed.tasks);
-                setEmployees(parsed.employees);
+                const data = parsed.data || parsed;
+                setProject(data.project);
+                setModules(data.modules || []);
+                setTasks(data.tasks || []);
+                setEmployees(data.employees || []);
                 setLoading(false);
             }
 
@@ -82,13 +83,58 @@ const ProjectDetails = () => {
                 setModules(moduleData);
                 setTasks(taskData);
                 setEmployees(empData);
-                sessionStorage.setItem(cacheKey, JSON.stringify({ 
-                    project: projData, 
-                    modules: moduleData, 
-                    tasks: taskData, 
-                    employees: empData, 
-                    fingerprint: newFingerprint 
+
+                // Minimal data for caching
+                const minimalProject = {
+                    _id: projData._id,
+                    name: projData.name,
+                    status: projData.status,
+                    isActive: projData.isActive,
+                    description: projData.description,
+                    startDate: projData.startDate,
+                    dueDate: projData.dueDate,
+                    manager: projData.manager ? { firstName: projData.manager.firstName } : null
+                };
+
+                const minimalModules = moduleData.map(m => ({
+                    _id: m._id,
+                    name: m.name,
+                    status: m.status,
+                    description: m.description,
+                    startDate: m.startDate,
+                    dueDate: m.dueDate,
+                    tasks: m.tasks?.map(t => ({
+                        _id: t._id,
+                        name: t.name,
+                        description: t.description,
+                        status: t.status,
+                        priority: t.priority,
+                        startDate: t.startDate,
+                        dueDate: t.dueDate,
+                        estimatedHours: t.estimatedHours,
+                        loggedHours: t.loggedHours,
+                        assignees: t.assignees?.map(a => ({ _id: a._id, firstName: a.firstName, lastName: a.lastName, email: a.email })),
+                        workLogs: t.workLogs?.map(l => ({
+                            _id: l._id,
+                            date: l.date,
+                            hours: l.hours,
+                            description: l.description,
+                            user: l.user ? { _id: l.user._id, firstName: l.user.firstName, lastName: l.user.lastName } : null
+                        }))
+                    }))
                 }));
+
+                const minimalTasks = minimalModules.flatMap(m => m.tasks) || [];
+                const minimalEmployees = empData.map(e => ({ _id: e._id, firstName: e.firstName, lastName: e.lastName, email: e.email }));
+
+                const payload = createCachePayload({
+                    project: minimalProject,
+                    modules: minimalModules,
+                    tasks: minimalTasks,
+                    employees: minimalEmployees
+                }, newFingerprint);
+
+                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
 
         } catch (error) {
@@ -97,11 +143,11 @@ const ProjectDetails = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [id]);
 
     useEffect(() => {
         fetchData();
-    }, [id]);
+    }, [fetchData]);
 
     // --- Handlers (Keep existing logic mostly) ---
     const handleCreateModule = async (e) => {
@@ -121,7 +167,7 @@ const ProjectDetails = () => {
             setEditingModuleId(null);
             setModuleForm({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
             fetchData();
-        } catch (error) {
+        } catch {
             toast.error('Failed to save module');
         } finally {
             setIsSubmitting(false);
@@ -145,7 +191,7 @@ const ProjectDetails = () => {
             setEditingTaskId(null);
             setTaskForm({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '' });
             fetchData();
-        } catch (error) {
+        } catch {
             toast.error('Failed to save task');
         } finally {
             setIsSubmitting(false);
@@ -163,7 +209,7 @@ const ProjectDetails = () => {
             setShowLogModal(false);
             setLoggingTaskId(null);
             fetchData();
-        } catch (error) {
+        } catch {
             toast.error('Failed to log work');
         } finally {
             setIsSubmitting(false);
@@ -241,7 +287,7 @@ const ProjectDetails = () => {
                                                 sessionStorage.removeItem(`project_details_${id}`);
                                                 sessionStorage.removeItem(`project_data_${user?._id}`);
                                                 fetchData();
-                                            } catch (error) {
+                                            } catch {
                                                 toast.error('Failed to delete module');
                                             }
                                         }
@@ -276,7 +322,7 @@ const ProjectDetails = () => {
                                                                 await api.delete(`/projects/tasks/${task._id}`);
                                                                 toast.success('Task Deleted');
                                                                 fetchData();
-                                                            } catch (error) {
+                                                            } catch {
                                                                 toast.error('Failed to delete task');
                                                             }
                                                         }
@@ -367,7 +413,7 @@ const ProjectDetails = () => {
                                                                 await api.delete(`/projects/modules/${module._id}`);
                                                                 toast.success('Module Deleted');
                                                                 fetchData();
-                                                            } catch (error) {
+                                                            } catch {
                                                                 toast.error('Failed');
                                                             }
                                                         }
@@ -409,7 +455,7 @@ const ProjectDetails = () => {
                                                 </td>
                                                 <td className="px-6 py-3">
                                                     <div className="flex -space-x-2">
-                                                        {task.assignees?.map((a, i) => (
+                                                        {task.assignees?.map((a) => (
                                                             <div key={a._id} className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] text-blue-600 font-bold" title={`${a.firstName} ${a.lastName}`}>
                                                                 {a.firstName[0]}{a.lastName[0]}
                                                             </div>
@@ -447,7 +493,7 @@ const ProjectDetails = () => {
                                                                             sessionStorage.removeItem(`project_details_${id}`);
                                                                             sessionStorage.removeItem(`project_data_${user?._id}`);
                                                                             fetchData();
-                                                                        } catch (error) {
+                                                                        } catch {
                                                                             toast.error('Failed');
                                                                         }
                                                                     }

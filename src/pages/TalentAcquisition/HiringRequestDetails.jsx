@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Construction, Loader, FileText, Paperclip } from 'lucide-react';
@@ -35,7 +35,7 @@ const HiringRequestDetails = () => {
         }
     }, [searchParams]);
 
-    const fetchRequest = async () => {
+    const fetchRequest = useCallback(async () => {
         try {
             setLoading(true);
             const res = await api.get(`/ta/hiring-request/${id}`);
@@ -46,11 +46,11 @@ const HiringRequestDetails = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [id]);
 
     useEffect(() => {
         fetchRequest();
-    }, [id]);
+    }, [fetchRequest]);
 
     const isDynamic = request?.approvalChain && request?.approvalChain?.length > 0;
 
@@ -163,20 +163,6 @@ const HiringRequestDetails = () => {
     }
     if (!request) return <div className="p-10 text-center">Request not found</div>;
 
-    const getStatusColor = (status) => {
-        const colors = {
-            'Draft': 'bg-slate-100 text-slate-700',
-            'Submitted': 'bg-blue-100 text-blue-700',
-            'Pending_L1': 'bg-amber-100 text-amber-700',
-            'Pending_Approval': 'bg-amber-100 text-amber-700',
-            'Pending_Final': 'bg-purple-100 text-purple-700',
-            'Approved': 'bg-emerald-100 text-emerald-700',
-            'Rejected': 'bg-red-100 text-red-700',
-            'Closed': 'bg-gray-100 text-gray-700'
-        };
-        return colors[status] || colors['Draft'];
-    };
-
     return (
         <div className="min-h-screen bg-slate-50 pb-12">
             {/* Sticky Navbar - Glassmorphism effect */}
@@ -186,7 +172,7 @@ const HiringRequestDetails = () => {
                         {/* Left: Back button + Title */}
                         <div className="flex items-center gap-4">
                             <button
-                                onClick={() => navigate('/ta')}
+                                onClick={() => navigate(`/ta/hiring-requests/${encodeURIComponent(request.client)}`)}
                                 className="p-2 hover:bg-slate-100/80 rounded-full text-slate-500 hover:text-slate-700 transition-all duration-200 group"
                                 aria-label="Go back"
                             >
@@ -289,14 +275,32 @@ const HiringRequestDetails = () => {
                                     </h3>
                                 </div>
                                 <div className="p-5 space-y-5">
-                                    <div>
-                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Must-Have Skills</h4>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {request.requirements.mustHaveSkills?.map(s => (
-                                                <span key={s} className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-semibold shadow-sm hover:shadow transition-shadow cursor-default">
-                                                    {s}
-                                                </span>
-                                            ))}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Must-Have Skills (Technical)</h4>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {(Array.isArray(request.requirements.mustHaveSkills) ? request.requirements.mustHaveSkills : request.requirements.mustHaveSkills?.technical)?.map(s => (
+                                                    <span key={s} className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-semibold shadow-sm hover:shadow transition-shadow cursor-default">
+                                                        {s}
+                                                    </span>
+                                                ))}
+                                                {(!(Array.isArray(request.requirements.mustHaveSkills) ? request.requirements.mustHaveSkills : request.requirements.mustHaveSkills?.technical)?.length) && (
+                                                    <span className="text-slate-400 italic text-xs">None specified</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Must-Have Skills (Soft Skills)</h4>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {request.requirements.mustHaveSkills?.softSkills?.map(s => (
+                                                    <span key={s} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-semibold shadow-sm hover:shadow transition-shadow cursor-default">
+                                                        {s}
+                                                    </span>
+                                                ))}
+                                                {!request.requirements.mustHaveSkills?.softSkills?.length && (
+                                                    <span className="text-slate-400 italic text-xs">None specified</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     <div>
@@ -338,9 +342,9 @@ const HiringRequestDetails = () => {
                                             Detailed Job Description
                                         </h3>
                                         {request.jobDescriptionFile && (
-                                            <a 
-                                                href={request.jobDescriptionFile} 
-                                                target="_blank" 
+                                            <a
+                                                href={request.jobDescriptionFile}
+                                                target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-1.5 px-3 py-1 bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
                                             >
@@ -581,7 +585,7 @@ const HiringRequestDetails = () => {
                 )}
 
                 {activeTab === 'applications' && (
-                    <CandidateList hiringRequestId={id} positionName={request?.positionName} />
+                    <CandidateList hiringRequestId={id} positionName={request?.positionName} hiringRequestStatus={request?.status} />
                 )}
 
                 {activeTab === 'legacy applications' && request.previousRequestId && (

@@ -25,7 +25,7 @@ const decisionColor = (d) => {
     }
 };
 
-const OpeningSection = ({ opening, openingNum, hiringRequestId, onTransfer, users }) => {
+const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
     const [expanded, setExpanded] = useState(openingNum === 1); // most recent expanded by default
     const [activePhase, setActivePhase] = useState(1);
     const [activeMenu, setActiveMenu] = useState(null);
@@ -68,7 +68,7 @@ const OpeningSection = ({ opening, openingNum, hiringRequestId, onTransfer, user
     // Metric Calculations (similar to CandidateList logic)
     const metrics = {
         total: candidates.length,
-        totalSourced: candidates.filter(c => c.status !== 'Not Relevant').length,
+        totalSourced: candidates.length,
         interested: candidates.filter(c => c.status === 'Interested').length,
         inInterviews: candidates.filter(c => c.decision === 'None' && c.interviewRounds?.length > 0 && !c.interviewRounds.some(r => r.status === 'Failed')).length,
         shortlisted: candidates.filter(c => c.decision === 'Shortlisted').length,
@@ -89,8 +89,8 @@ const OpeningSection = ({ opening, openingNum, hiringRequestId, onTransfer, user
 
     const phase3Metrics = {
         total: candidates.filter(c => c.phase2Decision === 'Selected').length,
-        offerSent: candidates.filter(c => c.phase2Decision === 'Selected' && c.phase3Decision === 'Offer Sent').length,
-        offerAccepted: candidates.filter(c => c.phase2Decision === 'Selected' && c.phase3Decision === 'Offer Accepted').length,
+        offerSent: candidates.filter(c => c.phase2Decision === 'Selected' && ['Offer Sent', 'Offer Accepted', 'Joined'].includes(c.phase3Decision)).length,
+        offerAccepted: candidates.filter(c => c.phase2Decision === 'Selected' && ['Offer Accepted', 'Joined'].includes(c.phase3Decision)).length,
         joined: candidates.filter(c => c.phase2Decision === 'Selected' && c.phase3Decision === 'Joined').length,
         noShow: candidates.filter(c => c.phase2Decision === 'Selected' && (c.phase3Decision === 'No Show' || c.phase3Decision === 'Offer Declined')).length
     };
@@ -114,7 +114,9 @@ const OpeningSection = ({ opening, openingNum, hiringRequestId, onTransfer, user
             if (candidate.phase2Decision !== 'Selected') return false;
             if (filterDecision !== 'All') {
                 if (filterDecision === 'No Show_Offer Declined' && candidate.phase3Decision !== 'No Show' && candidate.phase3Decision !== 'Offer Declined') return false;
-                if (filterDecision !== 'No Show_Offer Declined' && candidate.phase3Decision !== filterDecision) return false;
+                if (filterDecision === 'Offer Sent' && !['Offer Sent', 'Offer Accepted', 'Joined'].includes(candidate.phase3Decision)) return false;
+                if (filterDecision === 'Offer Accepted' && !['Offer Accepted', 'Joined'].includes(candidate.phase3Decision)) return false;
+                if (!['No Show_Offer Declined', 'Offer Sent', 'Offer Accepted'].includes(filterDecision) && candidate.phase3Decision !== filterDecision) return false;
             }
         }
 
@@ -239,7 +241,7 @@ const OpeningSection = ({ opening, openingNum, hiringRequestId, onTransfer, user
                                                             View Resume
                                                         </a>
                                                     )}
-                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && requisition.status === 'Closed' && (
                                                         <>
                                                             <div className="border-t border-slate-100 my-1"></div>
                                                             <button
@@ -534,7 +536,14 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            saveAs(blob, `Legacy_Application_History_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+            
+            // Generate dynamic filename: [Job Title] Candidate List.xlsx
+            const firstOpening = openings[selectedOpenings[0]];
+            const role = firstOpening?.requisition?.roleDetails?.title || 'Candidates';
+            const multiSuffix = selectedOpenings.length > 1 ? ' (Multiple Openings)' : '';
+            const fileName = `${role}${multiSuffix} Candidate List.xlsx`;
+
+            saveAs(blob, fileName);
             toast.success('Excel exported successfully');
             setExportMenuOpen(false);
         } catch (e) {

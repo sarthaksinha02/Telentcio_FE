@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import Button from '../components/Button';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 import { useAuth } from '../context/AuthContext';
 
@@ -18,78 +19,79 @@ const Projects = () => {
     const [actionLoading, setActionLoading] = useState(null); // stores the id of the project being acted on
     const [showModal, setShowModal] = useState(false);
     const [formData, setFormData] = useState({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
+    const initialFetchDoneRef = useRef(false);
+    const PROJECT_CACHE_TTL_MS = 30 * 1000;
+    const cacheKey = `project_data_${user?._id}`;
+    const [employees, setEmployees] = useState([]);
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async ({ force = false } = {}) => {
         try {
-            const cacheKey = `project_data_${user?._id}`;
-            const cachedData = sessionStorage.getItem(cacheKey);
-            
+            const cachedData = readSessionCache(cacheKey);
+
             if (cachedData) {
-                const parsed = JSON.parse(cachedData);
-                setProjects(parsed.projects);
-                setClients(parsed.clients);
+                const data = cachedData.data || cachedData;
+                setProjects(data.projects || []);
+                setClients(data.clients || []);
+                setEmployees(data.employees || []);
                 setLoading(false);
+                if (!force && isCacheFresh(cachedData, PROJECT_CACHE_TTL_MS)) return;
             }
 
-            // Fetch Projects (Main Data)
-            let projData = [];
-            try {
-                const projRes = await api.get('/projects');
-                projData = projRes.data;
-            } catch (err) {
-                console.error("Failed to load projects", err);
-                toast.error('Failed to load projects');
-            }
+            const bootstrapRes = await api.get('/projects/bootstrap');
+            const projData = bootstrapRes.data?.projects || [];
+            const clientsData = bootstrapRes.data?.clients || [];
+            const employeesData = bootstrapRes.data?.employees || [];
 
-            // Fetch Clients (For Dropdown - Optional)
-            let clientsData = [];
-            try {
-                const clientRes = await api.get('/projects/clients');
-                clientsData = clientRes.data;
-            } catch (err) {
-                console.warn("Failed to load clients for dropdown (likely no permission)", err);
-            }
+            const newFingerprint = JSON.stringify({ p: projData.length, c: clientsData.length, e: employeesData.length, lp: projData[0]?._id });
+            const oldFingerprint = cachedData?.fingerprint || null;
 
-            // Fingerprint check
-            const newFingerprint = JSON.stringify({ p: projData.length, c: clientsData.length, lp: projData[0]?._id });
-            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+            setProjects(projData);
+            setClients(clientsData);
+            setEmployees(employeesData);
 
-            if (newFingerprint !== oldFingerprint) {
-                setProjects(projData);
-                setClients(clientsData);
-                sessionStorage.setItem(cacheKey, JSON.stringify({ 
-                    projects: projData, 
-                    clients: clientsData, 
-                    fingerprint: newFingerprint 
+            if (newFingerprint !== oldFingerprint || force) {
+                const minimalProjects = projData.map(p => ({
+                    _id: p._id,
+                    name: p.name,
+                    status: p.status,
+                    isActive: p.isActive,
+                    description: p.description,
+                    startDate: p.startDate,
+                    dueDate: p.dueDate,
+                    client: p.client ? { _id: p.client._id, name: p.client.name } : null,
+                    members: p.members?.map(m => ({ _id: m._id }))
                 }));
+
+                const minimalClients = clientsData.map(c => ({ _id: c._id, name: c.name }));
+                const minimalEmployees = employeesData.map(employee => ({
+                    _id: employee._id,
+                    firstName: employee.firstName,
+                    lastName: employee.lastName,
+                    email: employee.email
+                }));
+
+                const payload = createCachePayload({
+                    projects: minimalProjects,
+                    clients: minimalClients,
+                    employees: minimalEmployees
+                }, newFingerprint);
+
+                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
 
         } catch (error) {
             console.error(error);
+            toast.error('Failed to load projects');
         } finally {
             setLoading(false);
         }
-    };
-
-    // Fetch Employees Helper
-    const [employees, setEmployees] = useState([]);
-    useEffect(() => {
-        const fetchEmployees = async () => {
-            try {
-                const res = await api.get('/projects/employees');
-                setEmployees(res.data);
-            } catch (err) {
-                console.warn("Failed to load employees for assignment", err);
-            }
-        };
-        if (canCreate || canUpdate) {
-            fetchEmployees();
-        }
-    }, [canCreate, canUpdate]);
+    }, [PROJECT_CACHE_TTL_MS, cacheKey]);
 
     useEffect(() => {
+        if (initialFetchDoneRef.current) return;
+        initialFetchDoneRef.current = true;
         fetchData();
-    }, []);
+    }, [fetchData]);
 
     const [editingId, setEditingId] = useState(null);
     const [openMenuId, setOpenMenuId] = useState(null);
@@ -126,8 +128,8 @@ const Projects = () => {
             setShowModal(false);
             setFormData({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
             setEditingId(null);
-            fetchData();
-        } catch (error) {
+            fetchData({ force: true });
+        } catch {
             toast.error(editingId ? 'Failed to update' : 'Failed to create');
         } finally {
             setSubmitLoading(false);
@@ -163,8 +165,8 @@ const Projects = () => {
             await api.put(`/projects/${project._id}`, { status: newStatus, isActive });
             toast.success(`Project marked as ${newStatus}`);
             sessionStorage.removeItem(`project_data_${user?._id}`);
-            await fetchData();
-        } catch (error) {
+            await fetchData({ force: true });
+        } catch {
             toast.error('Failed to update project status');
         } finally {
             setActionLoading(null);
@@ -319,7 +321,7 @@ const Projects = () => {
                                                                                          toast.success('Project deleted');
                                                                                          sessionStorage.removeItem(`project_data_${user?._id}`);
                                                                                          await fetchData();
-                                                                                     } catch (error) {
+                                                                                     } catch {
                                                                                          toast.error('Failed to delete project');
                                                                                      } finally {
                                                                                          setActionLoading(null);

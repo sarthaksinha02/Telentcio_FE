@@ -113,7 +113,7 @@ function App() {
                 <Route path="/discussions" element={<Discussions />} />
 
                 {/* Onboarding */}
-                <Route path="/onboarding" element={<Onboarding />} />
+                <Route path="/onboarding" element={<OnboardingAccessWrapper />} />
 
                 {/* Project Management Routes */}
                 <Route element={<ModuleRoute moduleName="projectManagement" />}>
@@ -160,14 +160,27 @@ function App() {
 
 export default App;
 
-const UsersAccessWrapper = ({ Component = Users }) => {
+const UsersAccessWrapper = ({ Component: ComponentProp }) => {
   const { user } = useAuth();
+  const Component = ComponentProp || Users;
 
   if (!user) return null;
 
   const canAccess = user.roles?.includes('Admin') ||
     user.permissions?.includes('user.read') ||
     user.directReportsCount > 0;
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const OnboardingAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || Onboarding;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('onboarding.manage');
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
 };

@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Search, Edit2, Shield, Calendar, Download, FileText, MoreVertical, Eye } from 'lucide-react';
-import { createPortal } from 'react-dom';
+import { UserPlus, Search, Shield, Download } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { createCachePayload } from '../utils/cache';
 
 const Users = () => {
     const navigate = useNavigate();
@@ -18,7 +18,7 @@ const Users = () => {
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [editingUser, setEditingUser] = useState(null);
-    const [holidays, setHolidays] = useState([]);
+    const [_holidays, _setHolidays] = useState([]);
 
     // Export Options State
     const [showExportModal, setShowExportModal] = useState(false);
@@ -68,7 +68,7 @@ const Users = () => {
         return `${hours}h ${minutes}m`;
     };
 
-    const handleExportAttendance = async (targetUser) => {
+    const _handleExportAttendance = async (targetUser) => {
         const toastId = toast.loading('Generating Report...');
         try {
             const now = new Date();
@@ -181,7 +181,7 @@ const Users = () => {
 
             // Fetch data
             const res = await api.get(`/attendance/team-report?year=${year}&month=${month}`);
-            const { teamMembers, attendanceRecords, leaveRecords, holidays } = res.data;
+            const { teamMembers, attendanceRecords, leaveRecords, holidays, weeklyOff } = res.data;
 
             if (!teamMembers || teamMembers.length === 0) {
                 toast.error('No team members found', { id: toastId });
@@ -237,7 +237,7 @@ const Users = () => {
                     const end = new Date(leave.endDate);
                     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                         const dStr = d.toISOString().split('T')[0];
-                        leaveMap[userId][dStr] = leave.leaveType;
+                        leaveMap[userId][dStr] = { type: leave.leaveType, sandwich: leave.sandwichRule };
                     }
                 });
             }
@@ -281,7 +281,7 @@ const Users = () => {
                 const leavesRow = { name: '   ↳ Leaves' };
 
                 // Color Map for Cells
-                const cellRefMap = {}; // store cell refs to apply color later (or apply directly if possible)
+                const _cellRefMap = {}; // store cell refs to apply color later (or apply directly if possible)
 
                 for (let d = 1; d <= daysInMonth; d++) {
                     const dateObj = new Date(year, month - 1, d);
@@ -290,42 +290,46 @@ const Users = () => {
                     const record = userLogs[dateStr];
                     const colKey = `day_${d}`;
 
-                    const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
-                    const isWeeklyOff = weeklyOffDays.includes(dateObj.toLocaleDateString('en-US', { weekday: 'long' }));
+                    const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
+                    const dayName = format(dateObj, 'EEEE');
+                    const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
                     const isFuture = dateObj > new Date();
-                    const leaveType = userLeaves[dateStr];
+                    const leaveData = userLeaves[dateStr];
                     const holidayName = holidayMap[dateStr];
 
                     // -- Calculate Duration First --
-                    let durationHours = 0;
+                    let _durationHours = 0;
                     if (record && record.clockIn && record.clockOut) {
                         const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
-                        durationHours = dur / 3600000; // milliseconds to hours
+                        _durationHours = dur / 3600000; // milliseconds to hours
                     }
 
                     // -- 1. Status Logic --
                     let statusShort = 'Absent'; // Default
-                    let cellColor = 'FFF2DCDB'; // Red (Absent)
+                    let _cellColor = 'FFF2DCDB'; // Red (Absent)
+
+                    const isOffDay = !!holidayName || isWeeklyOff;
+                    const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
 
                     if (isFuture) {
                         statusShort = '-';
-                        cellColor = 'FFFFFFFF'; // White
+                        _cellColor = 'FFFFFFFF'; // White
                     }
-                    else if (leaveType) {
-                        statusShort = `L (${leaveType})`; // Show Leave Type
-                        cellColor = 'FFFFE0B2'; // Orange/Yellowish
+                    else if (showLeave) {
+                        statusShort = `L (${leaveData.type})`; // Show Leave Type
+                        _cellColor = 'FFFFE0B2'; // Orange/Yellowish
                     }
                     else if (holidayName) {
                         statusShort = holidayName; // Show Holiday Name
-                        cellColor = 'FFD1F2EB'; // Light Cyan/Greenish
-                    }
-                    else if (record) {
-                        statusShort = 'Present';
-                        cellColor = 'FFEBF1DE'; // Light Green
+                        _cellColor = 'FFD1F2EB'; // Light Cyan/Greenish
                     }
                     else if (isWeeklyOff) {
                         statusShort = 'Weekoff';
-                        cellColor = 'FFF2F2F2'; // Light Grey
+                        _cellColor = 'FFF2F2F2'; // Light Grey
+                    }
+                    else if (record) {
+                        statusShort = 'Present';
+                        _cellColor = 'FFEBF1DE'; // Light Green
                     }
 
                     if (exportOptions.status) {
@@ -337,7 +341,7 @@ const Users = () => {
 
                     // -- 2. Leaves Logic --
                     if (exportOptions.leaves) {
-                        leavesRow[colKey] = leaveType || '-';
+                        leavesRow[colKey] = leaveData?.type || '-';
                     }
 
                     // -- 3. Time/Duration Data --
@@ -395,26 +399,30 @@ const Users = () => {
                             // Match the key format
                             const dateStr = dateObj.toLocaleDateString('en-CA');
                             const record = userLogs[dateStr];
-                            const leaveType = userLeaves[dateStr];
+                            const leaveData = userLeaves[dateStr];
                             const holidayName = holidayMap[dateStr];
-                            const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
-                            const isWeeklyOff = weeklyOffDays.includes(dateObj.toLocaleDateString('en-US', { weekday: 'long' }));
+                            const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
+                            const dayName = format(dateObj, 'EEEE');
+                            const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
                             const isFuture = dateObj > new Date();
 
                             // -- Apply Same Logic for Coloring --
-                            let durationHours = 0;
+                            let _durationHours = 0;
                             if (record && record.clockIn && record.clockOut) {
                                 const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
-                                durationHours = dur / 3600000;
+                                _durationHours = dur / 3600000;
                             }
 
                             let cellColor = 'FFF2DCDB'; // Red
 
+                            const isOffDay = !!holidayName || isWeeklyOff;
+                            const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
+
                             if (isFuture) cellColor = 'FFFFFFFF';
-                            else if (leaveType) cellColor = 'FFFFE0B2';
+                            else if (showLeave) cellColor = 'FFFFE0B2';
                             else if (holidayName) cellColor = 'FFD1F2EB';
-                            else if (record) cellColor = 'FFEBF1DE';
                             else if (isWeeklyOff) cellColor = 'FFF2F2F2';
+                            else if (record) cellColor = 'FFEBF1DE';
 
                             const colKey = `day_${d}`;
                             // This library might not support key-based cell access directly on 'row' object efficiently if strictly column indexed?
@@ -459,7 +467,7 @@ const Users = () => {
         workLocation: ''
     });
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             const isAdmin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
             const canReadUsers = user?.permissions?.includes('user.read');
@@ -468,11 +476,13 @@ const Users = () => {
             // Session Caching Logic
             const cacheKey = `user_data_${user?._id}`;
             const cachedData = sessionStorage.getItem(cacheKey);
-            
+
             if (cachedData) {
                 const parsed = JSON.parse(cachedData);
-                setUsers(parsed.users);
-                setRoles(parsed.roles);
+                // Use .data if it exists (new format), else fallback to top-level (old format)
+                const data = parsed.data || parsed;
+                setUsers(data.users || []);
+                setRoles(data.roles || []);
                 setLoading(false); // Immediate UI update
             }
 
@@ -492,7 +502,7 @@ const Users = () => {
                 try {
                     const teamRes = await api.get('/admin/users/team');
                     usersData = teamRes.data;
-                } catch (err) {
+                } catch {
                     console.log('Team fetch failed or empty');
                 }
             }
@@ -502,7 +512,7 @@ const Users = () => {
                 try {
                     const rolesRes = await api.get('/admin/roles');
                     rolesData = rolesRes.data;
-                } catch (err) {
+                } catch {
                     console.log('Roles fetch silenced');
                 }
             }
@@ -514,11 +524,31 @@ const Users = () => {
             if (newFingerprint !== oldFingerprint) {
                 setUsers(usersData);
                 setRoles(rolesData);
-                sessionStorage.setItem(cacheKey, JSON.stringify({ 
-                    users: usersData, 
-                    roles: rolesData, 
-                    fingerprint: newFingerprint 
+
+                // Minimal data for caching
+                const minimalUsers = usersData.map(u => ({
+                    _id: u._id,
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    email: u.email,
+                    employeeCode: u.employeeCode,
+                    joiningDate: u.joiningDate,
+                    department: u.department,
+                    employmentType: u.employmentType,
+                    workLocation: u.workLocation,
+                    isActive: u.isActive,
+                    roles: u.roles?.map(r => ({ _id: r._id, name: r.name })),
+                    reportingManagers: u.reportingManagers?.map(m => ({ _id: m._id, firstName: m.firstName, lastName: m.lastName, email: m.email }))
                 }));
+
+                const minimalRoles = rolesData.map(r => ({ _id: r._id, name: r.name }));
+
+                const payload = createCachePayload({
+                    users: minimalUsers,
+                    roles: minimalRoles
+                }, newFingerprint);
+
+                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
         } catch (error) {
             toast.error('Failed to load data');
@@ -526,10 +556,10 @@ const Users = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
 
 
-    const [filterDate, setFilterDate] = useState('');
+    const [filterDate, _setFilterDate] = useState('');
 
     const filteredUsers = users.filter(user => {
         const matchesSearch = (
@@ -546,7 +576,7 @@ const Users = () => {
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [fetchData]);
 
     const canEdit = roles.length > 0; // If we can see roles, we are likely Admin
 
@@ -554,7 +584,7 @@ const Users = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    const handleEdit = (user) => {
+    const _handleEdit = (user) => {
         setEditingUser(user);
         // Find users who currently report to this user
         const currentReports = users.filter(u => u.reportingManagers?.some(rm => rm._id === user._id || rm === user._id)).map(u => u._id);

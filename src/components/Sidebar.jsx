@@ -101,7 +101,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <span>Employees</span>
             </Link>
           )}
-          {(user?.roles?.includes('Admin') || user?.permissions?.includes('user.read')) && (
+          {(user?.roles?.includes('Admin') || user?.permissions?.includes('onboarding.manage')) && (
             <Link to="/onboarding" className={isActive('/onboarding')} onClick={onClose}>
               <UserPlus size={18} />
               <span>Onboarding</span>

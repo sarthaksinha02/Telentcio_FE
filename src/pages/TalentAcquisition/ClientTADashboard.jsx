@@ -6,10 +6,12 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b', '#06b6d4', '#ec4899', '#14b8a6'];
 
-const StatCard = ({ title, value, subtitle, icon: Icon, colorClass }) => (
+const StatCard = ({ title, value, subtitle, icon, colorClass }) => {
+    const IconComponent = icon;
+    return (
     <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-100 flex items-start space-x-4">
         <div className={`p-3 rounded-xl ${colorClass}`}>
-            <Icon size={24} />
+            <IconComponent size={24} />
         </div>
         <div>
 
@@ -20,7 +22,8 @@ const StatCard = ({ title, value, subtitle, icon: Icon, colorClass }) => (
             {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
         </div>
     </div>
-);
+    );
+};
 
 
 

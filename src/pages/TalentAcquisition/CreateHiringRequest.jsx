@@ -124,7 +124,10 @@ const CreateHiringRequest = () => {
         replacedEmployeeId: '',
 
         // Requirements
-        mustHaveSkills: [],
+        mustHaveSkills: {
+            technical: [],
+            softSkills: []
+        },
         niceToHaveSkills: [],
         experienceMin: '',
         experienceMax: '',
@@ -190,7 +193,10 @@ const CreateHiringRequest = () => {
                         purpose: data.purpose,
                         replacedEmployeeName: data.replacementDetails?.employeeName || '',
                         replacedEmployeeId: data.replacementDetails?.employeeId || '',
-                        mustHaveSkills: data.requirements.mustHaveSkills || [],
+                        mustHaveSkills: {
+                            technical: data.requirements?.mustHaveSkills?.technical || (Array.isArray(data.requirements?.mustHaveSkills) ? data.requirements.mustHaveSkills : []),
+                            softSkills: data.requirements?.mustHaveSkills?.softSkills || []
+                        },
                         niceToHaveSkills: data.requirements.niceToHaveSkills || [],
                         experienceMin: data.requirements.experienceMin,
                         experienceMax: data.requirements.experienceMax,
@@ -314,7 +320,10 @@ const CreateHiringRequest = () => {
                     employeeId: formData.replacedEmployeeId
                 } : {},
                 requirements: {
-                    mustHaveSkills: formData.mustHaveSkills,
+                    mustHaveSkills: {
+                        technical: formData.mustHaveSkills.technical,
+                        softSkills: formData.mustHaveSkills.softSkills
+                    },
                     niceToHaveSkills: formData.niceToHaveSkills,
                     experienceMin: Number(formData.experienceMin),
                     experienceMax: Number(formData.experienceMax),
@@ -484,11 +493,24 @@ const CreateHiringRequest = () => {
 
                 <Section title="3. Job Requirements" icon={FileText}>
                     <TagInput
-                        label="Must-Have Skills"
-                        tags={formData.mustHaveSkills}
-                        onTagsChange={(tags) => setFormData(prev => ({ ...prev, mustHaveSkills: tags }))}
+                        label="Must-Have Skills (Technical)"
+                        tags={formData.mustHaveSkills.technical}
+                        onTagsChange={(tags) => setFormData(prev => ({ 
+                            ...prev, 
+                            mustHaveSkills: { ...prev.mustHaveSkills, technical: tags } 
+                        }))}
                         placeholder="e.g. React, Node.js"
-                        gridCols={2}
+                        gridCols={1}
+                    />
+                    <TagInput
+                        label="Must-Have Skills (Soft Skills)"
+                        tags={formData.mustHaveSkills.softSkills}
+                        onTagsChange={(tags) => setFormData(prev => ({ 
+                            ...prev, 
+                            mustHaveSkills: { ...prev.mustHaveSkills, softSkills: tags } 
+                        }))}
+                        placeholder="e.g. Communication, Leadership"
+                        gridCols={1}
                     />
                     <TagInput
                         label="Nice-To-Have Skills"

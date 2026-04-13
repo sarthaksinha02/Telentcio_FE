@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, Eye, EyeOff, Edit, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -7,7 +7,9 @@ import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { Download } from 'lucide-react';
+import { Download, Loader } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const Discussions = () => {
     const navigate = useNavigate();
@@ -32,35 +34,139 @@ const Discussions = () => {
     // State for toggling full descriptions inline
     const [expandedIds, setExpandedIds] = useState([]);
 
+    const { user } = useAuth();
+    const [supervisors, setSupervisors] = useState([]);
+
     const [newDiscussion, setNewDiscussion] = useState({
         discussion: '',
         status: 'inprogress',
-        dueDate: ''
+        dueDate: '',
+        supervisor: ''
     });
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const limit = 10;
+    const initialFetchDoneRef = useRef(false);
+    const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
+    const SUPERVISOR_CACHE_TTL_MS = 60 * 1000;
 
-    const fetchDiscussions = async (page) => {
+    const fetchDiscussions = useCallback(async (page, options = {}) => {
+        const force = options === true || !!options.force;
+        const silent = typeof options === 'object' ? !!options.silent : false;
+        
+        const CACHE_KEY = `discussion_data_${user?._id}_p${page}`;
+
+        // 1. Initial Load from Cache
+        if (!silent && !force) {
+            const cached = readSessionCache(CACHE_KEY);
+            if (cached) {
+                const data = cached.data || cached;
+                setDiscussions(data.discussions || []);
+                setTotalPages(data.totalPages || 1);
+                setCurrentPage(data.currentPage || page);
+                setLoading(false);
+                // Background refresh will continue even if cache is hit
+            }
+        }
+
         try {
-            setLoading(true);
-            const res = await api.get(`/discussions?page=${page}&limit=${limit}`);
-            setDiscussions(res.data.discussions);
-            setCurrentPage(res.data.currentPage);
-            setTotalPages(res.data.totalPages);
+            if (!silent && !readSessionCache(CACHE_KEY)) setLoading(true);
+            const res = await api.get('/discussions/bootstrap', { params: { page, limit } });
+            const freshData = {
+                discussions: res.data.discussions || [],
+                supervisors: res.data.supervisors || [],
+                totalPages: res.data.totalPages || 1,
+                currentPage: res.data.currentPage || page
+            };
+            const newFingerprint = (freshData.discussions || []).map(d => `${d._id}-${d.status}-${d.discussion?.substring(0, 20)}-${d.dueDate}`).join('|');
+            const cachedValue = readSessionCache(CACHE_KEY);
+            const oldFingerprint = cachedValue?.fingerprint || '';
+
+            if (newFingerprint !== oldFingerprint || force) {
+                setDiscussions(freshData.discussions);
+                setCurrentPage(freshData.currentPage);
+                setTotalPages(freshData.totalPages);
+                if (freshData.supervisors?.length > 0) setSupervisors(freshData.supervisors);
+
+                // Minimal data for caching
+                const minimalDiscussions = freshData.discussions.map(d => ({
+                    _id: d._id,
+                    discussion: d.discussion,
+                    status: d.status,
+                    dueDate: d.dueDate,
+                    createdAt: d.createdAt,
+                    supervisor: d.supervisor ? { _id: d.supervisor._id, firstName: d.supervisor.firstName, lastName: d.supervisor.lastName, profilePicture: d.supervisor.profilePicture } : null
+                }));
+
+                const payload = createCachePayload({
+                    discussions: minimalDiscussions,
+                    totalPages: freshData.totalPages,
+                    currentPage: freshData.currentPage
+                }, newFingerprint);
+                
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+
+                if (freshData.supervisors?.length > 0) {
+                    const minimalSupervisors = freshData.supervisors.map(s => ({
+                        _id: s._id,
+                        firstName: s.firstName,
+                        lastName: s.lastName
+                    }));
+                    const supervisorFingerprint = minimalSupervisors.map(s => s._id).join('|');
+                    sessionStorage.setItem(
+                        `supervisors_data_${user?._id}`,
+                        JSON.stringify(createCachePayload(minimalSupervisors, supervisorFingerprint))
+                    );
+                }
+            }
         } catch (error) {
             console.error(error);
-            toast.error('Failed to load discussions');
+            if (!silent) toast.error('Failed to load discussions');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
-    };
+    }, [DISCUSSION_CACHE_TTL_MS, limit, user?._id]);
+
+    const fetchSupervisors = useCallback(async () => {
+        const SUPERVISOR_CACHE_KEY = `supervisors_data_${user?._id}`;
+        
+        // Load from cache first
+        const cached = readSessionCache(SUPERVISOR_CACHE_KEY);
+        if (cached) {
+            setSupervisors(cached.data || cached);
+            if (isCacheFresh(cached, SUPERVISOR_CACHE_TTL_MS)) return;
+        }
+
+        try {
+            const res = await api.get('/discussions/supervisors');
+            const freshData = res.data;
+
+            const oldFingerprint = cached?.fingerprint || '';
+            const newFingerprint = freshData.map(s => `${s._id}`).join('|');
+
+            if (newFingerprint !== oldFingerprint) {
+                setSupervisors(freshData);
+
+                // Minimal data
+                const minimalSupervisors = freshData.map(s => ({
+                    _id: s._id,
+                    firstName: s.firstName,
+                    lastName: s.lastName
+                }));
+
+                sessionStorage.setItem(SUPERVISOR_CACHE_KEY, JSON.stringify(createCachePayload(minimalSupervisors, newFingerprint)));
+            }
+        } catch (error) {
+            console.error('Error fetching supervisors:', error);
+        }
+    }, [SUPERVISOR_CACHE_TTL_MS, user?._id]);
 
     useEffect(() => {
         fetchDiscussions(currentPage);
-    }, [currentPage]);
+        if (currentPage === 1) fetchSupervisors();
+    }, [currentPage, fetchDiscussions, fetchSupervisors]);
 
     // Close export menu when clicking outside
     useEffect(() => {
@@ -73,7 +179,7 @@ const Discussions = () => {
             document.addEventListener('mousedown', handleClickOutside);
         }
         return () => {
-            document.addEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('mousedown', handleClickOutside);
         };
     }, [showExportMenu]);
 
@@ -175,22 +281,28 @@ const Discussions = () => {
     };
 
     const handleStatusChange = async (id, newStatus) => {
+        // Local state update for immediate feedback
+        const updateState = (items) => {
+            const updated = items.map(d => d._id === id ? { ...d, status: newStatus } : d);
+            return updated.sort((a, b) => {
+                const aCompleted = a.status === 'mark as complete';
+                const bCompleted = b.status === 'mark as complete';
+                if (aCompleted && !bCompleted) return 1;
+                if (!aCompleted && bCompleted) return -1;
+                return 0;
+            });
+        };
+
+        setDiscussions(prev => updateState(prev));
+
         try {
             await api.put(`/discussions/${id}`, { status: newStatus });
             toast.success('Status updated');
-            setDiscussions(prev => {
-                const updated = prev.map(d => d._id === id ? { ...d, status: newStatus } : d);
-                return updated.sort((a, b) => {
-                    const aCompleted = a.status === 'mark as complete';
-                    const bCompleted = b.status === 'mark as complete';
-                    if (aCompleted && !bCompleted) return 1;
-                    if (!aCompleted && bCompleted) return -1;
-                    return 0;
-                });
-            });
+            fetchDiscussions(currentPage, { silent: true }); // Sync cache and server state
         } catch (error) {
             console.error('Error updating status:', error);
             toast.error('Failed to update status');
+            fetchDiscussions(currentPage, { force: true }); // Revert on failure
         }
     };
 
@@ -204,16 +316,23 @@ const Discussions = () => {
             const payload = { ...newDiscussion, title: 'Discussion' }; // Setting default title since field is removed
             if (!payload.dueDate) delete payload.dueDate;
 
-            await api.post('/discussions', payload);
+            const res = await api.post('/discussions', payload);
             toast.success('Discussion created');
 
-            fetchDiscussions(1); // Fetch the first page to show the new discussion
+            // Use the created discussion from response for instant update
+            const createdDiscussion = res.data.discussion;
+            if (createdDiscussion && currentPage === 1) {
+                setDiscussions(prev => [createdDiscussion, ...prev].slice(0, limit));
+            }
+
+            fetchDiscussions(1, { silent: true }); // Sync list and cache
 
             setIsCreating(false);
             setNewDiscussion({
                 discussion: '',
                 status: 'inprogress',
-                dueDate: ''
+                dueDate: '',
+                supervisor: ''
             });
         } catch (error) {
             console.error('Error creating discussion:', error);
@@ -228,7 +347,8 @@ const Discussions = () => {
         setEditData({
             discussion: discussion.discussion,
             status: discussion.status,
-            dueDate: discussion.dueDate ? discussion.dueDate.split('T')[0] : ''
+            dueDate: discussion.dueDate ? discussion.dueDate.split('T')[0] : '',
+            supervisor: discussion.supervisor?._id || discussion.supervisor
         });
     };
 
@@ -242,12 +362,13 @@ const Discussions = () => {
             const payload = { ...editData };
             if (!payload.dueDate) delete payload.dueDate;
 
-            await api.put(`/discussions/${id}`, payload);
+            const res = await api.put(`/discussions/${id}`, payload);
             toast.success('Discussion updated');
 
-            // Update local state and push completed to bottom
+            // Update local state using API response and sort
+            const updatedFromApi = res.data.discussion;
             setDiscussions(prev => {
-                const updated = prev.map(d => d._id === id ? { ...d, ...payload } : d);
+                const updated = prev.map(d => d._id === id ? { ...d, ...(updatedFromApi || payload) } : d);
                 return updated.sort((a, b) => {
                     const aCompleted = a.status === 'mark as complete';
                     const bCompleted = b.status === 'mark as complete';
@@ -256,6 +377,8 @@ const Discussions = () => {
                     return 0;
                 });
             });
+
+            fetchDiscussions(currentPage, { silent: true }); // Background fetch to update cache
 
             setEditingId(null);
             setEditData(null);
@@ -269,13 +392,17 @@ const Discussions = () => {
 
     const handleDelete = async (id) => {
         if (window.confirm('Are you sure you want to delete this discussion?')) {
+            // Optimistic update
+            setDiscussions(prev => prev.filter(d => d._id !== id));
+
             try {
                 await api.delete(`/discussions/${id}`);
                 toast.success('Discussion deleted');
-                fetchDiscussions(currentPage);
+                fetchDiscussions(currentPage, { silent: true }); // Re-sync and pull in next page item if needed
             } catch (error) {
                 console.error('Error deleting discussion:', error);
                 toast.error('Failed to delete discussion');
+                fetchDiscussions(currentPage, { force: true }); // Revert on failure
             }
         }
     };
@@ -441,8 +568,8 @@ const Discussions = () => {
                                             className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${getStatusBadgeColor(discussion.status)}`}
                                         >
                                             <option value="inprogress">In Progress</option>
-                                            <option value="on-hold">On-hold</option>
-                                            <option value="mark as complete">Mark as complete</option>
+                                            <option value="on-hold" disabled={discussion.supervisor?._id !== user?._id}>On-hold {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
+                                            <option value="mark as complete" disabled={discussion.supervisor?._id !== user?._id}>Mark as complete {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
                                         </select>
                                         {discussion.dueDate ? (
                                             <div className="flex items-center text-slate-500 text-xs">
@@ -487,7 +614,8 @@ const Discussions = () => {
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600">Description</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Created Date</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Due Date</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-40">Status</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-36">Status</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-44">Supervisor</th>
                                     <th className="px-6 py-4 text-right font-semibold text-slate-600 w-64">Actions</th>
                                 </tr>
                             </thead>
@@ -512,10 +640,20 @@ const Discussions = () => {
                                         <td className="px-6 py-4">
                                             <select value={newDiscussion.status}
                                                 onChange={(e) => setNewDiscussion({ ...newDiscussion, status: e.target.value })}
-                                                className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-full ${getStatusBadgeColor(newDiscussion.status)}`}>
+                                                className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 ${getStatusBadgeColor(newDiscussion.status)}`}>
                                                 <option value="inprogress">In Progress</option>
                                                 <option value="on-hold">On-hold</option>
                                                 <option value="mark as complete">Mark as complete</option>
+                                            </select>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <select value={newDiscussion.supervisor}
+                                                onChange={(e) => setNewDiscussion({ ...newDiscussion, supervisor: e.target.value })}
+                                                className="w-40 px-2 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                                <option value="">Select Supervisor</option>
+                                                {supervisors.map(s => (
+                                                    <option key={s._id} value={s._id}>{s.firstName} {s.lastName}</option>
+                                                ))}
                                             </select>
                                         </td>
                                         <td className="px-6 py-4 text-right">
@@ -566,10 +704,20 @@ const Discussions = () => {
                                                 <td className="px-6 py-4">
                                                     <select value={editData.status}
                                                         onChange={(e) => setEditData({ ...editData, status: e.target.value })}
-                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-fit ${getStatusBadgeColor(editData.status)}`}>
+                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 truncate ${getStatusBadgeColor(editData.status)}`}>
                                                         <option value="inprogress">In Progress</option>
-                                                        <option value="on-hold">On-hold</option>
-                                                        <option value="mark as complete">Mark as complete</option>
+                                                        <option value="on-hold" disabled={discussion.supervisor?._id !== user?._id}>On-hold {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
+                                                        <option value="mark as complete" disabled={discussion.supervisor?._id !== user?._id}>Mark as complete {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <select value={editData.supervisor}
+                                                        onChange={(e) => setEditData({ ...editData, supervisor: e.target.value })}
+                                                        className="w-40 px-2 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700">
+                                                        <option value="">Select Supervisor</option>
+                                                        {supervisors.map(s => (
+                                                            <option key={s._id} value={s._id}>{s.firstName} {s.lastName}</option>
+                                                        ))}
                                                     </select>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
@@ -611,11 +759,25 @@ const Discussions = () => {
                                                 <td className="px-6 py-4">
                                                     <select value={discussion.status}
                                                         onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
-                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-fit ${getStatusBadgeColor(discussion.status)}`}>
+                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 truncate ${getStatusBadgeColor(discussion.status)}`}>
                                                         <option value="inprogress">In Progress</option>
-                                                        <option value="on-hold">On-hold</option>
-                                                        <option value="mark as complete">Mark as complete</option>
+                                                        <option value="on-hold" disabled={discussion.supervisor?._id !== user?._id}>On-hold {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
+                                                        <option value="mark as complete" disabled={discussion.supervisor?._id !== user?._id}>Mark as complete {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
                                                     </select>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        {discussion.supervisor?.profilePicture ? (
+                                                            <img src={discussion.supervisor.profilePicture} alt="" className="w-6 h-6 rounded-full border border-slate-200" />
+                                                        ) : (
+                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 uppercase">
+                                                                {discussion.supervisor?.firstName?.[0]}{discussion.supervisor?.lastName?.[0]}
+                                                            </div>
+                                                        )}
+                                                        <span className="text-xs text-slate-600 font-medium">
+                                                            {discussion.supervisor?.firstName} {discussion.supervisor?.lastName}
+                                                        </span>
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">

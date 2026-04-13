@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import api from '../api/axios';
 import { Calendar, Plus, Clock, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
+import { createCachePayload } from '../utils/cache';
 
 const Meetings = () => {
     const { user } = useAuth();
@@ -17,13 +18,14 @@ const Meetings = () => {
     const [meetings, setMeetings] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchMeetings = async (isBackground = false) => {
+    const fetchMeetings = useCallback(async (isBackground = false) => {
         const CACHE_KEY = `meeting_data_${user?._id}`;
 
         // Helper: Generate fingerprint for change detection
         const buildFingerprint = (data) => {
-            if (!Array.isArray(data)) return '';
-            return data.map(m => `${m._id}-${m.status}-${m.title}-${m.date}`).join('|');
+            const items = data?.data || data;
+            if (!Array.isArray(items)) return '';
+            return items.map(m => `${m._id}-${m.status}-${m.title}-${m.date}`).join('|');
         };
 
         // 1. Initial Load from Cache
@@ -32,9 +34,9 @@ const Meetings = () => {
             if (cached) {
                 try {
                     const parsed = JSON.parse(cached);
-                    setMeetings(parsed);
+                    setMeetings(parsed.data || parsed);
                     setLoading(false);
-                } catch (e) {
+                } catch {
                     sessionStorage.removeItem(CACHE_KEY);
                 }
             }
@@ -46,12 +48,28 @@ const Meetings = () => {
             const freshData = res.data;
 
             // 2. Check for changes via fingerprint
-            const oldFingerprint = buildFingerprint(JSON.parse(sessionStorage.getItem(CACHE_KEY) || '[]'));
+            const cachedValue = sessionStorage.getItem(CACHE_KEY);
+            const oldFingerprint = cachedValue ? buildFingerprint(JSON.parse(cachedValue)) : '';
             const newFingerprint = buildFingerprint(freshData);
 
             if (newFingerprint !== oldFingerprint) {
                 setMeetings(freshData);
-                sessionStorage.setItem(CACHE_KEY, JSON.stringify(freshData));
+                
+                // Minimal data for caching
+                const minimalMeetings = freshData.map(m => ({
+                    _id: m._id,
+                    title: m.title,
+                    objective: m.objective,
+                    date: m.date,
+                    startTime: m.startTime,
+                    endTime: m.endTime,
+                    status: m.status,
+                    meetingType: m.meetingType,
+                    host: m.host ? { _id: m.host._id, firstName: m.host.firstName, lastName: m.host.lastName } : null
+                }));
+
+                const payload = createCachePayload(minimalMeetings, newFingerprint);
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
             }
         } catch (error) {
             console.error(error);
@@ -59,11 +77,11 @@ const Meetings = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user?._id]);
 
     useEffect(() => {
         fetchMeetings();
-    }, []);
+    }, [fetchMeetings]);
 
     const getStatusBadge = (status) => {
         const styles = {

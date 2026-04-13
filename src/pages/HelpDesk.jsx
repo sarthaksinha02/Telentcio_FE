@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
 import { LifeBuoy, Plus, Clock, CheckCircle, AlertCircle, MessageSquare, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Skeleton from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import HelpdeskWorkflows from './HelpdeskWorkflows';
 
 const QueryFormModal = ({ isOpen, onClose, onSuccess }) => {
@@ -24,7 +24,7 @@ const QueryFormModal = ({ isOpen, onClose, onSuccess }) => {
         try {
             const res = await api.get('/helpdesk/types');
             setQueryTypes(res.data.data.filter(qt => qt.isActive));
-        } catch (error) {
+        } catch {
             toast.error('Failed to load query types');
         }
     };
@@ -33,9 +33,9 @@ const QueryFormModal = ({ isOpen, onClose, onSuccess }) => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            await api.post('/helpdesk', formData);
+            const res = await api.post('/helpdesk', formData);
             toast.success('Query submitted successfully');
-            onSuccess();
+            onSuccess(res.data.data); // Pass full populated query back
             onClose();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to submit query');
@@ -149,49 +149,60 @@ const HelpDesk = () => {
     const [showAllQueries, setShowAllQueries] = useState(false);
     
     const [filters, setFilters] = useState({ status: '', priority: '' });
+    const initialBootstrapDoneRef = React.useRef(false);
+    const HELPDESK_CACHE_TTL_MS = 20 * 1000;
 
-    const isAdmin = user?.roles?.some(r => (r.name || r) === 'Admin' || r?.isSystem === true);
-    const isResolverRole = user?.roles?.some(r => ['HR', 'Supervisor', 'Admin'].includes(r.name || r));
+    const isAdmin = user?.roles?.some(r => ['Admin', 'System'].includes(r.name || r) || r?.isSystem === true);
+    const isResolverRole = user?.roles?.some(r => ['HR', 'Supervisor', 'Admin', 'System'].includes(r.name || r));
+
+    // Debugging: Log admin status on load
+    React.useEffect(() => {
+        if (user) {
+            console.log('HelpDesk Admin Status:', isAdmin);
+            console.log('HelpDesk Roles:', user.roles);
+        }
+    }, [user, isAdmin]);
 
     // Track which tabs have already been fetched to avoid redundant API calls
     const loadedTabs = React.useRef(new Set());
 
-    const fetchTabData = async (tab, force = false, isBackground = false) => {
-        if (!force && !isBackground && loadedTabs.current.has(tab)) return; 
+    const getCacheFieldForTab = (tab) =>
+        tab === 'my-queries' ? 'myQueries' : tab === 'assigned' ? 'assignedQueries' : 'escalatedQueries';
+
+    const fetchTabData = useCallback(async (tab, options = {}) => {
+        const force = options === true || !!options.force;
+        const silent = typeof options === 'object' ? !!options.silent : false;
+
+        if (!force && !silent && loadedTabs.current.has(tab)) return; 
         
-        const CACHE_KEY = `helpdesk_data_${user?._id}`;
+        const CACHE_KEY = `helpdesk_data_${user?._id}_admin_${isAdmin}`;
 
         // Helper: Generate fingerprint for change detection
         const buildFingerprint = (data) => {
-            if (!Array.isArray(data)) return '';
-            return data.map(q => `${q._id}-${q.status}-${q.priority}-${q.comments?.length || 0}`).join('|');
+            const items = data?.data || data;
+            if (!Array.isArray(items)) return '';
+            return items.map(q => `${q._id}-${q.status}-${q.priority}-${q.commentsCount || q.comments?.length || 0}`).join('|');
         };
 
         // 1. Initial Load from Cache
-        if (!isBackground && !force) {
-            const cached = sessionStorage.getItem(CACHE_KEY);
-            if (cached) {
-                try {
-                    const parsed = JSON.parse(cached);
-                    if (tab === 'my-queries' && parsed.myQueries) setQueries(parsed.myQueries);
-                    if (tab === 'assigned') {
-                        if (parsed.assignedQueries) setAssignedQueries(parsed.assignedQueries);
-                        if (parsed.allQueries) setAllQueries(parsed.allQueries);
-                    }
-                    if (tab === 'escalated' && parsed.escalatedQueries) setEscalatedQueries(parsed.escalatedQueries);
-                    
-                    // If we have any data from cache for this tab, stop "hard" loading
-                    if (parsed[tab === 'my-queries' ? 'myQueries' : tab === 'assigned' ? 'assignedQueries' : 'escalatedQueries']) {
-                        setTabLoading(false);
-                    }
-                } catch (e) {
-                    sessionStorage.removeItem(CACHE_KEY);
+        if (!silent && !force) {
+            const parsed = readSessionCache(CACHE_KEY);
+            if (parsed) {
+                const data = parsed.data || parsed;
+                if (tab === 'my-queries' && data.myQueries) setQueries(data.myQueries);
+                if (tab === 'assigned') {
+                    if (data.assignedQueries) setAssignedQueries(data.assignedQueries);
+                    if (data.allQueries) setAllQueries(data.allQueries);
+                }
+                if (tab === 'escalated' && data.escalatedQueries) setEscalatedQueries(data.escalatedQueries);
+                if (data[getCacheFieldForTab(tab)]) {
+                    setTabLoading(false);
                 }
             }
         }
 
         try {
-            if (!isBackground && !sessionStorage.getItem(CACHE_KEY)) setTabLoading(true);
+            if (!silent && !readSessionCache(CACHE_KEY)) setTabLoading(true);
             
             let freshData = null;
             let freshAllData = null;
@@ -213,57 +224,178 @@ const HelpDesk = () => {
 
             // 2. Update status and cache if changed
             if (freshData) {
-                const cachedData = JSON.parse(sessionStorage.getItem(CACHE_KEY) || '{}');
-                const cacheField = tab === 'my-queries' ? 'myQueries' : tab === 'assigned' ? 'assignedQueries' : 'escalatedQueries';
+                const cachedData = readSessionCache(CACHE_KEY) || {};
+                const currentData = cachedData.data || cachedData;
+                const cacheField = getCacheFieldForTab(tab);
                 
-                const oldFingerprint = buildFingerprint(cachedData[cacheField] || []);
+                const oldFingerprint = buildFingerprint(currentData[cacheField] || []);
                 const newFingerprint = buildFingerprint(freshData);
 
-                if (newFingerprint !== oldFingerprint || force) {
+                let changed = newFingerprint !== oldFingerprint || force;
+                
+                if (tab === 'assigned' && freshAllData) {
+                    const oldAllFingerprint = buildFingerprint(currentData['allQueries'] || []);
+                    const newAllFingerprint = buildFingerprint(freshAllData);
+                    if (oldAllFingerprint !== newAllFingerprint) changed = true;
+                }
+
+                if (changed) {
                     if (tab === 'my-queries') setQueries(freshData);
                     else if (tab === 'assigned') {
                         setAssignedQueries(freshData);
                         if (freshAllData) setAllQueries(freshAllData);
                     } else if (tab === 'escalated') setEscalatedQueries(freshData);
 
-                    // Sync to sessionStorage
-                    cachedData[cacheField] = freshData;
-                    if (tab === 'assigned' && freshAllData) cachedData['allQueries'] = freshAllData;
-                    sessionStorage.setItem(CACHE_KEY, JSON.stringify(cachedData));
+                    // Minimalize and Sync
+                    const minimal = (items) => (items || []).map(q => ({
+                        _id: q._id,
+                        queryId: q.queryId,
+                        subject: q.subject,
+                        status: q.status,
+                        priority: q.priority,
+                        queryType: q.queryType ? { _id: q.queryType._id, name: q.queryType.name } : null,
+                        raisedBy: q.raisedBy ? { _id: q.raisedBy._id, firstName: q.raisedBy.firstName, lastName: q.raisedBy.lastName } : null,
+                        createdAt: q.createdAt,
+                        closedAt: q.closedAt,
+                        commentsCount: q.comments?.length || q.commentsCount || 0
+                    }));
+
+                    const nextData = { ...currentData };
+                    nextData[cacheField] = minimal(freshData);
+                    if (tab === 'assigned' && freshAllData) nextData['allQueries'] = minimal(freshAllData);
+
+                    const fp = [
+                        buildFingerprint(nextData.myQueries),
+                        buildFingerprint(nextData.assignedQueries),
+                        buildFingerprint(nextData.allQueries),
+                        buildFingerprint(nextData.escalatedQueries)
+                    ].join('##');
+
+                    sessionStorage.setItem(CACHE_KEY, JSON.stringify(createCachePayload(nextData, fp)));
                 }
             }
 
             loadedTabs.current.add(tab);
         } catch (error) {
             console.error(error);
-            if (!isBackground) toast.error('Failed to load helpdesk queries');
+            if (!silent) toast.error('Failed to load helpdesk queries');
         } finally {
-            setTabLoading(false);
+            if (!silent) setTabLoading(false);
         }
-    };
+    }, [isAdmin, user?._id]);
+
+    const fetchBootstrap = useCallback(async (options = {}) => {
+        const force = options === true || !!options.force;
+        const silent = typeof options === 'object' ? !!options.silent : false;
+
+        const CACHE_KEY = `helpdesk_data_${user?._id}_admin_${isAdmin}`;
+        const cached = readSessionCache(CACHE_KEY);
+
+        if (!force && !silent && cached) {
+            const data = cached.data || cached;
+            setQueries(data.myQueries || []);
+            setAssignedQueries(data.assignedQueries || []);
+            setAllQueries(data.allQueries || []);
+            setEscalatedQueries(data.escalatedQueries || []);
+            setTabLoading(false);
+            loadedTabs.current = new Set(['my-queries', ...(isResolverRole ? ['assigned'] : []), ...(isAdmin ? ['escalated'] : [])]);
+        }
+
+        try {
+            if (!silent && !readSessionCache(CACHE_KEY)) setTabLoading(true);
+            const res = await api.get('/helpdesk/bootstrap');
+            const payload = {
+                myQueries: res.data.myQueries || [],
+                assignedQueries: res.data.assignedQueries || [],
+                allQueries: res.data.allQueries || [],
+                escalatedQueries: res.data.escalatedQueries || []
+            };
+
+            setQueries(payload.myQueries);
+            setAssignedQueries(payload.assignedQueries);
+            setAllQueries(payload.allQueries);
+            setEscalatedQueries(payload.escalatedQueries);
+
+            const minimal = (items) => (items || []).map(q => ({
+                _id: q._id,
+                queryId: q.queryId,
+                subject: q.subject,
+                status: q.status,
+                priority: q.priority,
+                queryType: q.queryType ? { _id: q.queryType._id, name: q.queryType.name } : null,
+                raisedBy: q.raisedBy ? { _id: q.raisedBy._id, firstName: q.raisedBy.firstName, lastName: q.raisedBy.lastName } : null,
+                createdAt: q.createdAt,
+                closedAt: q.closedAt,
+                commentsCount: q.comments?.length || q.commentsCount || 0
+            }));
+
+            const nextData = {
+                myQueries: minimal(payload.myQueries),
+                assignedQueries: minimal(payload.assignedQueries),
+                allQueries: minimal(payload.allQueries),
+                escalatedQueries: minimal(payload.escalatedQueries)
+            };
+            const fp = [
+                nextData.myQueries.map(q => `${q._id}-${q.status}-${q.priority}-${q.commentsCount}`).join('|'),
+                nextData.assignedQueries.map(q => `${q._id}-${q.status}-${q.priority}-${q.commentsCount}`).join('|'),
+                nextData.allQueries.map(q => `${q._id}-${q.status}-${q.priority}-${q.commentsCount}`).join('|'),
+                nextData.escalatedQueries.map(q => `${q._id}-${q.status}-${q.priority}-${q.commentsCount}`).join('|')
+            ].join('##');
+
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify(createCachePayload(nextData, fp)));
+            loadedTabs.current = new Set(['my-queries', ...(isResolverRole ? ['assigned'] : []), ...(isAdmin ? ['escalated'] : [])]);
+        } catch (error) {
+            console.error(error);
+            if (!silent) toast.error('Failed to load helpdesk queries');
+        } finally {
+            if (!silent) setTabLoading(false);
+        }
+    }, [isAdmin, isResolverRole, user?._id]);
 
     // Refresh only the currently active tab (called after raising a new query)
-    const refreshTab = () => {
+    const refreshTab = (newEntry = null) => {
+        if (newEntry) {
+            const currentUserId = String(user?._id || user?.id || '');
+            const raiserId = String(newEntry.raisedBy?._id || newEntry.raisedBy || '');
+
+            // Instant state update if raiser is current user
+            if (raiserId === currentUserId) {
+                setQueries(prev => {
+                    const exists = prev.some(q => q._id === newEntry._id);
+                    if (exists) return prev;
+                    return [newEntry, ...prev];
+                });
+            }
+            // Switch to my-queries to show the new ticket
+            setActiveTab('my-queries');
+        }
+
         loadedTabs.current.delete(activeTab);
-        fetchTabData(activeTab, true);
+        if (activeTab === 'my-queries' || activeTab === 'assigned' || activeTab === 'escalated') {
+            // Background sync - the backend cache fix ensures this won't overwrite with stale data
+            fetchBootstrap({ silent: true });
+            return;
+        }
+        fetchTabData(activeTab, { silent: true });
     };
 
     // Initial fetch on mount
     useEffect(() => {
-        fetchTabData('my-queries');
-        // Only attempt to fetch assigned queries if user has a resolver role
-        if (isResolverRole) {
-            fetchTabData('assigned');
-        }
-    }, [isResolverRole]);
+        if (initialBootstrapDoneRef.current) return;
+        initialBootstrapDoneRef.current = true;
+        fetchBootstrap();
+    }, [fetchBootstrap]);
 
     // Fetch data whenever the active tab changes (for tabs not fetched on mount)
     useEffect(() => {
-        const alreadyFetched = activeTab === 'my-queries' || (activeTab === 'assigned' && isResolverRole);
+        const alreadyFetched =
+            activeTab === 'my-queries' ||
+            (activeTab === 'assigned' && isResolverRole) ||
+            (activeTab === 'escalated' && isAdmin);
         if (!alreadyFetched) {
             fetchTabData(activeTab);
         }
-    }, [activeTab, isResolverRole]);
+    }, [activeTab, fetchTabData, isAdmin, isResolverRole]);
 
     const getStatusBadge = (status) => {
         const lowerS = status?.toLowerCase() || '';
@@ -381,7 +513,7 @@ const HelpDesk = () => {
                                                 {query.subject}
                                             </div>
                                             <div className="text-xs text-slate-500 mt-1 flex items-center">
-                                                <MessageSquare size={12} className="mr-1" /> {query.comments?.length || 0} comments
+                                                <MessageSquare size={12} className="mr-1" /> {query.commentsCount || query.comments?.length || 0} comments
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
@@ -427,15 +559,6 @@ const HelpDesk = () => {
             </div>
         );
     };
-
-    if (false) return (
-        <div className="min-h-screen bg-slate-50 p-6 md:p-10">
-            <div className="max-w-6xl mx-auto space-y-6">
-                <Skeleton className="h-8 w-48 mb-2" />
-                <Skeleton className="h-64 w-full rounded-xl" />
-            </div>
-        </div>
-    );
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans p-4 sm:p-6 md:p-10">
@@ -569,7 +692,7 @@ const HelpDesk = () => {
 
             </div>
 
-            <QueryFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={refreshTab} />
+            <QueryFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={(q) => refreshTab(q)} />
         </div>
     );
 };

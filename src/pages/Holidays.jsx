@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Edit2, Trash2, Calendar, X, Save, CalendarCheck, CalendarOff, CalendarDays } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const Holidays = () => {
     const { user } = useAuth();
@@ -11,6 +12,8 @@ const Holidays = () => {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingHoliday, setEditingHoliday] = useState(null);
+    const initialFetchDoneRef = useRef(false);
+    const HOLIDAY_CACHE_TTL_MS = 60 * 1000;
 
     const [formData, setFormData] = useState({
         name: '',
@@ -28,45 +31,49 @@ const Holidays = () => {
     const canEditHoliday = isAdmin || user?.permissions?.includes('holiday.edit') || user?.hasAllPermissions;
     const canDeleteHoliday = isAdmin || user?.permissions?.includes('holiday.delete') || user?.hasAllPermissions;
 
-    useEffect(() => {
-        fetchHolidays();
-    }, []);
-
-    const fetchHolidays = async (isBackground = false, force = false) => {
+    const fetchHolidays = useCallback(async (isBackground = false, force = false) => {
         const CACHE_KEY = `holiday_data_${user?._id}_${new Date().getFullYear()}`;
 
         // Helper: Generate fingerprint for change detection
         const buildFingerprint = (data) => {
-            if (!Array.isArray(data)) return '';
-            return data.map(h => `${h._id}-${h.name}-${h.date}-${h.isOptional}`).join('|');
+            const items = data?.data || data;
+            if (!Array.isArray(items)) return '';
+            return items.map(h => `${h._id}-${h.name}-${h.date}-${h.isOptional}`).join('|');
         };
 
         // 1. Initial Load from Cache
         if (!isBackground && !force) {
-            const cached = sessionStorage.getItem(CACHE_KEY);
+            const cached = readSessionCache(CACHE_KEY);
             if (cached) {
-                try {
-                    const parsed = JSON.parse(cached);
-                    setHolidays(parsed);
-                    setLoading(false);
-                } catch (e) {
-                    sessionStorage.removeItem(CACHE_KEY);
-                }
+                setHolidays(cached.data || cached);
+                setLoading(false);
+                if (isCacheFresh(cached, HOLIDAY_CACHE_TTL_MS)) return;
             }
         }
 
         try {
-            if (!isBackground && !force && !sessionStorage.getItem(CACHE_KEY)) setLoading(true);
+            if (!isBackground && !force && !readSessionCache(CACHE_KEY)) setLoading(true);
             const res = await api.get('/holidays');
             const freshData = res.data;
 
             // 2. Check for changes via fingerprint
-            const oldFingerprint = buildFingerprint(JSON.parse(sessionStorage.getItem(CACHE_KEY) || '[]'));
+            const cachedValue = readSessionCache(CACHE_KEY);
+            const oldFingerprint = cachedValue ? buildFingerprint(cachedValue.data || cachedValue) : '';
             const newFingerprint = buildFingerprint(freshData);
 
             if (newFingerprint !== oldFingerprint || force) {
                 setHolidays(freshData);
-                sessionStorage.setItem(CACHE_KEY, JSON.stringify(freshData));
+                
+                // Minimal data for caching
+                const minimalHolidays = freshData.map(h => ({
+                    _id: h._id,
+                    name: h.name,
+                    date: h.date,
+                    isOptional: h.isOptional
+                }));
+
+                const payload = createCachePayload(minimalHolidays, newFingerprint);
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
             }
         } catch (error) {
             console.error(error);
@@ -74,7 +81,13 @@ const Holidays = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [HOLIDAY_CACHE_TTL_MS, user?._id]);
+
+    useEffect(() => {
+        if (initialFetchDoneRef.current) return;
+        initialFetchDoneRef.current = true;
+        fetchHolidays();
+    }, [fetchHolidays]);
 
     const handleOpenModal = (holiday = null) => {
         if (holiday) {
@@ -114,7 +127,7 @@ const Holidays = () => {
             await api.delete(`/holidays/${id}`);
             toast.success("Holiday deleted");
             fetchHolidays(false, true); // Force refresh cache
-        } catch (error) {
+        } catch {
             toast.error("Failed to delete holiday");
         }
     };

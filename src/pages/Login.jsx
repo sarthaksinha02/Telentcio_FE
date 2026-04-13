@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
-import { Mail, Lock, ArrowRight, Loader2, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, ArrowRight, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import Button from '../components/Button';
+
+const MotionDiv = motion.div;
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -43,7 +45,7 @@ const Login = () => {
       <div className="hidden lg:flex w-1/2 bg-slate-900 relative items-center justify-center overflow-hidden">
         {/* Abstract Background Shapes */}
         <div className="absolute inset-0 bg-gradient-to-br from-blue-900/40 to-slate-900 z-0" />
-        <motion.div
+        <MotionDiv
           animate={{
             scale: [1, 1.1, 1],
             rotate: [0, 5, 0],
@@ -55,7 +57,7 @@ const Login = () => {
           }}
           className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl z-0 pointer-events-none"
         />
-        <motion.div
+        <MotionDiv
           animate={{
             scale: [1, 1.2, 1],
             rotate: [0, -5, 0],
@@ -71,7 +73,7 @@ const Login = () => {
 
         {/* Content */}
         <div className="relative z-10 p-12 text-white max-w-lg">
-          <motion.div
+          <MotionDiv
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
@@ -95,7 +97,7 @@ const Login = () => {
                 "Seamless Project Management",
                 "Dynamic Role-Based Access"
               ].map((item, idx) => (
-                <motion.div
+                <MotionDiv
                   key={idx}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -104,16 +106,16 @@ const Login = () => {
                 >
                   <CheckCircle2 size={20} className="text-blue-500" />
                   <span>{item}</span>
-                </motion.div>
+                </MotionDiv>
               ))}
             </div>
-          </motion.div>
+          </MotionDiv>
         </div>
       </div>
 
       {/* Login Form Section */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 relative">
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5 }}
@@ -209,7 +211,7 @@ const Login = () => {
               {/* &copy; 2026 HRCODE Inc. All rights reserved. */}
             </p>
           </div>
-        </motion.div>
+        </MotionDiv>
       </div>
     </div>
   );

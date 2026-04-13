@@ -7,9 +7,12 @@ import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay, subDays, startOfDay } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, subDays, startOfDay } from 'date-fns';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+
+const ATTENDANCE_CACHE_TTL_MS = 20 * 1000;
 
 const Attendance = () => {
     const { user, hasModule } = useAuth();
@@ -23,13 +26,14 @@ const Attendance = () => {
     const [usersList, setUsersList] = useState(user?.directReports || []);
     const [selectedUserId, setSelectedUserId] = useState(user?._id);
     const [viewUser, setViewUser] = useState(user); // Hold complete profile of user being viewed
+    const [calendarDate, setCalendarDate] = useState(new Date());
 
     // Task Integration
     const [assignedTasks, setAssignedTasks] = useState([]);
     const [recentLogs, setRecentLogs] = useState([]);
-    const [showLogModal, setShowLogModal] = useState(false);
     const [logForm, setLogForm] = useState({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
     const [loggingTaskId, setLoggingTaskId] = useState(null);
+    const [weeklyOffs, setWeeklyOffs] = useState(['Saturday', 'Sunday']);
     const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks', 'regularize'
 
     useEffect(() => {
@@ -38,7 +42,7 @@ const Attendance = () => {
         if (tab && ['history', 'tasks', 'regularize'].includes(tab)) {
             setActiveTab(tab);
         }
-        
+
         const qUserId = params.get('userId');
         if (qUserId) {
             setSelectedUserId(qUserId);
@@ -65,21 +69,17 @@ const Attendance = () => {
     const [processingRegId, setProcessingRegId] = useState(null);
 
     // Robust Check for Admin (matching SystemRoute.jsx)
-    const isAdmin = user?.roles?.some(r => (typeof r === 'string' ? r : r?.name) === 'Admin') 
-        || user?.permissions?.includes('*') 
-        || user?.permissions?.includes('all') 
+    const isAdmin = user?.roles?.some(r => (typeof r === 'string' ? r : r?.name) === 'Admin')
+        || user?.permissions?.includes('*')
+        || user?.permissions?.includes('all')
         || user?.permissions?.includes('admin')
         || user?.permissions?.includes('attendance.view_all')
         || user?.role === 'Admin';
-    
+
     // Robust Check for Manager
     const isManager = user?.roles?.some(r => (typeof r === 'string' ? r : r?.name) === 'Manager')
         || (user?.directReports && user.directReports.length > 0)
         || user?.role === 'Manager';
-
-    const fetchApprovals = async () => {
-        // Removed for move to Timesheet page
-    };
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -110,7 +110,7 @@ const Attendance = () => {
                     const res = await api.get('/admin/users/team');
                     setUsersList(res.data);
                     setUsersLoaded(true);
-                } catch (e) {
+                } catch {
                     setUsersList(user.directReports || []);
                     setUsersLoaded(true);
                 }
@@ -128,7 +128,7 @@ const Attendance = () => {
     // Fetch target user details when selectedUserId changes
     useEffect(() => {
         if (!selectedUserId || !user?._id) return;
-        
+
         if (selectedUserId === user._id) {
             setViewUser(user);
             return;
@@ -152,7 +152,7 @@ const Attendance = () => {
         };
 
         fetchTargetUser();
-    }, [selectedUserId, usersList, user?._id]); // Use user._id instead of user object
+    }, [selectedUserId, user, usersList]);
 
     const fetchRegularizations = async () => {
         try {
@@ -167,7 +167,6 @@ const Attendance = () => {
         const targetDate = startOfDay(new Date(day));
         const today = startOfDay(new Date());
 
-        const weeklyOffs = user?.company?.settings?.attendance?.weeklyOff || ['Saturday', 'Sunday'];
         const holidayDates = (holidays || []).map(h => format(new Date(h.date), 'yyyy-MM-dd'));
 
         // 1. Check if it's a future date
@@ -197,7 +196,7 @@ const Attendance = () => {
             checkDate = subDays(checkDate, 1);
             const dName = format(checkDate, 'EEEE');
             const dStr = format(checkDate, 'yyyy-MM-dd');
-            
+
             const isWeeklyOff = weeklyOffs.includes(dName);
             const isHoliday = holidayDates.includes(dStr);
 
@@ -282,43 +281,114 @@ const Attendance = () => {
         }
     };
 
-    const fetchAssignedTasks = async () => {
-        try {
-            if (!user) return;
-            // Fetch tasks assigned to current user
-            const res = await api.get(`/projects/tasks?assignees=${user._id}`);
-            // Filter out completed tasks if backend doesn't
-            const activeTasks = res.data.filter(t => t.module?.status !== 'COMPLETED' && (!t.status || t.status !== 'COMPLETED'));
-            setAssignedTasks(activeTasks);
-        } catch (error) {
-            console.error('Error fetching tasks', error);
-        }
-    };
-
-
-
-    const fetchMonthHistory = async (year, month) => {
+    const fetchMonthHistory = async (year, month, options = {}) => {
         try {
             const userId = selectedUserId || user._id;
-            // Fetch attendance history, holidays, and leaves for the same month in parallel
-            const fetchHistoryProm = api.get(`/attendance/history?year=${year}&month=${month}&userId=${userId}`);
-            const fetchHolidaysProm = api.get(`/holidays?year=${year}&month=${month}`);
-            const fetchLeavesProm = hasModule('leaves') 
-                ? api.get(`/leaves/requests?status=Approved&limit=0&userId=${userId}`)
-                : Promise.resolve({ data: { data: [] } });
-
-            const [historyRes, holidaysRes, leavesRes] = await Promise.all([
-                fetchHistoryProm,
-                fetchHolidaysProm,
-                fetchLeavesProm
-            ]);
-            setHistory(historyRes.data);
-            setHolidays(holidaysRes.data);
-            setApprovedLeaves(leavesRes.data.data || []);
+            const res = await api.get('/attendance/bootstrap', {
+                params: {
+                    year,
+                    month,
+                    userId,
+                    logsLimit: 4,
+                    ...(options.skipCache ? { ts: Date.now() } : {})
+                },
+                headers: options.skipCache
+                    ? { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
+                    : undefined
+            });
+            setHistory(res.data.history || []);
+            setWeeklyOffs(res.data.weeklyOff || ['Saturday', 'Sunday']);
+            setHolidays(res.data.holidays || []);
+            setApprovedLeaves(res.data.approvedLeaves || []);
         } catch (error) {
             console.error('Error fetching month data', error);
             toast.error('Could not load calendar data');
         }
+    };
+
+    const getAttendanceCacheKey = (targetUserId, dateValue = new Date()) =>
+        `attendance_v1_${targetUserId}_${new Date(dateValue).toISOString().slice(0, 10)}`;
+
+    const upsertAttendanceRecord = (records = [], attendanceRecord) => {
+        if (!attendanceRecord) return records;
+
+        const recordDate = format(
+            new Date(attendanceRecord.date || attendanceRecord.clockIn || attendanceRecord.createdAt || new Date()),
+            'yyyy-MM-dd'
+        );
+
+        const nextRecords = [...records];
+        const existingIndex = nextRecords.findIndex(item =>
+            format(new Date(item.date), 'yyyy-MM-dd') === recordDate
+        );
+
+        if (existingIndex >= 0) {
+            nextRecords[existingIndex] = {
+                ...nextRecords[existingIndex],
+                ...attendanceRecord
+            };
+        } else {
+            nextRecords.unshift(attendanceRecord);
+        }
+
+        return nextRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+    };
+
+    const updateAttendanceCache = (attendanceRecord) => {
+        if (!user?._id || !attendanceRecord) return;
+
+        const cacheKey = getAttendanceCacheKey(user._id);
+        const cached = readSessionCache(cacheKey);
+        const cachedData = cached?.data || {};
+        const nextStatus = {
+            ...(cachedData.status || {}),
+            ...attendanceRecord
+        };
+        const nextHistory = upsertAttendanceRecord(cachedData.history || [], attendanceRecord);
+        const nextData = {
+            ...cachedData,
+            status: nextStatus,
+            history: nextHistory,
+            recentLogs: cachedData.recentLogs || [],
+            approvedLeaves: cachedData.approvedLeaves || []
+        };
+        const nextFingerprint = `${nextStatus.status || 'none'}|${nextStatus.clockInIST || nextStatus.clockIn || ''}|${nextStatus.clockOutIST || nextStatus.clockOut || ''}::${(nextData.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',')}::H${nextHistory.length}::L${(nextData.approvedLeaves || []).length}`;
+
+        sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload(nextData, nextFingerprint)));
+    };
+
+    const applyImmediateAttendanceUpdate = (attendanceRecord) => {
+        if (!attendanceRecord) return;
+
+        const effectiveDate = new Date(
+            attendanceRecord.clockOut ||
+            attendanceRecord.clockIn ||
+            attendanceRecord.date ||
+            new Date()
+        );
+        const normalizedRecord = {
+            status: 'PRESENT',
+            approvalStatus: attendanceRecord.approvalStatus || 'APPROVED',
+            ...attendanceRecord,
+            date: startOfDay(effectiveDate).toISOString()
+        };
+
+        setStatus(prev => ({
+            ...(prev || {}),
+            ...normalizedRecord
+        }));
+
+        const isViewingSelf = !selectedUserId || selectedUserId === user?._id;
+        const recordDate = new Date(normalizedRecord.date || normalizedRecord.clockIn || new Date());
+        const isVisibleMonth =
+            recordDate.getFullYear() === calendarDate.getFullYear() &&
+            recordDate.getMonth() === calendarDate.getMonth();
+
+        if (isViewingSelf && isVisibleMonth) {
+            setHistory(prev => upsertAttendanceRecord(prev, normalizedRecord));
+        }
+
+        updateAttendanceCache(normalizedRecord);
     };
 
     const fetchRecentLogs = async () => {
@@ -330,17 +400,6 @@ const Attendance = () => {
             console.error('Error fetching logs', error);
         }
     };
-
-    const fetchHolidays = async () => {
-        try {
-            const res = await api.get('/holidays');
-            setHolidays(res.data);
-        } catch (error) {
-            console.error('Error fetching holidays', error);
-        }
-    };
-
-
 
     // useRef guard: prevents React StrictMode from firing the effect twice.
     // StrictMode intentionally mounts → unmounts → remounts in dev. The cleanup
@@ -369,17 +428,57 @@ const Attendance = () => {
         const CACHE_KEY = `attendance_v1_${user._id}_${now.toISOString().slice(0, 10)}`;
 
         const readCache = () => {
+            return readSessionCache(CACHE_KEY);
+        };
+
+        const writeCache = (data, fingerprint) => {
             try {
-                const raw = sessionStorage.getItem(CACHE_KEY);
-                return raw ? JSON.parse(raw) : null;
-            } catch { return null; }
+                // Minimal data for caching
+                const minimalStatus = data.status ? {
+                    _id: data.status._id,
+                    user: data.status.user,
+                    status: data.status.status,
+                    clockIn: data.status.clockIn,
+                    clockInIST: data.status.clockInIST,
+                    clockOut: data.status.clockOut,
+                    clockOutIST: data.status.clockOutIST
+                } : null;
+
+                const minimalHistory = (data.history || []).map(h => ({
+                    _id: h._id,
+                    date: h.date,
+                    clockIn: h.clockIn,
+                    clockOut: h.clockOut,
+                    status: h.status,
+                    lat: h.lat,
+                    lng: h.lng
+                }));
+
+                const minimalLogs = (data.recentLogs || []).map(l => ({
+                    _id: l._id,
+                    task: l.task ? { _id: l.task._id, name: l.task.name } : null,
+                    hours: l.hours,
+                    minutes: l.minutes,
+                    description: l.description,
+                    date: l.date
+                }));
+
+                const payload = createCachePayload({
+                    status: minimalStatus,
+                    recentLogs: minimalLogs,
+                    history: minimalHistory,
+                    approvedLeaves: (data.approvedLeaves || []).map(l => ({ _id: l._id, leaveType: l.leaveType, startDate: l.startDate, endDate: l.endDate, status: l.status }))
+                }, fingerprint);
+
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+            } catch {
+                // Ignore cache write failures.
+            }
         };
 
-        const writeCache = (payload) => {
-            try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload)); } catch { }
-        };
-
-        const buildFingerprint = (payload) => {
+        const buildFingerprint = (data) => {
+            const payload = data?.data || data;
+            if (!payload) return 'none';
             // Simple string fingerprint based on current status and recent logs
             const statusStr = payload.status ? `${payload.status.status}|${payload.status.clockInIST}|${payload.status.clockOutIST}` : 'none';
             const logsStr = (payload.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',');
@@ -392,51 +491,51 @@ const Attendance = () => {
             if (payload.status !== undefined) setStatus(payload.status);
             if (payload.recentLogs) setRecentLogs(payload.recentLogs);
             if (payload.history) setHistory(payload.history);
-            if (payload.holidays) setHolidays(payload.holidays);
             if (payload.approvedLeaves) setApprovedLeaves(payload.approvedLeaves);
         };
 
         // 1. Try Cache First (Instant UI)
         const cached = readCache();
-        if (cached?.data) {
-            applyData(cached.data);
+        if (cached) {
+            applyData(cached.data || cached);
             setLoading(false);
+            if (isCacheFresh(cached, ATTENDANCE_CACHE_TTL_MS)) {
+                return () => {
+                    controller.abort();
+                    didFetchRef.current = false;
+                };
+            }
         }
 
         // 2. Fetch Fresh Data (Background)
-        const fetchStatus = safe(api.get('/attendance/today', { signal }).then(r => r.data));
-        const fetchLogs = hasModule('projectManagement')
-            ? safe(api.get('/projects/worklogs?limit=4', { signal }).then(r => r.data))
-            : Promise.resolve([]);
-        const fetchHistory = safe(api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${user._id}`, { signal }).then(r => r.data));
-        const fetchHolidays = safe(api.get(`/holidays?year=${now.getFullYear()}`, { signal }).then(r => r.data));
-        const fetchLeaves = hasModule('leaves')
-            ? safe(api.get(`/leaves/requests?status=Approved&limit=0&userId=${user._id}`, { signal }).then(r => r.data))
-            : Promise.resolve({ data: [] });
-
-        Promise.all([
-            fetchStatus,
-            fetchLogs,
-            fetchHistory,
-            fetchHolidays,
-            fetchLeaves
-        ]).then(([statusData, logsData, historyData, holidaysData, leavesData]) => {
+        safe(api.get('/attendance/bootstrap', {
+            params: {
+                year: now.getFullYear(),
+                month: now.getMonth() + 1,
+                userId: user._id,
+                logsLimit: 4
+            },
+            signal
+        }).then(r => r.data)).then((bootstrapData) => {
             if (signal.aborted) return;
 
             const freshData = {
-                status: statusData,
-                recentLogs: logsData || [],
-                history: historyData || [],
-                holidays: holidaysData || [],
-                approvedLeaves: leavesData?.data || []
+                status: bootstrapData?.status,
+                recentLogs: bootstrapData?.recentLogs || [],
+                history: bootstrapData?.history || [],
+                holidays: bootstrapData?.holidays || [],
+                approvedLeaves: bootstrapData?.approvedLeaves || []
             };
 
             const freshFingerprint = buildFingerprint(freshData);
+            const cachedFingerprint = cached?.fingerprint || (readCache()?.fingerprint || '');
 
             // 3. Update React only if data changed
-            if (!cached || cached.fingerprint !== freshFingerprint) {
+            if (!cached || cachedFingerprint !== freshFingerprint) {
                 applyData(freshData);
-                writeCache({ data: freshData, fingerprint: freshFingerprint });
+                if (bootstrapData?.weeklyOff) setWeeklyOffs(bootstrapData.weeklyOff);
+                if (bootstrapData?.holidays) setHolidays(bootstrapData.holidays);
+                writeCache(freshData, freshFingerprint);
             }
         }).finally(() => {
             if (!signal.aborted) setLoading(false);
@@ -455,13 +554,25 @@ const Attendance = () => {
         if (selectedUserId === user._id) return; // own data already fetched above
 
         const controller = new AbortController();
-        const now = new Date();
-        api.get(`/attendance/history?year=${now.getFullYear()}&month=${now.getMonth() + 1}&userId=${selectedUserId}`, { signal: controller.signal })
-            .then(res => setHistory(res.data))
+        api.get('/attendance/bootstrap', {
+            params: {
+                year: calendarDate.getFullYear(),
+                month: calendarDate.getMonth() + 1,
+                userId: selectedUserId,
+                logsLimit: 4
+            },
+            signal: controller.signal
+        })
+            .then(res => {
+                setHistory(res.data.history || []);
+                setHolidays(res.data.holidays || []);
+                setApprovedLeaves(res.data.approvedLeaves || []);
+                if (res.data.weeklyOff) setWeeklyOffs(res.data.weeklyOff);
+            })
             .catch(e => { if (e?.code !== 'ERR_CANCELED' && e?.name !== 'CanceledError') console.error(e); });
 
         return () => controller.abort();
-    }, [selectedUserId]);
+    }, [calendarDate, selectedUserId, user?._id]);
 
     // Fetch Tasks only when the 'tasks' tab is clicked
     const tasksFetchedRef = useRef(false);
@@ -478,24 +589,14 @@ const Attendance = () => {
                     tasksFetchedRef.current = false; // allow retry on fail
                 });
         }
-    }, [activeTab, user?._id]);
-    
+    }, [activeTab, hasModule, user?._id]);
+
     // Fetch Regularizations only when that tab is clicked
     useEffect(() => {
         if (activeTab === 'regularize' && user?._id) {
             fetchRegularizations();
         }
     }, [activeTab, user?._id]);
-
-    // Check if a task has a log for today
-    const getTodayLogForTask = (taskId) => {
-        const today = new Date().toISOString().split('T')[0];
-        return recentLogs.find(log =>
-            log.task &&
-            log.task._id === taskId &&
-            new Date(log.date).toISOString().split('T')[0] === today
-        );
-    };
 
     const handleClockIn = async () => {
         const attSettings = user?.company?.settings?.attendance || {};
@@ -505,11 +606,13 @@ const Attendance = () => {
             setLoadingLocation(true);
             try {
                 const payload = locationData ? { location: locationData } : {};
-                await api.post('/attendance/clock-in', payload);
+                const { data: attendanceRecord } = await api.post('/attendance/clock-in', payload);
+                applyImmediateAttendanceUpdate(attendanceRecord);
                 toast.success('Clocked In Successfully');
-                await fetchTodayStatus();
-                const now = new Date();
-                fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
+                fetchTodayStatus();
+                if (!selectedUserId || selectedUserId === user?._id) {
+                    fetchMonthHistory(calendarDate.getFullYear(), calendarDate.getMonth() + 1, { skipCache: true });
+                }
             } catch (error) {
                 toast.error(error.response?.data?.message || 'Error Clocking In');
             } finally {
@@ -528,14 +631,16 @@ const Attendance = () => {
                             accuracy: position.coords.accuracy
                         });
                     },
-                    (error) => {
-                        console.log('Location access denied or failed, proceeding with default clock-in');
-                        executeClockIn();
+                    () => {
+                        console.log('Location access denied or failed.');
+                        toast.error('Please enable location permission in your browser to clock in.');
+                        setLoadingLocation(false);
                     },
-                    { timeout: 5000 }
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                 );
             } else {
-                executeClockIn();
+                toast.error('Geolocation is not supported by your browser.');
+                setLoadingLocation(false);
             }
             return;
         }
@@ -549,13 +654,6 @@ const Attendance = () => {
         setLoadingLocation(true);
         navigator.geolocation.getCurrentPosition(
             (position) => {
-                const isCached = (Date.now() - position.timestamp) > 60000;
-                if (!position.coords.accuracy || position.coords.accuracy > 300 || isCached) {
-                    toast.error('Please Enable location for accurate verification');
-                    setLoadingLocation(false);
-                    return;
-                }
-
                 executeClockIn({
                     lat: position.coords.latitude,
                     lng: position.coords.longitude,
@@ -566,7 +664,7 @@ const Attendance = () => {
                     setLoadingLocation(false);
                 });
             },
-            (error) => {
+            () => {
                 toast.error('Please Enable location to proceed with clock-in (Required by your company).');
                 setLoadingLocation(false);
             },
@@ -586,11 +684,13 @@ const Attendance = () => {
             setLoadingLocation(true);
             try {
                 const payload = locationData ? { location: locationData } : {};
-                await api.post('/attendance/clock-out', payload);
+                const { data: attendanceRecord } = await api.post('/attendance/clock-out', payload);
+                applyImmediateAttendanceUpdate(attendanceRecord);
                 toast.success('Clocked Out Successfully');
                 fetchTodayStatus();
-                const now = new Date();
-                fetchMonthHistory(now.getFullYear(), now.getMonth() + 1);
+                if (!selectedUserId || selectedUserId === user?._id) {
+                    fetchMonthHistory(calendarDate.getFullYear(), calendarDate.getMonth() + 1, { skipCache: true });
+                }
             } catch (error) {
                 toast.error(error.response?.data?.message || 'Error Clocking Out');
             } finally {
@@ -624,7 +724,7 @@ const Attendance = () => {
                     <button
                         onClick={async () => {
                             toast.dismiss(t.id);
-                            
+
                             if (!isLocationRequired) {
                                 if (navigator.geolocation) {
                                     navigator.geolocation.getCurrentPosition(
@@ -633,11 +733,15 @@ const Attendance = () => {
                                             lng: position.coords.longitude,
                                             accuracy: position.coords.accuracy
                                         }),
-                                        () => executeClockOut(),
-                                        { timeout: 5000 }
+                                        () => {
+                                            toast.error('Please enable location permission in your browser to checkout.');
+                                            setLoadingLocation(false);
+                                        },
+                                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                                     );
                                 } else {
-                                    executeClockOut();
+                                    toast.error('Geolocation is not supported by your browser.');
+                                    setLoadingLocation(false);
                                 }
                                 return;
                             }
@@ -650,13 +754,6 @@ const Attendance = () => {
                             setLoadingLocation(true);
                             navigator.geolocation.getCurrentPosition(
                                 (position) => {
-                                    const isCached = (Date.now() - position.timestamp) > 60000;
-                                    if (!position.coords.accuracy || position.coords.accuracy > 300 || isCached) {
-                                        toast.error('Please Enable location for accurate verification');
-                                        setLoadingLocation(false);
-                                        return;
-                                    }
-
                                     executeClockOut({
                                         lat: position.coords.latitude,
                                         lng: position.coords.longitude,
@@ -667,7 +764,7 @@ const Attendance = () => {
                                         setLoadingLocation(false);
                                     });
                                 },
-                                (error) => {
+                                () => {
                                     toast.error('Please Enable location to proceed with checkout (Required by your company).');
                                     setLoadingLocation(false);
                                 },
@@ -722,7 +819,7 @@ const Attendance = () => {
             await api.delete(`/projects/worklogs/${logId}`);
             toast.success('Work Log Deleted');
             fetchRecentLogs();
-        } catch (error) {
+        } catch {
             toast.error('Failed to delete log');
         }
     };
@@ -816,7 +913,7 @@ const Attendance = () => {
         const standardHours = user?.company?.settings?.attendance?.workingHours || 8;
 
         // --- STYLING ---
-        const blueHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; 
+        const blueHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
         const tableHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
         const weekendFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
         const borderStyle = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
@@ -885,9 +982,8 @@ const Attendance = () => {
         days.forEach(day => {
             const dateStr = format(day, 'yyyy-MM-dd');
             const record = history.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-            const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
             const dayName = format(day, 'EEEE');
-            const isWeekendDay = weeklyOffDays.includes(dayName);
+            const isWeekendDay = weeklyOffs.includes(dayName);
             const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
 
             const row = sheet.getRow(currentRow);
@@ -896,17 +992,20 @@ const Attendance = () => {
             const cStatus = row.getCell(2);
 
             cDate.value = format(day, 'EEE, d MMM');
-            
+
             const leave = approvedLeaves.find(l => {
                 const lStart = new Date(l.startDate);
                 const lEnd = new Date(l.endDate);
-                lStart.setHours(0,0,0,0);
-                lEnd.setHours(23,59,59,999);
+                lStart.setHours(0, 0, 0, 0);
+                lEnd.setHours(23, 59, 59, 999);
                 return day >= lStart && day <= lEnd;
             });
 
             let status = '';
-            if (leave) {
+            const isOffDay = !!holiday || isWeekendDay;
+            const showLeave = leave && (!isOffDay || leave.sandwichRule);
+
+            if (showLeave) {
                 status = 'Leave';
             } else if (holiday) {
                 status = holiday.name;
@@ -964,7 +1063,7 @@ const Attendance = () => {
         const exportUser = viewUser || user;
 
         // 1. Header Info (Rows 1-4)
-        const titleStyle = { font: { bold: true, size: 12 }, alignment: { vertical: 'middle', horizontal: 'left' } };
+        const _titleStyle = { font: { bold: true, size: 12 }, alignment: { vertical: 'middle', horizontal: 'left' } };
 
         sheet.mergeCells('A1:C1');
         sheet.getCell('A1').value = `User Name: ${exportUser.firstName} ${exportUser.lastName || ''}`;
@@ -987,8 +1086,8 @@ const Attendance = () => {
         headerRow.alignment = { horizontal: 'center' };
 
         // 3. Data Generation
-        const currentYear = new Date().getFullYear(); // Or use a selected date state if calendar navigation is tracked
-        const currentMonth = new Date().getMonth();
+        const _currentYear = new Date().getFullYear(); // Or use a selected date state if calendar navigation is tracked
+        const _currentMonth = new Date().getMonth();
         // Note: Ideally we should use the month currently displayed in 'history', but 'history' only gives us data, not the month itself explicitly unless we track it.
         // Assuming 'history' contains records for the *displayed* month. If 'history' is empty, we default to current month.
         // Let's infer month from the first history record or fallback to current.
@@ -1001,9 +1100,8 @@ const Attendance = () => {
         days.forEach(day => {
             const dateStr = format(day, 'yyyy-MM-dd');
             const record = history.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-            const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
             const dayName = format(day, 'EEEE');
-            const isWeeklyOff = weeklyOffDays.includes(dayName);
+            const isWeeklyOff = weeklyOffs.includes(dayName);
             const isFuture = day > new Date();
 
             let status = 'Absent';
@@ -1018,8 +1116,8 @@ const Attendance = () => {
             const leave = approvedLeaves.find(l => {
                 const lStart = new Date(l.startDate);
                 const lEnd = new Date(l.endDate);
-                lStart.setHours(0,0,0,0);
-                lEnd.setHours(23,59,59,999);
+                lStart.setHours(0, 0, 0, 0);
+                lEnd.setHours(23, 59, 59, 999);
                 return day >= lStart && day <= lEnd;
             });
 
@@ -1029,18 +1127,18 @@ const Attendance = () => {
             } else if (isFuture) {
                 status = '-';
                 rowColor = 'FFFFFFFF'; // White
-            } else if (leave) {
+            } else if (leave && (!(holiday || isWeeklyOff) || leave.sandwichRule)) {
                 status = `Leave (${leave.leaveType})`;
                 rowColor = 'FFE1BEE7'; // Light Purple/Indigo
             } else if (holiday) {
                 status = holiday.name;
                 rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB'; // Light Orange for Optional, Light Teal for Regular
-            } else if (record) {
-                status = 'Present';
-                rowColor = 'FFEBF1DE'; // Green
             } else if (isWeeklyOff) {
                 status = 'Weekoff';
                 rowColor = 'FFF2F2F2'; // Gray
+            } else if (record) {
+                status = 'Present';
+                rowColor = 'FFEBF1DE'; // Green
             }
 
             const row = sheet.addRow([
@@ -1071,13 +1169,13 @@ const Attendance = () => {
         saveAs(new Blob([buffer]), fileName);
     };
 
-    const handleExportTeamReport = async () => {
+    const _handleExportTeamReport = async () => {
         try {
             const currentYear = new Date().getFullYear(); // Or based on selected navigation if implemented
             const currentMonth = new Date().getMonth() + 1;
 
             const res = await api.get(`/attendance/team-report?month=${currentMonth}&year=${currentYear}`);
-            const { teamMembers, attendanceRecords } = res.data; // Note: Controller returns { teamMembers, attendanceRecords }
+            const { teamMembers, attendanceRecords, holidays, leaveRecords, weeklyOff } = res.data;
 
             if (!teamMembers || teamMembers.length === 0) {
                 toast.error('No team members found');
@@ -1117,6 +1215,28 @@ const Attendance = () => {
                 attendanceMap[userId][dateStr] = record;
             });
 
+            // 3. Prepare Other Maps
+            const leaveMap = {};
+            if (leaveRecords) {
+                leaveRecords.forEach(l => {
+                    const userId = l.user.toString();
+                    if (!leaveMap[userId]) leaveMap[userId] = {};
+                    const start = new Date(l.startDate);
+                    const end = new Date(l.endDate);
+                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                        const dStr = format(d, 'yyyy-MM-dd');
+                        leaveMap[userId][dStr] = { type: l.leaveType, sandwich: l.sandwichRule };
+                    }
+                });
+            }
+
+            const holidayMap = {};
+            if (holidays) {
+                holidays.forEach(h => {
+                    holidayMap[format(new Date(h.date), 'yyyy-MM-dd')] = h.name;
+                });
+            }
+
             // Freeze first row and first column
             worksheet.views = [
                 { state: 'frozen', xSplit: 1, ySplit: 1 }
@@ -1134,23 +1254,37 @@ const Attendance = () => {
                 parentRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Light Slate
 
                 // --- CHILD ROWS ---
+                const statusRow = { name: '   ↳ Status' };
                 const checkInRow = { name: '   ↳ Check In' };
                 const checkOutRow = { name: '   ↳ Check Out' };
                 const durationRow = { name: '   ↳ Duration' };
 
                 for (let d = 1; d <= daysInMonth; d++) {
-                    // Create date for column (Year, Month, Day)
-                    // We need a formatted YYYY-MM-DD string to match the map key
                     const colDate = new Date(currentYear, currentMonth - 1, d);
                     const dateStr = format(colDate, 'yyyy-MM-dd');
                     const record = userLogs[dateStr];
+                    const leave = (leaveMap[user._id] || {})[dateStr];
+                    const holiday = holidayMap[dateStr];
                     const colKey = `day_${d}`;
+
+                    const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
+                    const dayName = format(colDate, 'EEEE');
+                    const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
+                    const isOffDay = !!holiday || isWeeklyOff;
+
+                    // Status Logic
+                    let status = 'A';
+                    if (colDate > new Date()) status = '-';
+                    else if (leave && (!isOffDay || leave.sandwich)) status = `L (${leave.type})`;
+                    else if (holiday) status = 'H';
+                    else if (isWeeklyOff) status = 'WO';
+                    else if (record) status = 'P';
+
+                    statusRow[colKey] = status;
 
                     if (record) {
                         checkInRow[colKey] = record.clockInIST ? extractTime(record.clockInIST) : (record.clockIn ? formatTimeSimple(record.clockIn) : '-');
                         checkOutRow[colKey] = record.clockOutIST ? extractTime(record.clockOutIST) : (record.clockOut ? formatTimeSimple(record.clockOut) : '-');
-
-                        // Calculate duration
                         durationRow[colKey] = calculateDuration(record.clockIn, record.clockOut, colDate);
                     } else {
                         checkInRow[colKey] = '-';
@@ -1159,14 +1293,34 @@ const Attendance = () => {
                     }
                 }
 
+                const r0 = worksheet.addRow(statusRow);
                 const r1 = worksheet.addRow(checkInRow);
                 const r2 = worksheet.addRow(checkOutRow);
                 const r3 = worksheet.addRow(durationRow);
 
-                // Grouping Logic - This makes them collapsible
+                // Grouping Logic
+                r0.outlineLevel = 1;
                 r1.outlineLevel = 1;
                 r2.outlineLevel = 1;
                 r3.outlineLevel = 1;
+
+                // Status row styling
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const colKey = `day_${d}`;
+                    const cell = r0.getCell(colKey);
+                    const val = cell.value?.toString();
+                    if (val?.startsWith('L')) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE0B2' } };
+                    } else if (val === 'H') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1F2EB' } };
+                    } else if (val === 'WO') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+                    } else if (val === 'P') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
+                    } else if (val === 'A') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } };
+                    }
+                }
 
                 // Child Row Styling
                 [r1, r2, r3].forEach(row => {
@@ -1445,7 +1599,7 @@ const Attendance = () => {
                                 <div className="flex justify-between items-center mb-4">
                                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Team Members</h4>
                                     {!usersLoaded && !loadingUsers && (
-                                        <button 
+                                        <button
                                             onClick={fetchUsers}
                                             className="text-[10px] text-blue-600 font-bold hover:underline"
                                         >
@@ -1473,7 +1627,7 @@ const Attendance = () => {
                                     )}
 
                                     {usersLoaded && usersList.length > 0 && <div className="h-px bg-slate-100 my-2"></div>}
-                                    
+
                                     {/* List */}
                                     {usersList.filter(u => u._id !== user._id).map((u) => (
                                         <button
@@ -1547,17 +1701,22 @@ const Attendance = () => {
                         {/* Scrollable Content Area */}
                         <div className="flex-1 bg-white rounded-b-lg shadow-sm border border-t-0 border-slate-200 p-6 overflow-y-auto custom-scrollbar relative">
                             {activeTab === 'history' ? (
-                                <AttendanceCalendar 
-                                    history={history} 
-                                    onMonthChange={fetchMonthHistory} 
-                                    user={user} 
-                                    holidays={holidays} 
-                                    approvedLeaves={approvedLeaves} 
+                                <AttendanceCalendar
+                                    history={history}
+                                    onMonthChange={(year, month) => {
+                                        setCalendarDate(new Date(year, month - 1, 1));
+                                        fetchMonthHistory(year, month);
+                                    }}
+                                    user={user}
+                                    date={calendarDate}
+                                    holidays={holidays}
+                                    approvedLeaves={approvedLeaves}
                                     onRegularize={handleRegularize}
+                                    weeklyOffs={weeklyOffs}
                                 />
                             ) : activeTab === 'regularize' ? (
-                                <RegularizationRequestsView 
-                                    requests={regularizationRequests} 
+                                <RegularizationRequestsView
+                                    requests={regularizationRequests}
                                     onProcess={processRegularization}
                                     processingId={processingRegId}
                                     currentUser={user}
@@ -1595,7 +1754,7 @@ const Attendance = () => {
                                 <X size={20} className="text-slate-500" />
                             </button>
                         </div>
-                        
+
                         <form onSubmit={submitRegularization} className="p-6 space-y-5">
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Regularize For</label>
@@ -1675,7 +1834,6 @@ const AssignedTasksView = ({
     logForm,
     setLogForm,
     expandedLogTaskId,
-    setExpandedLogTaskId,
     recentLogs,
     onDeleteLog,
     toggleLogForm,
@@ -1958,7 +2116,7 @@ const RegularizationRequestsView = ({ requests, onProcess, processingId, current
                 {requests.map(req => {
                     const isMyRequest = req.user?._id === currentUser?._id;
                     // Manager check: identify if the current user is a reporting manager for the requester
-                    const isManagerOfUser = currentUser?.directReports?.some(r => 
+                    const isManagerOfUser = currentUser?.directReports?.some(r =>
                         (typeof r === 'string' ? r === req.user?._id : (r._id === req.user?._id || r === req.user?._id))
                     );
                     const canProcess = !isMyRequest && (isAdmin || req.manager === currentUser?._id || req.manager?._id === currentUser?._id || isManagerOfUser) && req.status === 'PENDING';
@@ -1979,6 +2137,9 @@ const RegularizationRequestsView = ({ requests, onProcess, processingId, current
                                             <span>{format(new Date(req.date), 'EEE, MMM dd')}</span>
                                             <span className="h-1 w-1 bg-slate-300 rounded-full"></span>
                                             <span className="text-blue-600 font-bold uppercase tracking-tighter">{req.type}</span>
+                                        </div>
+                                        <div className="text-[11px] text-slate-400 mt-1">
+                                            Sent: {format(new Date(req.createdAt), 'EEE, MMM dd yyyy')} at {format(new Date(req.createdAt), 'hh:mm a')}
                                         </div>
                                         <div className="mt-3 bg-white/50 border border-slate-100 rounded-lg p-2 flex gap-4 text-[10px] font-mono">
                                             {(req.type === 'IN' || req.type === 'BOTH') && (
@@ -2001,7 +2162,7 @@ const RegularizationRequestsView = ({ requests, onProcess, processingId, current
                                     <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${req.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : req.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                                         {req.status}
                                     </div>
-                                    
+
                                     {canProcess ? (
                                         <div className="flex gap-2">
                                             <button
@@ -2028,7 +2189,7 @@ const RegularizationRequestsView = ({ requests, onProcess, processingId, current
                                     )}
                                 </div>
                             </div>
-                            
+
                             <div className="mt-4 pt-4 border-t border-slate-50 flex items-start gap-2">
                                 <Info size={14} className="text-slate-300 mt-0.5 flex-shrink-0" />
                                 <div className="text-xs text-slate-600 italic leading-relaxed">

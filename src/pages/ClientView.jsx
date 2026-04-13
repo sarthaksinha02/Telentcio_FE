@@ -69,7 +69,7 @@ const ClientView = () => {
             }
         };
         fetchData();
-    }, [id]);
+    }, [id, navigate]);
 
     if (loading) {
         return (

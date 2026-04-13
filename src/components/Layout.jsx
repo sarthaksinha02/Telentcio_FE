@@ -23,8 +23,10 @@ const Layout = () => {
 
     useEffect(() => {
         // Show progress bar on route change
-        setProgress(0);
-        setIsNavigating(true);
+        const startTimer = setTimeout(() => {
+            setProgress(0);
+            setIsNavigating(true);
+        }, 0);
 
         // Quickly animate to 80% then wait for render
         const t1 = setTimeout(() => setProgress(60), 50);
@@ -43,6 +45,7 @@ const Layout = () => {
         timerRef.current = t3;
 
         return () => {
+            clearTimeout(startTimer);
             clearTimeout(t1);
             clearTimeout(t2);
             clearTimeout(t3);

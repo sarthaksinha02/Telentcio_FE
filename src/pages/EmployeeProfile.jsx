@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -110,7 +110,7 @@ const EmployeeProfile = () => {
         if (id) {
             fetchData();
         }
-    }, [id]);
+    }, [fetchData, id]);
 
     const handleToggleStatus = async () => {
         if (!window.confirm(`Are you sure you want to ${profile.isActive ? 'deactivate' : 'reactivate'} this user?`)) return;

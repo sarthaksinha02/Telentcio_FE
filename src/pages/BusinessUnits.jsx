@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../api/axios';
 import { Building, Plus } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
+import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 import { useAuth } from '../context/AuthContext';
 const BusinessUnits = () => {
@@ -14,30 +15,40 @@ const BusinessUnits = () => {
     const [showModal, setShowModal] = useState(false);
     const [formData, setFormData] = useState({ name: '', description: '' });
     const [editingId, setEditingId] = useState(null);
+    const initialFetchDoneRef = useRef(false);
+    const BUSINESS_UNIT_CACHE_TTL_MS = 60 * 1000;
+    const cacheKey = `business_unit_data_${user?._id}`;
 
-    const fetchUnits = async () => {
+    const fetchUnits = useCallback(async ({ force = false } = {}) => {
         try {
-            const cacheKey = `business_unit_data_${user?._id}`;
-            const cachedData = sessionStorage.getItem(cacheKey);
-            
+            const cachedData = readSessionCache(cacheKey);
+
             if (cachedData) {
-                setUnits(JSON.parse(cachedData).units);
+                const data = cachedData.data || cachedData;
+                setUnits(data.units || []);
                 setLoading(false);
+                if (!force && isCacheFresh(cachedData, BUSINESS_UNIT_CACHE_TTL_MS)) return;
             }
 
             const res = await api.get('/projects/business-units');
             const unitData = res.data;
 
-            // Fingerprint check
             const newFingerprint = JSON.stringify({ u: unitData.length, lu: unitData[0]?._id });
-            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+            const oldFingerprint = cachedData?.fingerprint || null;
 
-            if (newFingerprint !== oldFingerprint) {
-                setUnits(unitData);
-                sessionStorage.setItem(cacheKey, JSON.stringify({ 
-                    units: unitData, 
-                    fingerprint: newFingerprint 
+            setUnits(unitData);
+
+            if (newFingerprint !== oldFingerprint || force) {
+                const minimalUnits = unitData.map(u => ({
+                    _id: u._id,
+                    name: u.name,
+                    description: u.description,
+                    headOfUnit: u.headOfUnit ? { firstName: u.headOfUnit.firstName, lastName: u.headOfUnit.lastName } : null,
+                    createdAt: u.createdAt
                 }));
+
+                const payload = createCachePayload({ units: minimalUnits }, newFingerprint);
+                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
             }
         } catch (error) {
             console.error(error);
@@ -45,11 +56,13 @@ const BusinessUnits = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [BUSINESS_UNIT_CACHE_TTL_MS, cacheKey]);
 
     useEffect(() => {
+        if (initialFetchDoneRef.current) return;
+        initialFetchDoneRef.current = true;
         fetchUnits();
-    }, []);
+    }, [fetchUnits]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -65,8 +78,8 @@ const BusinessUnits = () => {
             setShowModal(false);
             setFormData({ name: '', description: '' });
             setEditingId(null);
-            fetchUnits();
-        } catch (error) {
+            fetchUnits({ force: true });
+        } catch {
             toast.error(editingId ? 'Failed to update' : 'Failed to create');
         }
     };

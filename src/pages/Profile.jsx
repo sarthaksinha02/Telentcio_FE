@@ -6,13 +6,10 @@ import toast from 'react-hot-toast';
 import EmployeeDossier from './EmployeeDossier';
 
 const Profile = () => {
-    const { user } = useAuth();
+    useAuth();
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
-
-    const hasDossierModule = user?.company?.enabledModules?.includes('employeeDossier');
-
-    const [uploading, setUploading] = useState(false);
+    const [, setUploading] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {

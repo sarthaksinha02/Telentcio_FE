@@ -3,8 +3,10 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { KeyRound, ShieldCheck, ArrowRight, Loader2, Mail, Lock, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { KeyRound, ShieldCheck, ArrowRight, Loader2, Lock, RefreshCw, CheckCircle2 } from 'lucide-react';
 import Button from '../components/Button';
+
+const MotionDiv = motion.div;
 
 const OTPReset = () => {
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -105,7 +107,7 @@ const OTPReset = () => {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-            <motion.div
+            <MotionDiv
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
@@ -122,7 +124,7 @@ const OTPReset = () => {
 
                 <AnimatePresence mode="wait">
                     {step === 1 && (
-                        <motion.div
+                        <MotionDiv
                             key="otp-step"
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
@@ -180,11 +182,11 @@ const OTPReset = () => {
                                     Back to Login
                                 </button>
                             </div>
-                        </motion.div>
+                        </MotionDiv>
                     )}
 
                     {step === 2 && (
-                        <motion.div
+                        <MotionDiv
                             key="password-step"
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
@@ -238,11 +240,11 @@ const OTPReset = () => {
                                     <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                                 </Button>
                             </form>
-                        </motion.div>
+                        </MotionDiv>
                     )}
 
                     {step === 3 && (
-                        <motion.div
+                        <MotionDiv
                             key="success-step"
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
@@ -258,10 +260,10 @@ const OTPReset = () => {
                             <div className="flex justify-center">
                                 <Loader2 className="animate-spin text-blue-600" size={24} />
                             </div>
-                        </motion.div>
+                        </MotionDiv>
                     )}
                 </AnimatePresence>
-            </motion.div>
+            </MotionDiv>
         </div>
     );
 };
