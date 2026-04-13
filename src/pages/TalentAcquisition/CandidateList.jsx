@@ -444,13 +444,14 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
             // 1. Fetch Requisition Details for Dynamic Skills
             let softSkillsFromReq = [];
             let techSkillsFromReq = [];
+            let requisitionData = null;
 
             try {
                 const reqRes = await api.get(`/ta/hiring-request/${hiringRequestId}`);
-                const data = reqRes.data || {};
-                const requirements = data.requirements || {};
+                requisitionData = reqRes.data || {};
+                const requirements = requisitionData.requirements || {};
                 const mustHave = requirements.mustHaveSkills || {};
-
+                
                 softSkillsFromReq = Array.isArray(mustHave.softSkills) ? mustHave.softSkills : [];
                 techSkillsFromReq = Array.isArray(mustHave.technical) ? mustHave.technical :
                     (Array.isArray(mustHave) ? mustHave : []);
@@ -677,7 +678,12 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
             });
 
             const buffer = await workbook.xlsx.writeBuffer();
-            saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${positionName || 'Candidates'} Data Export.xlsx`);
+            
+            // Generate dynamic filename: [Job Title] Candidate List.xlsx
+            const roleTitle = requisitionData?.roleDetails?.title || positionName || 'Candidates';
+            const fileName = `${roleTitle} Candidate List.xlsx`;
+
+            saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName);
             toast.success('Excel exported successfully!', { id: 'export-excel' });
         } catch (error) {
             console.error('Export error:', error);

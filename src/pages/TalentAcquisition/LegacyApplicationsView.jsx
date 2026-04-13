@@ -536,7 +536,14 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            saveAs(blob, `Legacy_Application_History_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+            
+            // Generate dynamic filename: [Job Title] Candidate List.xlsx
+            const firstOpening = openings[selectedOpenings[0]];
+            const role = firstOpening?.requisition?.roleDetails?.title || 'Candidates';
+            const multiSuffix = selectedOpenings.length > 1 ? ' (Multiple Openings)' : '';
+            const fileName = `${role}${multiSuffix} Candidate List.xlsx`;
+
+            saveAs(blob, fileName);
             toast.success('Excel exported successfully');
             setExportMenuOpen(false);
         } catch (e) {
