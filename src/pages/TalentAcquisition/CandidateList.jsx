@@ -609,7 +609,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                     }
                 }
 
-                const profileShortlisted = candidate.decision === 'Shortlisted' ? 'Yes' : 'No';
+                const profileShortlisted = candidate.decision === 'Shortlisted' ? 'Yes' : (candidate.decision === 'Rejected' ? 'No' : '');
                 const statusSummary = getInterviewStatusSummary(rounds);
                 const interviewStatusLabel = statusSummary.label || '-';
 
@@ -646,7 +646,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                     candidate.offerCompany || '-',
                     candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : '-',
 
-                    candidate.status || 'Interested',
+                    candidate.status || '',
                     candidate.remark || '-',
                     candidate.customRemark || '-',
 
@@ -672,8 +672,8 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                 const colLetter = sheet.getColumn(profileShortlistedColIndex).letter;
                 const formulaRow = row.number;
                 row.getCell(decisionStatusColIndex).value = {
-                    formula: `IF(${colLetter}${formulaRow}="Yes","Shortlisted","Rejected")`,
-                    result: profileShortlisted === 'Yes' ? 'Shortlisted' : 'Rejected'
+                    formula: `IF(${colLetter}${formulaRow}="Yes","Shortlisted",IF(${colLetter}${formulaRow}="No","Rejected",""))`,
+                    result: profileShortlisted === 'Yes' ? 'Shortlisted' : (profileShortlisted === 'No' ? 'Rejected' : '')
                 };
             });
 
@@ -749,7 +749,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
     };
 
     const getInterviewStatusSummary = (rounds = []) => {
-        if (!rounds || rounds.length === 0) return { label: 'None', color: 'text-slate-400 bg-slate-50 border-slate-200' };
+        if (!rounds || rounds.length === 0) return { label: '', color: 'text-slate-400 bg-slate-50 border-slate-200' };
 
         const total = rounds.length;
         const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
@@ -1362,21 +1362,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                     {/* Filters - Only show when no candidate is selected */}
                     {!selectedCandidateId && (
                         <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-end">
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 mb-1">Preference</label>
-                                <select
-                                    value={filterPreference}
-                                    onChange={(e) => setFilterPreference(e.target.value)}
-                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="All">All Preferences</option>
-                                    <option value="Highly Recommended">Highly Recommended</option>
-                                    <option value="Recommended">Recommended</option>
-                                    <option value="Neutral / Average">Neutral / Average</option>
-                                    <option value="Not Recommended">Not Recommended</option>
-                                    <option value="Very Poor">Very Poor</option>
-                                </select>
-                            </div>
+
                             {activePhase === 1 && (
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
@@ -1506,10 +1492,9 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                     className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
                                 />
                             </div>
-                            {(filterPreference !== 'All' || (activePhase === 1 && filterStatus !== 'Interested') || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
+                            {( (activePhase === 1 && filterStatus !== 'Interested') || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
                                 <button
                                     onClick={() => {
-                                        setFilterPreference('All');
                                         if (activePhase === 1) setFilterStatus('Interested');
                                         else setFilterStatus('All');
                                         setFilterDecision('All');
@@ -1553,7 +1538,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                                 <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Preference</th>}
+
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled By</th>}
@@ -1563,7 +1548,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                         <tbody className="divide-y divide-slate-200">
                                             {paginatedCandidates.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan="8" className="px-4 py-8 text-center text-slate-500">
+                                                    <td colSpan="7" className="px-4 py-8 text-center text-slate-500">
                                                         No candidates match the selected filters.
                                                     </td>
                                                 </tr>
@@ -1603,24 +1588,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                                                 <span className="text-[13px] font-bold text-slate-700">{candidate.totalExperience || '-'} yrs</span>
                                                             </td>
                                                         )}
-                                                        {!selectedCandidateId && (
-                                                            <td className="px-4 py-4 align-top">
-                                                                <div className="flex flex-col gap-0.5 text-[13px]">
-                                                                    {candidate.preference ? (
-                                                                        <>
-                                                                            <span className="text-slate-700 font-medium">
-                                                                                {candidate.preference.split(' ')[0]}
-                                                                            </span>
-                                                                            <span className="text-slate-700 font-medium">
-                                                                                {candidate.preference.split(' ').slice(1).join(' ')}
-                                                                            </span>
-                                                                        </>
-                                                                    ) : (
-                                                                        <span className="text-slate-400 italic">-</span>
-                                                                    )}
-                                                                </div>
-                                                            </td>
-                                                        )}
+
                                                         {!selectedCandidateId && (
                                                             <td className="px-4 py-4 align-top">
                                                                 {(() => {
@@ -1725,7 +1693,10 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                                                     <span
                                                                         className="font-bold text-blue-600 mb-0.5 max-w-[120px] truncate cursor-pointer hover:underline"
                                                                         title={candidate.profilePulledBy || '-'}
-                                                                        onClick={() => candidate.profilePulledBy && navigate(`/ta/user-dashboard/${encodeURIComponent(candidate.profilePulledBy)}`)}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            if (candidate.profilePulledBy) setFilterPulledBy(candidate.profilePulledBy);
+                                                                        }}
                                                                     >
                                                                         {candidate.profilePulledBy || '-'}
                                                                     </span>

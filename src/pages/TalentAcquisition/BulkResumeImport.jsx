@@ -137,7 +137,6 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                         email: extracted.email || '',
                         mobile: extracted.mobile || '',
                         totalExperience: extracted.totalExperience || '',
-                        status: 'Interested', // default
                         niceToHaveSkills: extracted.niceToHaveSkills || [],
                         isValid: !!(extracted.candidateName && extracted.email && extracted.mobile),
                         isExisting: checkIsExisting(extracted.email, extracted.mobile),
@@ -158,7 +157,6 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                      email: '',
                      mobile: '',
                      totalExperience: '',
-                     status: 'Interested',
                      niceToHaveSkills: [],
                      isValid: false,
                      isExisting: false,
@@ -237,7 +235,6 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                     resumeUrl,
                     resumePublicId,
                     niceToHaveSkills: dataItem.niceToHaveSkills,
-                    status: dataItem.status,
                     source: 'Direct Upload'
                 };
 

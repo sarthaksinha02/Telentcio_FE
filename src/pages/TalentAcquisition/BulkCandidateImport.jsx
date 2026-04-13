@@ -119,14 +119,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         return 'Other';
     };
 
-    const mapStatus = (round1) => {
-        if (!round1) return 'Interested';
-        const r = round1.toLowerCase().trim();
-        if (r.includes('not interested')) return 'Not Interested';
-        if (r.includes('not relevant')) return 'Not Relevant';
-        if (r.includes('interested')) return 'Interested';
-        return 'Interested';
-    };
+
 
     const processFile = async (file) => {
         setIsParsing(true);
@@ -291,14 +284,20 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     noticePeriod: extractNumeric(getCellValue(columnMapping.noticePeriod)),
                     tatToJoin: extractNumeric(getCellValue(columnMapping.tatToJoin)),
                     inHandOffer: getCellValue(columnMapping.inHandOffer)?.toString().toLowerCase() === 'yes',
-                    status: mapStatus(getCellValue(columnMapping.status)),
+                    status: getCellValue(columnMapping.status) || '',
+
                     remark: getCellValue(columnMapping.remark),
                     offerCompany: getCellValue(columnMapping.offerCompany),
                     lastWorkingDay: getCellValue(columnMapping.lastWorkingDay),
                     hiringRequestId: hiringRequestId,
                     resumeUrl: 'bulk-imported-placeholder',
                     resumePublicId: 'bulk-imported-placeholder',
-                    decision: getCellValue(columnMapping.isShortlisted)?.toString().toLowerCase() === 'yes' ? 'Shortlisted' : 'None',
+                    decision: (() => {
+                        const val = getCellValue(columnMapping.isShortlisted)?.toString().toLowerCase();
+                        if (val === 'yes') return 'Shortlisted';
+                        if (val === 'no') return 'Rejected';
+                        return '';
+                    })(),
                     mustHaveSkills: [],
                     interviewRounds: []
                 };
@@ -667,7 +666,6 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 if (lower === 'email') return 'sample@example.com';
                 if (lower === 'mobile no.') return '9876543210';
                 if (lower === 'status') return 'Interested';
-                if (lower === 'profile shortlisted (yes/no)') return 'Yes';
                 if (h.includes('Skill') || techSkills.includes(h)) return '0';
                 return '-';
             });

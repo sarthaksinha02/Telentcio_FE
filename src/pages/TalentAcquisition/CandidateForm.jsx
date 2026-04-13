@@ -48,7 +48,7 @@ const CandidateForm = () => {
         tatToJoin: '',
         noticePeriod: '',
         lastWorkingDay: '',
-        status: 'Interested',
+        status: '',
         remark: '',
         mustHaveSkills: [],
         niceToHaveSkills: []

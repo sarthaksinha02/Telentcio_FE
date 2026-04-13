@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import Button from '../components/Button';
 import { format } from 'date-fns';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import UserMultiSelect from '../components/UserMultiSelect';
 
 // ─── Donut Chart for Balance Card ────────────────────────────────────────────
 const DonutChart = ({ utilized, total, isUnlimited }) => {
@@ -78,6 +79,10 @@ const Leaves = () => {
     const [approvalStatusFilter, setApprovalStatusFilter] = useState('Pending');
     const [processingId, setProcessingId] = useState(null);
     const [cancellingId, setCancellingId] = useState(null);
+
+    const [availableUsers, setAvailableUsers] = useState([]);
+    const [selectedUserIds, setSelectedUserIds] = useState([]);
+    const [loadingUsers, setLoadingUsers] = useState(false);
     const [formData, setFormData] = useState({
         leaveType: '', startDate: '', endDate: '',
         isHalfDay: false, halfDaySession: 'First Half', reason: ''
@@ -210,18 +215,41 @@ const Leaves = () => {
         finally { setLoading(false); }
     };
 
-    const fetchApprovals = async (force = false, status = approvalStatusFilter) => {
-        if (!hasApprovalAccess || (approvalsLoaded && !force && status === approvalStatusFilter)) return;
+    const fetchApprovals = async (force = false, status = approvalStatusFilter, userIds = selectedUserIds) => {
+        if (!hasApprovalAccess) return;
+        // If not forcing, and nothing changed, skip
+        if (!force && status === approvalStatusFilter && JSON.stringify(userIds) === JSON.stringify(selectedUserIds) && approvalsLoaded) return;
+        
         setLoadingApprovals(true);
         try {
-            const url = status === 'All' ? '/leaves/approvals?status=All' : `/leaves/approvals?status=${status}`;
+            let url = `/leaves/approvals?status=${status}`;
+            if (userIds.length > 0) {
+                url += `&userIds=${userIds.join(',')}`;
+            }
             const res = await api.get(url);
             setApprovalRequests(res.data);
             setApprovalsLoaded(true);
             setApprovalStatusFilter(status);
-        } catch { toast.error('Failed to load approvals'); }
-        finally { setLoadingApprovals(false); }
+            setSelectedUserIds(userIds);
+        } catch (err) { 
+            console.error('Approvals Fetch Error:', err);
+            toast.error('Failed to load approvals'); 
+        } finally { setLoadingApprovals(false); }
     };
+
+    const fetchAvailableUsers = useCallback(async () => {
+        if (!hasApprovalAccess || availableUsers.length > 0) return;
+        setLoadingUsers(true);
+        try {
+            const endpoint = isAdminUser ? '/admin/users' : '/admin/users/team';
+            const res = await api.get(endpoint);
+            setAvailableUsers(res.data);
+        } catch (err) {
+            console.error('Failed to fetch selectable users', err);
+        } finally {
+            setLoadingUsers(false);
+        }
+    }, [hasApprovalAccess, isAdminUser, availableUsers.length]);
 
     useEffect(() => {
         if (!user?._id) return;
@@ -234,6 +262,12 @@ const Leaves = () => {
         const pollInterval = setInterval(() => fetchData(1, true), 30000);
         return () => clearInterval(pollInterval);
     }, [fetchData, user?._id]);
+
+    useEffect(() => {
+        if (activeTab === 'approvals' && hasApprovalAccess && availableUsers.length === 0) {
+            fetchAvailableUsers();
+        }
+    }, [activeTab, hasApprovalAccess, availableUsers.length, fetchAvailableUsers]);
 
     const handleChange = (e) => {
         const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
@@ -576,7 +610,13 @@ const Leaves = () => {
                                 <p className="text-xs text-gray-400 mt-0.5">Review and track leave requests across your team</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <div className="flex items-center p-1 bg-gray-100 rounded-lg">
+                                <UserMultiSelect 
+                                    users={availableUsers}
+                                    selectedUserIds={selectedUserIds}
+                                    onChange={(ids) => fetchApprovals(true, approvalStatusFilter, ids)}
+                                    placeholder={loadingUsers ? "Loading users..." : "Search Team Member..."}
+                                />
+                                <div className="flex items-center p-1 bg-gray-100 rounded-lg shadow-sm">
                                     {['Pending', 'Approved', 'Rejected', 'All'].map(s => (
                                         <button
                                             key={s}
@@ -592,7 +632,7 @@ const Leaves = () => {
                                 </div>
                                 <button 
                                     onClick={() => fetchApprovals(true)} 
-                                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+                                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-bold border border-gray-200 bg-white rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-all shadow-sm"
                                 >
                                     <RefreshCw size={12} className={loadingApprovals ? 'animate-spin' : ''} /> Refresh
                                 </button>
