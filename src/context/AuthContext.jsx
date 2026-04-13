@@ -11,17 +11,25 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const [invalidWorkspace, setInvalidWorkspace] = useState(false);
+  const [workspace, setWorkspace] = useState(null);
 
   useEffect(() => {
     const loadUserAndVerifyWorkspace = async () => {
       // 1. Verify workspace first
       try {
-        await api.get('/auth/verify-workspace');
+        const response = await api.get('/auth/verify-workspace');
+        if (response.data.type === 'tenant') {
+          setWorkspace(response.data);
+          // If we have a subdomain, ensure it's in localStorage so axios can pick it up
+          if (response.data.subdomain) {
+            localStorage.setItem('tenant', response.data.subdomain);
+          }
+        }
       } catch (err) {
         if (err.response?.status === 404 || err.response?.status === 403) {
-           setInvalidWorkspace(true);
-           setLoading(false);
-           return;
+          setInvalidWorkspace(true);
+          setLoading(false);
+          return;
         }
       }
 
@@ -80,9 +88,15 @@ export const AuthProvider = ({ children }) => {
     loadUserAndVerifyWorkspace();
   }, [token]);
 
-  const login = async (email, password) => {
-    const response = await api.post('/auth/login', { email, password });
-    
+  const login = async (email, password, companyId = null) => {
+    const loginData = { email, password };
+
+    // Priority: 1. Explicit selection, 2. Auto-detected from domain, 3. Empty (discovers via email)
+    const targetCompanyId = companyId || workspace?.id;
+    if (targetCompanyId) loginData.companyId = targetCompanyId;
+
+    const response = await api.post('/auth/login', loginData);
+
     if (response.data.passwordResetRequired) {
       return response.data;
     }
@@ -124,8 +138,8 @@ export const AuthProvider = ({ children }) => {
     disconnectSocket();
     setToken(null);
     setUser(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    localStorage.clear();
+    sessionStorage.clear();
   };
 
   if (loading) {
@@ -154,7 +168,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, hasModule, loading }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, hasModule, loading, workspace }}>
       {children}
     </AuthContext.Provider>
   );

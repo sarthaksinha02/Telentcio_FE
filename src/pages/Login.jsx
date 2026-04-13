@@ -23,7 +23,7 @@ const Login = () => {
     setIsLoading(true);
     try {
       const data = await login(email, password);
-      
+
       if (data?.passwordResetRequired) {
         toast.success("Identity verification required");
         navigate('/reset-password', { state: { email: data.email, userId: data.userId } });
