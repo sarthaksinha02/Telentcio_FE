@@ -518,7 +518,6 @@ const PreOnboardingPortal = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
-      <Toaster position="top-right" />
 
       {/* Top Bar */}
       <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50, flexWrap: 'wrap', gap: '8px' }}>
@@ -1118,7 +1117,7 @@ const PreOnboardingPortal = () => {
                       {
                         (() => {
                           return [
-                            { key: 'hasReadOfferLetter', label: 'I have read and understood the terms of my offer letter', show: reqDocsLabels.length === 0 || reqDocsLabels.includes('Offer Letter') },
+                            { key: 'hasReadOfferLetter', label: 'I have read and understood the terms of my offer letter', show: profile.offerLetterUrl || reqDocsLabels.length === 0 || reqDocsLabels.some(label => /offer\s*letter/i.test(label)) },
                             { key: 'hasProvidedTrueInfo', label: 'All information I have provided is true and accurate', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') },
                             { key: 'agreesToOriginalVerification', label: 'I agree to submit original documents for verification on joining day', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') }
                           ].filter(item => item.show).map((item) => (
