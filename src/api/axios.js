@@ -38,47 +38,69 @@ api.interceptors.request.use(
       delete config.headers['Content-Type'];
     }
 
-    // Tenant Identification (Strictly URL-based)
+    // ── Tenant Detection ──────────────────────────────────────────────────────
+    // Priority: ?tenant= query param > subdomain from hostname
+    // Supported:
+    //   localhost                 → no tenant
+    //   ilumaa.localhost          → tenant: ilumaa
+    //   telentcio.vercel.app      → tenant: telentcio
+    //   telentcio-demo.vercel.app → tenant: telentcio-demo
+    //   ilumaa.talentcio.com      → tenant: ilumaa
+    //   talentcio.com             → no tenant (root domain)
     const hostname = window.location.hostname;
     const urlParams = new URLSearchParams(window.location.search);
-    let currentTenant = urlParams.get('tenant');
-
-    // Detect subdomain
-    let detectedSubdomain = '';
     const parts = hostname.split('.');
 
-    if (hostname.endsWith('localhost')) {
+    // Infra identifiers that are never tenant slugs
+    const NON_TENANT_IDS = new Set(['www', 'api', 'talentcio', 'talentcio-be']);
+    // Root domains we own — their subdomains are tenants
+    const OWN_ROOTS = ['talentcio.com', 'telentcio.com'];
+
+    let detectedSubdomain = '';
+
+    if (hostname === 'localhost' || hostname === '') {
+      // Plain localhost — no tenant
+    } else if (hostname.endsWith('localhost')) {
+      // e.g. ilumaa.localhost:3000
       if (parts.length > 1 && parts[0] !== 'localhost') {
         detectedSubdomain = parts[0];
       }
     } else if (hostname.endsWith('vercel.app')) {
-      // Extract the project prefix (e.g., telentcio-demo)
-      detectedSubdomain = hostname.replace('.vercel.app', '');
-    } else if (parts.length > 2) {
-      // Ignore subdomains of cloud providers
-      const cloudProviders = ['render.com', 'onrender.com', 'vercel.app', 'herokuapp.com'];
-      if (!cloudProviders.some(p => hostname.endsWith(p))) {
+      // Full Vercel slug is the tenant slug
+      // telentcio.vercel.app → 'telentcio'
+      // telentcio-demo.vercel.app → 'telentcio-demo'
+      detectedSubdomain = hostname.replace(/\.vercel\.app$/, '');
+    } else {
+      // Custom domain
+      const isOwnRoot = OWN_ROOTS.some(r => hostname === r);
+      const isOwnSubdomain = OWN_ROOTS.some(r => hostname.endsWith('.' + r));
+
+      if (isOwnSubdomain) {
+        // ilumaa.talentcio.com → 'ilumaa'
+        detectedSubdomain = parts[0];
+      } else if (!isOwnRoot && parts.length > 2) {
+        // Unknown custom subdomain
         detectedSubdomain = parts[0];
       }
+      // If isOwnRoot (talentcio.com itself) → no tenant
     }
 
-    // Determine target tenant: URL param > Subdomain
-    let targetTenant = currentTenant || detectedSubdomain;
+    // Query param overrides everything
+    let targetTenant = urlParams.get('tenant') || detectedSubdomain;
 
-    // Ignore main project domains as tenants
-    if (targetTenant && ['talentcio'].includes(targetTenant.toLowerCase())) {
+    // Strip non-tenant infra names
+    if (NON_TENANT_IDS.has(targetTenant.toLowerCase())) {
       targetTenant = '';
     }
 
     if (targetTenant) {
-      // Ensure localStorage is in sync with current URL context
       localStorage.setItem('tenant', targetTenant.toLowerCase());
       config.headers['x-tenant-id'] = targetTenant.toLowerCase();
     } else {
-      // Main domain / localhost - No tenant context
       localStorage.removeItem('tenant');
       delete config.headers['x-tenant-id'];
     }
+    // ─────────────────────────────────────────────────────────────────────────
 
     return config;
   },
