@@ -7,9 +7,27 @@ const api = axios.create({
   },
 });
 
+// Limitation: Prevent redundant parallel requests to the same sensitive endpoint
+const pendingRequests = new Map();
+
+const getRequestKey = (config) => `${config.method}:${config.url}`;
+
 // Add a request interceptor to attach the token
 api.interceptors.request.use(
   (config) => {
+    // Client-side rate limiting: Block identical pending POST/PUT/DELETE requests
+    const requestKey = getRequestKey(config);
+    if (['post', 'put', 'delete'].includes(config.method.toLowerCase())) {
+      if (pendingRequests.has(requestKey)) {
+        // Cancel the request if it's already in flight
+        const controller = new AbortController();
+        config.signal = controller.signal;
+        controller.abort('Duplicate request throttled');
+        return config;
+      }
+      pendingRequests.set(requestKey, true);
+    }
+
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -24,11 +42,11 @@ api.interceptors.request.use(
     const hostname = window.location.hostname;
     const urlParams = new URLSearchParams(window.location.search);
     let currentTenant = urlParams.get('tenant');
-    
+
     // Detect subdomain
     let detectedSubdomain = '';
     const parts = hostname.split('.');
-    
+
     if (hostname.endsWith('localhost')) {
       if (parts.length > 1 && parts[0] !== 'localhost') {
         detectedSubdomain = parts[0];
@@ -48,8 +66,8 @@ api.interceptors.request.use(
     let targetTenant = currentTenant || detectedSubdomain;
 
     // Ignore main project domains as tenants
-    if (targetTenant && ['telentcio', 'telentcio-demo', 'talentcio'].includes(targetTenant.toLowerCase())) {
-        targetTenant = '';
+    if (targetTenant && ['talentcio'].includes(targetTenant.toLowerCase())) {
+      targetTenant = '';
     }
 
     if (targetTenant) {
@@ -67,10 +85,26 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Add a response interceptor to handle 401 errors
+// Add a response interceptor to handle errors and clean up tracking
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const requestKey = getRequestKey(response.config);
+    pendingRequests.delete(requestKey);
+    return response;
+  },
   (error) => {
+    if (error.config) {
+      const requestKey = getRequestKey(error.config);
+      pendingRequests.delete(requestKey);
+    }
+
+    // Handle 429 (Too Many Requests) specifically
+    if (error.response && error.response.status === 429) {
+      // You could import toast here, but since this is a utility, 
+      // we mainly want to ensure the error is passed through with a clear message.
+      console.warn('API Rate Limit Hit:', error.response.data.message);
+    }
+
     // If we receive a 401, clear local storage.
     // However, if the request was to the login endpoint, DO NOT hard refresh.
     // Let the component catch the error and show the toast.
