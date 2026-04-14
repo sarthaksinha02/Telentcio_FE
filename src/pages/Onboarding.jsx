@@ -13,13 +13,15 @@ const ONBOARDING_SETTINGS_CACHE_TTL_MS = 60 * 1000;
 
 const STATUS_COLORS = {
   Pending: { bg: '#fef3c7', text: '#92400e', dot: '#f59e0b' },
+  Accepted: { bg: '#ecfdf5', text: '#065f46', dot: '#10b981' },
   'In Progress': { bg: '#dbeafe', text: '#1e40af', dot: '#3b82f6' },
-  Submitted: { bg: '#d1fae5', text: '#065f46', dot: '#10b981' },
+  Submitted: { bg: '#f0f9ff', text: '#0369a1', dot: '#0ea5e9' },
   Reviewed: { bg: '#ede9fe', text: '#5b21b6', dot: '#8b5cf6' }
 };
 
 const STATUS_ICONS = {
   Pending: <Clock size={16} />,
+  Accepted: <Check size={16} />,
   'In Progress': <RefreshCw size={16} />,
   Submitted: <FileText size={16} />,
   Reviewed: <CheckCircle size={16} />
@@ -28,7 +30,7 @@ const STATUS_ICONS = {
 const Onboarding = () => {
   const { user } = useAuth();
   const [employees, setEmployees] = useState([]);
-  const [stats, setStats] = useState({ Pending: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 });
+  const [stats, setStats] = useState({ Pending: 0, Accepted: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 });
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
@@ -192,7 +194,7 @@ const Onboarding = () => {
       } else {
         nextEmployees = prev.map(e => e._id === updatedEmp._id ? { ...e, ...updatedEmp } : e);
       }
-      
+
       const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${searchTerm || 'all'}`;
       try {
         const cached = readSessionCache(cacheKey);
@@ -209,8 +211,8 @@ const Onboarding = () => {
           parsed.employees = nextCachedEmp;
           sessionStorage.setItem(cacheKey, JSON.stringify({ ...cached, data: parsed }));
         }
-      } catch (e) {}
-      
+      } catch (e) { }
+
       return nextEmployees;
     });
   }, [page, statusFilter, searchTerm, user?._id]);
@@ -668,10 +670,10 @@ const Onboarding = () => {
         { duration: 10000 }
       );
       if (res.data?.employee) {
-          syncEmployeeState(res.data.employee, 'update');
-          setSelectedEmployee(prev => prev?._id === empId ? { ...prev, ...res.data.employee } : prev);
+        syncEmployeeState(res.data.employee, 'update');
+        setSelectedEmployee(prev => prev?._id === empId ? { ...prev, ...res.data.employee } : prev);
       } else {
-          fetchEmployees();
+        fetchEmployees();
       }
     } catch {
       toast.error('Failed to regenerate credentials');
@@ -970,49 +972,6 @@ const Onboarding = () => {
                   <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '14px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #e2e8f0' }}>No dynamic templates uploaded yet.</div>
                 ) : (
                   <div style={{ display: 'grid', gap: '8px' }}>
-                    {onboardingSettings.offerLetterTemplateUrl ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px' }}>
-                        <FileText size={20} style={{ color: '#0369a1' }} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#0c4a6e' }}>Primary Offer Letter Template</div>
-                          <div style={{ fontSize: '11px', color: '#0369a1' }}>Standard system-generated document</div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => handlePreview('offerLetter')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #bae6fd', background: '#fff', color: '#0369a1', display: 'flex', cursor: 'pointer' }} title="Preview"><Eye size={16} /></button>
-                          <button onClick={() => handleDownloadTemplate('offerLetter')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #bae6fd', background: '#fff', color: '#0369a1', display: 'flex', cursor: 'pointer' }} title="Download Template"><Download size={16} /></button>
-                          <button onClick={() => fileInputRefs.current.offerLetter.click()} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #bae6fd', background: '#fff', color: '#d97706', display: 'flex', cursor: 'pointer' }} title="Replace Template"><RefreshCw size={16} /></button>
-                          <button onClick={() => handleDeleteBaseTemplate('offerLetter')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex', cursor: 'pointer' }} title="Delete Template"><Trash2 size={16} /></button>
-                          <input type="file" ref={el => fileInputRefs.current.offerLetter = el} accept=".docx" onChange={(e) => handleTemplateUpload(e, 'offerLetter')} style={{ display: 'none' }} />
-                        </div>
-                      </div>
-                    ) : (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f0f9ff', color: '#0369a1', padding: '12px 16px', borderRadius: '12px', border: '1px dashed #bae6fd', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
-                        <Upload size={18} /> Upload Primary Offer Letter Template (.docx)
-                        <input type="file" accept=".docx" onChange={(e) => handleTemplateUpload(e, 'offerLetter')} style={{ display: 'none' }} />
-                      </label>
-                    )}
-
-                    {onboardingSettings.declarationTemplateUrl ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '12px' }}>
-                        <FileText size={20} style={{ color: '#6d28d9' }} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#4c1d95' }}>Declaration Template</div>
-                          <div style={{ fontSize: '11px', color: '#6d28d9' }}>Standard declaration for candidates</div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => handlePreview('declaration')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #ddd6fe', background: '#fff', color: '#6d28d9', display: 'flex', cursor: 'pointer' }} title="Preview"><Eye size={16} /></button>
-                          <button onClick={() => handleDownloadTemplate('declaration')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #ddd6fe', background: '#fff', color: '#6d28d9', display: 'flex', cursor: 'pointer' }} title="Download Template"><Download size={16} /></button>
-                          <button onClick={() => fileInputRefs.current.declaration.click()} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #ddd6fe', background: '#fff', color: '#d97706', display: 'flex', cursor: 'pointer' }} title="Replace Template"><RefreshCw size={16} /></button>
-                          <button onClick={() => handleDeleteBaseTemplate('declaration')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex', cursor: 'pointer' }} title="Delete Template"><Trash2 size={16} /></button>
-                          <input type="file" ref={el => fileInputRefs.current.declaration = el} accept=".docx" onChange={(e) => handleTemplateUpload(e, 'declaration')} style={{ display: 'none' }} />
-                        </div>
-                      </div>
-                    ) : (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f5f3ff', color: '#6d28d9', padding: '12px 16px', borderRadius: '12px', border: '1px dashed #ddd6fe', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
-                        <Upload size={18} /> Upload Declaration Template (.docx)
-                        <input type="file" accept=".docx" onChange={(e) => handleTemplateUpload(e, 'declaration')} style={{ display: 'none' }} />
-                      </label>
-                    )}
                     {onboardingSettings.dynamicTemplates?.map((temp) => (
                       <div key={temp._id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
                         <FileText size={20} style={{ color: '#64748b' }} />
@@ -1700,13 +1659,8 @@ const Onboarding = () => {
                   <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>
                     {previewType === 'offerLetter' ? 'Offer Letter' : 'Declaration'} Template Preview
                   </h2>
-                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>{previewWithData ? 'Showing with sample data' : 'Showing with raw placeholders'}</p>
                 </div>
 
-                <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '8px', padding: '4px' }}>
-                  <button onClick={() => handlePreview(previewType, true)} style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: previewWithData ? '#fff' : 'transparent', color: previewWithData ? '#2563eb' : '#64748b', fontSize: '12px', fontWeight: '600', cursor: 'pointer', boxShadow: previewWithData ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>Populated</button>
-                  <button onClick={() => handlePreview(previewType, false)} style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: !previewWithData ? '#fff' : 'transparent', color: !previewWithData ? '#2563eb' : '#64748b', fontSize: '12px', fontWeight: '600', cursor: 'pointer', boxShadow: !previewWithData ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>Raw Tags</button>
-                </div>
               </div>
               <button onClick={() => { setShowPreviewModal(false); setPreviewBlob(null); }} style={{ background: '#f1f5f9', border: 'none', cursor: 'pointer', color: '#64748b', padding: '8px', borderRadius: '8px' }}><X size={20} /></button>
             </div>

@@ -37,8 +37,7 @@ const PreOnboardingPortal = () => {
 
   const [offerAcceptedCheckbox, setOfferAcceptedCheckbox] = useState(false);
   const [showSuccessScreen, setShowSuccessScreen] = useState(false);
-  const [logoutCountdown, setLogoutCountdown] = useState(10);
-  const logoutTimerRef = useRef(null);
+  // REMOVED: logoutCountdown
 
   useEffect(() => {
     if (profile) {
@@ -81,7 +80,7 @@ const PreOnboardingPortal = () => {
   useEffect(() => {
     if (profile && visibleSteps.length > 0 && !hasNavigatedInitial.current) {
       const flaggedDocs = profile.documents?.filter(d => d.status === 'Re-upload Required');
-      
+
       // If there are flagged docs OR if documents were specifically requested (and not yet complete)
       if (flaggedDocs && flaggedDocs.length > 0) {
         const docStepIndex = visibleSteps.findIndex(s => s.id === 'documents');
@@ -166,21 +165,10 @@ const PreOnboardingPortal = () => {
       }
     }, 30000);
     return () => clearTimeout(autoSaveTimer.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unsavedChanges, personalDetails, emergencyContact, bankDetails, offerDeclaration, currentStep]);
 
-  // Handle countdown for success screen
-  useEffect(() => {
-    if (showSuccessScreen && logoutCountdown > 0) {
-      logoutTimerRef.current = setTimeout(() => {
-        setLogoutCountdown(prev => prev - 1);
-      }, 1000);
-    } else if (showSuccessScreen && logoutCountdown === 0) {
-      handleLogout();
-    }
-    return () => clearTimeout(logoutTimerRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSuccessScreen, logoutCountdown]);
+  // Removed countdown logic for success screen
 
   const getSectionData = (sectionId) => {
     switch (sectionId) {
@@ -394,11 +382,11 @@ const PreOnboardingPortal = () => {
       setAccepting(true);
       await axios.post(`${API_URL}/my-profile/accept-offer`, {}, { headers: getHeaders() });
       toast.success('Offer Accepted!');
-      
+
       // Fetch fresh profile to see if there are other sections to fill
       const res = await axios.get(`${API_URL}/my-profile`, { headers: getHeaders() });
       setProfile(res.data);
-      
+
       // Check progress of the newly fetched profile
       const updatedProgress = calculateProgress(res.data);
       if (updatedProgress === 100) {
@@ -445,11 +433,11 @@ const PreOnboardingPortal = () => {
 
   const hasPendingExtension = profile?.extensionRequests?.some(r => r.status === 'Pending');
   const isGlobalReadOnly = profile?.status === 'Submitted' || profile?.status === 'Reviewed';
-  
+
   const isSectionReadOnly = (sectionId) => {
     const labelMap = { personalDetails: 'Personal Details', emergencyContact: 'Emergency Contact', bankDetails: 'Bank Details', offerDeclaration: 'Offer Declaration' };
     const reqLabels = (profile?.requestedSections || []).map(rs => typeof rs === 'string' ? rs : rs.label);
-    
+
     // PRIORITY 1: If the section was marked as complete by the candidate, it's read-only.
     // (This ensures previously filled sections stay locked even during document resubmission)
     // We check local state first for immediate UI responsiveness.
@@ -462,15 +450,15 @@ const PreOnboardingPortal = () => {
       // Fallback to profile for non-form sections
       isComplete = sectionId === 'personalDetails' ? !!profile?.personalDetails?.isComplete :
         sectionId === 'emergencyContact' ? !!profile?.emergencyContact?.isComplete :
-        sectionId === 'bankDetails' ? !!profile?.bankDetails?.isComplete :
-        sectionId === 'offerDeclaration' ? !!profile?.offerDeclaration?.isComplete : false;
+          sectionId === 'bankDetails' ? !!profile?.bankDetails?.isComplete :
+            sectionId === 'offerDeclaration' ? !!profile?.offerDeclaration?.isComplete : false;
     }
 
     if (isComplete) return true;
 
     // PRIORITY 2: If HR explicitly requested this section (and it is NOT complete), it MUST be editable.
     if (reqLabels.includes(labelMap[sectionId])) return false;
-    
+
     // PRIORITY 3: Global read-only status for submitted/reviewed profiles.
     return isGlobalReadOnly;
   };
@@ -504,7 +492,7 @@ const PreOnboardingPortal = () => {
   const calculateProgress = (customProfile = null) => {
     const p = customProfile || profile;
     if (!p || visibleSteps.length === 0) return 0;
-    
+
     let completedCount = 0;
     visibleSteps.forEach(step => {
       if (isStepComplete(step, p)) completedCount++;
@@ -610,7 +598,7 @@ const PreOnboardingPortal = () => {
             </p>
             <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>
-                You will be automatically logged out in <strong style={{ color: '#0f172a', fontSize: '18px' }}>{logoutCountdown}</strong> seconds...
+                Your offer has been accepted. We are thrilled to have you on board!
               </p>
               <button onClick={handleLogout} style={{ marginTop: '16px', background: 'none', border: 'none', color: '#3b82f6', fontWeight: '600', cursor: 'pointer', fontSize: '14px', textDecoration: 'underline' }}>
                 Logout Now
@@ -631,7 +619,7 @@ const PreOnboardingPortal = () => {
               <>
                 <h2 style={{ fontSize: '24px', color: '#0f172a', margin: '0 0 16px' }}>Welcome to Resource Gateway!</h2>
                 <p style={{ color: '#475569', fontSize: '15px', marginBottom: '32px' }}>Please review and accept your Offer Letter and associated documents to proceed.</p>
-                
+
                 <div style={{ display: 'grid', gap: '12px', marginBottom: '32px', maxWidth: '500px', margin: '0 auto 32px' }}>
                   {/* Primary Offer Letter */}
                   {(reqDocsLabels.length === 0 || reqDocsLabels.includes('Offer Letter')) && (
@@ -678,35 +666,35 @@ const PreOnboardingPortal = () => {
                 const sectionComplete =
                   step.id === 'personalDetails' ? profile?.personalDetails?.isComplete :
                     step.id === 'emergencyContact' ? profile?.emergencyContact?.isComplete :
-                      step.id === 'documents' ? (() => { 
+                      step.id === 'documents' ? (() => {
                         const targetDocs = profile?.documents?.filter(d => reqDocsLabels.length === 0 || reqDocsLabels.includes(d.label)) || [];
                         if (targetDocs.length === 0) return true;
                         // Section is only complete if ALL requested docs are Uploaded or Approved (and not flagged)
-                        return targetDocs.every(d => (d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport')); 
+                        return targetDocs.every(d => (d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport'));
                       })() :
                         step.id === 'bankDetails' ? profile?.bankDetails?.isComplete :
-                          step.id === 'policies' ? (() => { 
+                          step.id === 'policies' ? (() => {
                             const targetPolicies = profile?.companyPolicies?.filter(p => reqDocsLabels.length === 0 || reqDocsLabels.includes(p.name)) || [];
                             if (targetPolicies.length === 0) return true;
-                            return targetPolicies.every(p => !p.isRequired || profile?.offerDeclaration?.acceptedPolicies?.some(ap => ap.policyId === p._id)); 
+                            return targetPolicies.every(p => !p.isRequired || profile?.offerDeclaration?.acceptedPolicies?.some(ap => ap.policyId === p._id));
                           })() :
                             step.id === 'offerDeclaration' ? profile?.offerDeclaration?.isComplete : false;
 
                 return (
                   <button key={step.id} onClick={() => { if (visibleSteps[currentStep].id !== 'documents' && unsavedChanges) handleSaveSection(visibleSteps[currentStep].id, true); setCurrentStep(i); }}
-                    style={{ 
-                      flex: 1, 
-                      minWidth: '120px', 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'center', 
-                      gap: '6px', 
-                      padding: '12px 8px', 
-                      borderRadius: '12px', 
-                      border: currentStep === i ? '2px solid #3b82f6' : '2px solid transparent', 
-                      background: currentStep === i ? '#eff6ff' : sectionComplete ? '#f0fdf4' : '#fff', 
-                      cursor: 'pointer', 
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.06)', 
+                    style={{
+                      flex: 1,
+                      minWidth: '120px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '12px 8px',
+                      borderRadius: '12px',
+                      border: currentStep === i ? '2px solid #3b82f6' : '2px solid transparent',
+                      background: currentStep === i ? '#eff6ff' : sectionComplete ? '#f0fdf4' : '#fff',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                       transition: 'all 0.2s',
                     }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: currentStep === i ? '#2563eb' : sectionComplete ? '#16a34a' : '#94a3b8' }}>
@@ -722,107 +710,111 @@ const PreOnboardingPortal = () => {
             <div style={{ background: '#fff', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '28px', marginBottom: '24px' }}>
 
               {/* Step 0: Personal Details */}
-              {visibleSteps[currentStep]?.id === 'personalDetails' && (() => { const sRO = isSectionReadOnly('personalDetails'); return (
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Personal & Contact Details</h3>
-                  {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                    <div><label style={labelStyle}>Full Name *</label><input style={inputStyle} readOnly={sRO} value={personalDetails.fullName || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, fullName: e.target.value }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>Date of Birth</label><input type="date" style={inputStyle} readOnly={sRO} value={personalDetails.dateOfBirth?.split('T')[0] || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, dateOfBirth: e.target.value }); markChange(); }} /></div>
-                    <div>
-                      <label style={labelStyle}>Gender</label>
-                      <select style={inputStyle} disabled={sRO} value={personalDetails.gender || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, gender: e.target.value }); markChange(); }}>
-                        <option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
-                      </select>
-                    </div>
-                    <div><label style={labelStyle}>Blood Group</label><input style={inputStyle} readOnly={sRO} value={personalDetails.bloodGroup || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, bloodGroup: e.target.value }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>Personal Email</label><input type="email" style={inputStyle} readOnly={sRO} value={personalDetails.personalEmail || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, personalEmail: e.target.value }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>Personal Mobile *</label><input style={inputStyle} readOnly={sRO} value={personalDetails.personalMobile || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, personalMobile: e.target.value }); markChange(); }} /></div>
-                  </div>
-
-                  <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', margin: '24px 0 12px' }}>Current Address</h4>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                    <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address Line 1</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.line1 || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, line1: e.target.value } }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>City</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.city || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, city: e.target.value } }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>State</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.state || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, state: e.target.value } }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>Pincode</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.pincode || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, pincode: e.target.value } }); markChange(); }} /></div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '20px 0 12px' }}>
-                    <input type="checkbox" id="sameAddr" disabled={sRO} checked={personalDetails.sameAsCurrent || false} onChange={(e) => {
-                      const checked = e.target.checked;
-                      setPersonalDetails(prev => ({
-                        ...prev, sameAsCurrent: checked,
-                        permanentAddress: checked ? { ...prev.currentAddress } : { line1: '', line2: '', city: '', state: '', pincode: '', country: 'India' }
-                      }));
-                      markChange();
-                    }} />
-                    <label htmlFor="sameAddr" style={{ fontSize: '14px', color: '#475569', cursor: 'pointer' }}>Permanent address same as current</label>
-                  </div>
-
-                  {!personalDetails.sameAsCurrent && (
-                    <>
-                      <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>Permanent Address</h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                        <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address Line 1</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.line1 || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, line1: e.target.value } }); markChange(); }} /></div>
-                        <div><label style={labelStyle}>City</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.city || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, city: e.target.value } }); markChange(); }} /></div>
-                        <div><label style={labelStyle}>State</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.state || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, state: e.target.value } }); markChange(); }} /></div>
-                        <div><label style={labelStyle}>Pincode</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.pincode || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, pincode: e.target.value } }); markChange(); }} /></div>
+              {visibleSteps[currentStep]?.id === 'personalDetails' && (() => {
+                const sRO = isSectionReadOnly('personalDetails'); return (
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Personal & Contact Details</h3>
+                    {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div><label style={labelStyle}>Full Name *</label><input style={inputStyle} readOnly={sRO} value={personalDetails.fullName || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, fullName: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Date of Birth</label><input type="date" style={inputStyle} readOnly={sRO} value={personalDetails.dateOfBirth?.split('T')[0] || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, dateOfBirth: e.target.value }); markChange(); }} /></div>
+                      <div>
+                        <label style={labelStyle}>Gender</label>
+                        <select style={inputStyle} disabled={sRO} value={personalDetails.gender || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, gender: e.target.value }); markChange(); }}>
+                          <option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
+                        </select>
                       </div>
-                    </>
-                  )}
-
-                  <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', margin: '24px 0 12px' }}>Social Links (Optional)</h4>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                    <div><label style={labelStyle}>LinkedIn URL</label><input style={inputStyle} readOnly={sRO} value={personalDetails.linkedinUrl || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, linkedinUrl: e.target.value }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>Portfolio URL</label><input style={inputStyle} readOnly={sRO} value={personalDetails.portfolioUrl || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, portfolioUrl: e.target.value }); markChange(); }} /></div>
-                  </div>
-
-                  {!isGlobalReadOnly && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
-                      <input type="checkbox" id="pd_complete" checked={personalDetails.isComplete || false} onChange={(e) => { 
-                        const isChecked = e.target.checked;
-                        const updated = { ...personalDetails, isComplete: isChecked };
-                        setPersonalDetails(updated); 
-                        if (isChecked) handleSaveSection('personalDetails', false, updated); 
-                        else markChange(); 
-                      }} />
-                      <label htmlFor="pd_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
+                      <div><label style={labelStyle}>Blood Group</label><input style={inputStyle} readOnly={sRO} value={personalDetails.bloodGroup || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, bloodGroup: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Personal Email</label><input type="email" style={inputStyle} readOnly={sRO} value={personalDetails.personalEmail || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, personalEmail: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Personal Mobile *</label><input style={inputStyle} readOnly={sRO} value={personalDetails.personalMobile || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, personalMobile: e.target.value }); markChange(); }} /></div>
                     </div>
-                  )}
-                </div>
-              ); })()}
+
+                    <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', margin: '24px 0 12px' }}>Current Address</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address Line 1</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.line1 || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, line1: e.target.value } }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>City</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.city || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, city: e.target.value } }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>State</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.state || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, state: e.target.value } }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Pincode</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.pincode || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, pincode: e.target.value } }); markChange(); }} /></div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '20px 0 12px' }}>
+                      <input type="checkbox" id="sameAddr" disabled={sRO} checked={personalDetails.sameAsCurrent || false} onChange={(e) => {
+                        const checked = e.target.checked;
+                        setPersonalDetails(prev => ({
+                          ...prev, sameAsCurrent: checked,
+                          permanentAddress: checked ? { ...prev.currentAddress } : { line1: '', line2: '', city: '', state: '', pincode: '', country: 'India' }
+                        }));
+                        markChange();
+                      }} />
+                      <label htmlFor="sameAddr" style={{ fontSize: '14px', color: '#475569', cursor: 'pointer' }}>Permanent address same as current</label>
+                    </div>
+
+                    {!personalDetails.sameAsCurrent && (
+                      <>
+                        <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>Permanent Address</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                          <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address Line 1</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.line1 || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, line1: e.target.value } }); markChange(); }} /></div>
+                          <div><label style={labelStyle}>City</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.city || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, city: e.target.value } }); markChange(); }} /></div>
+                          <div><label style={labelStyle}>State</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.state || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, state: e.target.value } }); markChange(); }} /></div>
+                          <div><label style={labelStyle}>Pincode</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.pincode || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, pincode: e.target.value } }); markChange(); }} /></div>
+                        </div>
+                      </>
+                    )}
+
+                    <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', margin: '24px 0 12px' }}>Social Links (Optional)</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div><label style={labelStyle}>LinkedIn URL</label><input style={inputStyle} readOnly={sRO} value={personalDetails.linkedinUrl || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, linkedinUrl: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Portfolio URL</label><input style={inputStyle} readOnly={sRO} value={personalDetails.portfolioUrl || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, portfolioUrl: e.target.value }); markChange(); }} /></div>
+                    </div>
+
+                    {!isGlobalReadOnly && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+                        <input type="checkbox" id="pd_complete" checked={personalDetails.isComplete || false} onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          const updated = { ...personalDetails, isComplete: isChecked };
+                          setPersonalDetails(updated);
+                          if (isChecked) handleSaveSection('personalDetails', false, updated);
+                          else markChange();
+                        }} />
+                        <label htmlFor="pd_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Step 1: Emergency Contact */}
-              {visibleSteps[currentStep]?.id === 'emergencyContact' && (() => { const sRO = isSectionReadOnly('emergencyContact'); return (
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Emergency Contact</h3>
-                  {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                    <div><label style={labelStyle}>Contact Person Name *</label><input style={inputStyle} readOnly={sRO} value={emergencyContact.contactName || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, contactName: e.target.value }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>Relationship *</label><input style={inputStyle} readOnly={sRO} value={emergencyContact.relationship || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, relationship: e.target.value }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>Phone Number *</label><input style={inputStyle} readOnly={sRO} value={emergencyContact.phoneNumber || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, phoneNumber: e.target.value }); markChange(); }} /></div>
-                    <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address</label><textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} readOnly={sRO} value={emergencyContact.address || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, address: e.target.value }); markChange(); }} /></div>
-                  </div>
-                  {!isGlobalReadOnly && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
-                      <input type="checkbox" id="ec_complete" checked={emergencyContact.isComplete || false} onChange={(e) => { 
-                        const isChecked = e.target.checked;
-                        const updated = { ...emergencyContact, isComplete: isChecked };
-                        setEmergencyContact(updated); 
-                        if (isChecked) handleSaveSection('emergencyContact', false, updated); 
-                        else markChange(); 
-                      }} />
-                      <label htmlFor="ec_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
+              {visibleSteps[currentStep]?.id === 'emergencyContact' && (() => {
+                const sRO = isSectionReadOnly('emergencyContact'); return (
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Emergency Contact</h3>
+                    {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div><label style={labelStyle}>Contact Person Name *</label><input style={inputStyle} readOnly={sRO} value={emergencyContact.contactName || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, contactName: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Relationship *</label><input style={inputStyle} readOnly={sRO} value={emergencyContact.relationship || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, relationship: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Phone Number *</label><input style={inputStyle} readOnly={sRO} value={emergencyContact.phoneNumber || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, phoneNumber: e.target.value }); markChange(); }} /></div>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address</label><textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} readOnly={sRO} value={emergencyContact.address || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, address: e.target.value }); markChange(); }} /></div>
                     </div>
-                  )}
-                </div>
-              ); })()}
+                    {!isGlobalReadOnly && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+                        <input type="checkbox" id="ec_complete" checked={emergencyContact.isComplete || false} onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          const updated = { ...emergencyContact, isComplete: isChecked };
+                          setEmergencyContact(updated);
+                          if (isChecked) handleSaveSection('emergencyContact', false, updated);
+                          else markChange();
+                        }} />
+                        <label htmlFor="ec_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Step 2: Documents */}
               {visibleSteps[currentStep]?.id === 'documents' && (() => {
                 const multiFileTypes = ['salary_slip', 'graduation'];
-                
+
                 // Get original order of types to preserve base section layout
                 const typeOrder = [];
                 (profile?.documents || []).forEach(d => { if (!typeOrder.includes(d.type)) typeOrder.push(d.type); });
@@ -841,159 +833,161 @@ const PreOnboardingPortal = () => {
                 filteredDocs.forEach(d => { if (!docsByType[d.type]) docsByType[d.type] = []; docsByType[d.type].push(d); });
 
                 return (
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Document Upload</h3>
-                  <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px' }}>Upload PDF, JPG, or PNG files (max 5MB each)</p>
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {filteredDocs.map((doc) => {
-                      const isApproved = doc.status === 'Approved';
-                      const isUploaded = doc.status === 'Uploaded';
-                      const needsUpload = doc.status === 'Pending' || doc.status === 'Mail Sent' || doc.status === 'Re-upload Required';
-                      const isDocRequested = reqDocsLabels.includes(doc.label) || reqDocsLabels.some(rl => doc.label.startsWith(rl));
-                      const canUpload = (doc.status === 'Re-upload Required') || (!isGlobalReadOnly && needsUpload && isDocRequested);
-                      const badgeColor = isUploaded ? { bg: '#dbeafe', text: '#1d4ed8' } : isApproved ? { bg: '#dcfce7', text: '#16a34a' } : doc.status === 'Re-upload Required' ? { bg: '#fee2e2', text: '#dc2626' } : { bg: '#f1f5f9', text: '#64748b' };
-                      const preview = docPreview[doc._id];
-                      const isLastOfMultiType = multiFileTypes.includes(doc.type) && docsByType[doc.type]?.[docsByType[doc.type].length - 1]?._id === doc._id;
-                      const isDynamicSlot = /\(\d+\)$/.test(doc.label);
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Document Upload</h3>
+                    <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px' }}>Upload PDF, JPG, or PNG files (max 5MB each)</p>
+                    <div style={{ display: 'grid', gap: '8px' }}>
+                      {filteredDocs.map((doc) => {
+                        const isApproved = doc.status === 'Approved';
+                        const isUploaded = doc.status === 'Uploaded';
+                        const needsUpload = doc.status === 'Pending' || doc.status === 'Mail Sent' || doc.status === 'Re-upload Required';
+                        const isDocRequested = reqDocsLabels.includes(doc.label) || reqDocsLabels.some(rl => doc.label.startsWith(rl));
+                        const canUpload = (doc.status === 'Re-upload Required') || (!isGlobalReadOnly && needsUpload && isDocRequested);
+                        const badgeColor = isUploaded ? { bg: '#dbeafe', text: '#1d4ed8' } : isApproved ? { bg: '#dcfce7', text: '#16a34a' } : doc.status === 'Re-upload Required' ? { bg: '#fee2e2', text: '#dc2626' } : { bg: '#f1f5f9', text: '#64748b' };
+                        const preview = docPreview[doc._id];
+                        const isLastOfMultiType = multiFileTypes.includes(doc.type) && docsByType[doc.type]?.[docsByType[doc.type].length - 1]?._id === doc._id;
+                        const isDynamicSlot = /\(\d+\)$/.test(doc.label);
 
-                      return (
-                        <React.Fragment key={doc._id}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', border: isApproved ? '1px solid #bbf7d0' : doc.status === 'Re-upload Required' ? '1px solid #fecaca' : '1px solid #e2e8f0', borderRadius: '10px', background: isApproved ? '#f0fdf4' : doc.status === 'Re-upload Required' ? '#fef2f2' : '#fff', flexWrap: 'wrap' }}>
-                            <FileText size={16} style={{ color: isApproved ? '#16a34a' : '#64748b', flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: '120px' }}>
-                              <div style={{ fontSize: '13px', fontWeight: '600', color: '#1e293b' }}>{doc.label}</div>
-                              {doc.rejectionReason && <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '1px' }}><AlertTriangle size={10} style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> {doc.rejectionReason}</div>}
-                              {preview && <div style={{ fontSize: '11px', color: '#6366f1', marginTop: '1px' }}>📄 {preview.fileName} ({(preview.file.size / 1024).toFixed(0)} KB)</div>}
+                        return (
+                          <React.Fragment key={doc._id}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', border: isApproved ? '1px solid #bbf7d0' : doc.status === 'Re-upload Required' ? '1px solid #fecaca' : '1px solid #e2e8f0', borderRadius: '10px', background: isApproved ? '#f0fdf4' : doc.status === 'Re-upload Required' ? '#fef2f2' : '#fff', flexWrap: 'wrap' }}>
+                              <FileText size={16} style={{ color: isApproved ? '#16a34a' : '#64748b', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: '120px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: '600', color: '#1e293b' }}>{doc.label}</div>
+                                {doc.rejectionReason && <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '1px' }}><AlertTriangle size={10} style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> {doc.rejectionReason}</div>}
+                                {preview && <div style={{ fontSize: '11px', color: '#6366f1', marginTop: '1px' }}>📄 {preview.fileName} ({(preview.file.size / 1024).toFixed(0)} KB)</div>}
+                              </div>
+
+                              {doc.status !== 'Mail Sent' && (
+                                <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '700', background: badgeColor.bg, color: badgeColor.text, whiteSpace: 'nowrap' }}>{doc.status}</span>
+                              )}
+
+                              {/* Action Buttons */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                {/* View uploaded file */}
+                                {doc.url && (
+                                  <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#3b82f6', fontSize: '11px', textDecoration: 'none', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}><Eye size={12} /> View</a>
+                                )}
+
+                                {/* Choose / Replace file */}
+                                {canUpload && (
+                                  <label style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #d1d5db', color: '#475569', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', background: '#fff' }}>
+                                    <Upload size={12} /> {preview ? 'Replace' : 'Choose'}
+                                    <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => {
+                                      const file = e.target.files[0];
+                                      if (!file) return;
+                                      if (file.size > 5 * 1024 * 1024) { toast.error('File must be under 5MB'); return; }
+                                      const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+                                      if (!allowed.includes(file.type)) { toast.error('Only PDF, JPG, PNG'); return; }
+                                      const previewUrl = URL.createObjectURL(file);
+                                      setDocPreview(prev => ({ ...prev, [doc._id]: { file, previewUrl, fileName: file.name, fileType: file.type } }));
+                                    }} />
+                                  </label>
+                                )}
+
+                                {/* View chosen file (before upload) */}
+                                {preview && (
+                                  <button onClick={() => window.open(preview.previewUrl, '_blank')} style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #c7d2fe', color: '#4f46e5', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', background: '#eef2ff' }}>
+                                    <Eye size={12} /> View
+                                  </button>
+                                )}
+
+                                {/* Upload button */}
+                                {preview && (
+                                  <button onClick={() => { handleUploadDocument(doc._id, preview.file); setDocPreview(prev => { const n = { ...prev }; if (n[doc._id]?.previewUrl) URL.revokeObjectURL(n[doc._id].previewUrl); delete n[doc._id]; return n; }); }}
+                                    style={{ padding: '5px 12px', borderRadius: '6px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', border: 'none', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <Upload size={12} /> Upload
+                                  </button>
+                                )}
+
+                                {/* Cancel chosen file selection */}
+                                {preview && (
+                                  <button onClick={() => { setDocPreview(prev => { const n = { ...prev }; if (n[doc._id]?.previewUrl) URL.revokeObjectURL(n[doc._id].previewUrl); delete n[doc._id]; return n; }); }}
+                                    style={{ padding: '5px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', background: '#fff' }}>
+                                    <X size={12} />
+                                  </button>
+                                )}
+
+                                {/* Delete dynamic slot - same visibility logic as Choose button */}
+                                {isDynamicSlot && canUpload && !isUploaded && !isApproved && (
+                                  <button onClick={() => handleDeleteDocSlot(doc._id)}
+                                    style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fee2e2', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', background: '#fef2f2' }}
+                                    title="Delete added field">
+                                    <X size={12} /> Delete Slot
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            
-                            {doc.status !== 'Mail Sent' && (
-                              <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '700', background: badgeColor.bg, color: badgeColor.text, whiteSpace: 'nowrap' }}>{doc.status}</span>
+
+                            {/* Add More button - show only if not submitted OR if explicitly requested via flagging */}
+                            {isLastOfMultiType && (!isGlobalReadOnly || (isDocRequested && docsByType[doc.type]?.some(d => d.status === 'Re-upload Required'))) && (
+                              <button onClick={() => handleAddDocSlot(doc.type, doc.type === 'salary_slip' ? 'Salary Slip' : 'Graduation Marksheet / Certificate')}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', marginLeft: '30px', borderRadius: '8px', border: '1px dashed #cbd5e1', background: '#f8fafc', color: '#64748b', fontSize: '12px', fontWeight: '500', cursor: 'pointer', marginTop: '4px' }}>
+                                <Plus size={14} /> Add More {doc.type === 'salary_slip' ? 'Salary Slips' : 'Certificates'}
+                              </button>
                             )}
-
-                            {/* Action Buttons */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                              {/* View uploaded file */}
-                              {doc.url && (
-                                <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#3b82f6', fontSize: '11px', textDecoration: 'none', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}><Eye size={12} /> View</a>
-                              )}
-
-                              {/* Choose / Replace file */}
-                              {canUpload && (
-                                <label style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #d1d5db', color: '#475569', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', background: '#fff' }}>
-                                  <Upload size={12} /> {preview ? 'Replace' : 'Choose'}
-                                  <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => {
-                                    const file = e.target.files[0];
-                                    if (!file) return;
-                                    if (file.size > 5 * 1024 * 1024) { toast.error('File must be under 5MB'); return; }
-                                    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
-                                    if (!allowed.includes(file.type)) { toast.error('Only PDF, JPG, PNG'); return; }
-                                    const previewUrl = URL.createObjectURL(file);
-                                    setDocPreview(prev => ({ ...prev, [doc._id]: { file, previewUrl, fileName: file.name, fileType: file.type } }));
-                                  }} />
-                                </label>
-                              )}
-
-                              {/* View chosen file (before upload) */}
-                              {preview && (
-                                <button onClick={() => window.open(preview.previewUrl, '_blank')} style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #c7d2fe', color: '#4f46e5', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', background: '#eef2ff' }}>
-                                  <Eye size={12} /> View
-                                </button>
-                              )}
-
-                              {/* Upload button */}
-                              {preview && (
-                                <button onClick={() => { handleUploadDocument(doc._id, preview.file); setDocPreview(prev => { const n = { ...prev }; if (n[doc._id]?.previewUrl) URL.revokeObjectURL(n[doc._id].previewUrl); delete n[doc._id]; return n; }); }}
-                                  style={{ padding: '5px 12px', borderRadius: '6px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', border: 'none', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                  <Upload size={12} /> Upload
-                                </button>
-                              )}
-
-                              {/* Cancel chosen file selection */}
-                              {preview && (
-                                <button onClick={() => { setDocPreview(prev => { const n = { ...prev }; if (n[doc._id]?.previewUrl) URL.revokeObjectURL(n[doc._id].previewUrl); delete n[doc._id]; return n; }); }}
-                                  style={{ padding: '5px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', background: '#fff' }}>
-                                  <X size={12} />
-                                </button>
-                              )}
-
-                              {/* Delete dynamic slot - same visibility logic as Choose button */}
-                              {isDynamicSlot && canUpload && !isUploaded && !isApproved && (
-                                <button onClick={() => handleDeleteDocSlot(doc._id)}
-                                  style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fee2e2', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', background: '#fef2f2' }}
-                                  title="Delete added field">
-                                  <X size={12} /> Delete Slot
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Add More button - show only if not submitted OR if explicitly requested via flagging */}
-                          {isLastOfMultiType && (!isGlobalReadOnly || (isDocRequested && docsByType[doc.type]?.some(d => d.status === 'Re-upload Required'))) && (
-                            <button onClick={() => handleAddDocSlot(doc.type, doc.type === 'salary_slip' ? 'Salary Slip' : 'Graduation Marksheet / Certificate')}
-                              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', marginLeft: '30px', borderRadius: '8px', border: '1px dashed #cbd5e1', background: '#f8fafc', color: '#64748b', fontSize: '12px', fontWeight: '500', cursor: 'pointer', marginTop: '4px' }}>
-                              <Plus size={14} /> Add More {doc.type === 'salary_slip' ? 'Salary Slips' : 'Certificates'}
-                            </button>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
                 );
               })()}
 
               {/* Step 3: Bank Details */}
-              {visibleSteps[currentStep]?.id === 'bankDetails' && (() => { const sRO = isSectionReadOnly('bankDetails'); return (
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Bank / Payroll Details</h3>
-                  {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                    <div><label style={labelStyle}>Bank Name *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.bankName || ''} onChange={(e) => { setBankDetails({ ...bankDetails, bankName: e.target.value }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>Account Number *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.accountNumber || ''} onChange={(e) => { setBankDetails({ ...bankDetails, accountNumber: e.target.value }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>Confirm Account Number *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.confirmAccountNumber || ''} onChange={(e) => { setBankDetails({ ...bankDetails, confirmAccountNumber: e.target.value }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>IFSC Code *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.ifscCode || ''} onChange={(e) => { setBankDetails({ ...bankDetails, ifscCode: e.target.value.toUpperCase() }); markChange(); }} /></div>
-                    <div><label style={labelStyle}>Branch Name</label><input style={inputStyle} readOnly={sRO} value={bankDetails.branchName || ''} onChange={(e) => { setBankDetails({ ...bankDetails, branchName: e.target.value }); markChange(); }} /></div>
-                    <div>
-                      <label style={labelStyle}>Account Type *</label>
-                      <select style={inputStyle} disabled={sRO} value={bankDetails.accountType || ''} onChange={(e) => { setBankDetails({ ...bankDetails, accountType: e.target.value }); markChange(); }}>
-                        <option value="">Select</option><option value="Savings">Savings</option><option value="Current">Current</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: '20px' }}>
-                    <label style={labelStyle}>Cancelled Cheque / Passbook Front Page</label>
-                    {bankDetails.cancelledChequeUrl || profile?.bankDetails?.cancelledChequeUrl ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <a href={bankDetails.cancelledChequeUrl || profile?.bankDetails?.cancelledChequeUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', fontSize: '13px' }}>View uploaded file</a>
-                        {!sRO && (
-                          <label style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '12px', cursor: 'pointer', fontWeight: '600', color: '#475569' }}>
-                            Re-upload <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { if (e.target.files[0]) handleUploadCheque(e.target.files[0]); }} />
-                          </label>
-                        )}
+              {visibleSteps[currentStep]?.id === 'bankDetails' && (() => {
+                const sRO = isSectionReadOnly('bankDetails'); return (
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Bank / Payroll Details</h3>
+                    {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div><label style={labelStyle}>Bank Name *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.bankName || ''} onChange={(e) => { setBankDetails({ ...bankDetails, bankName: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Account Number *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.accountNumber || ''} onChange={(e) => { setBankDetails({ ...bankDetails, accountNumber: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Confirm Account Number *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.confirmAccountNumber || ''} onChange={(e) => { setBankDetails({ ...bankDetails, confirmAccountNumber: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>IFSC Code *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.ifscCode || ''} onChange={(e) => { setBankDetails({ ...bankDetails, ifscCode: e.target.value.toUpperCase() }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Branch Name</label><input style={inputStyle} readOnly={sRO} value={bankDetails.branchName || ''} onChange={(e) => { setBankDetails({ ...bankDetails, branchName: e.target.value }); markChange(); }} /></div>
+                      <div>
+                        <label style={labelStyle}>Account Type *</label>
+                        <select style={inputStyle} disabled={sRO} value={bankDetails.accountType || ''} onChange={(e) => { setBankDetails({ ...bankDetails, accountType: e.target.value }); markChange(); }}>
+                          <option value="">Select</option><option value="Savings">Savings</option><option value="Current">Current</option>
+                        </select>
                       </div>
-                    ) : !sRO ? (
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', border: '2px dashed #d1d5db', cursor: 'pointer', fontSize: '13px', color: '#64748b' }}>
-                        <Upload size={16} /> Upload cheque / passbook
-                        <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { if (e.target.files[0]) handleUploadCheque(e.target.files[0]); }} />
-                      </label>
-                    ) : <span style={{ color: '#94a3b8', fontSize: '13px' }}>Not uploaded</span>}
-                  </div>
-
-                  {!isGlobalReadOnly && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
-                      <input type="checkbox" id="bd_complete" checked={bankDetails.isComplete || false} onChange={(e) => { 
-                        const isChecked = e.target.checked;
-                        const updated = { ...bankDetails, isComplete: isChecked };
-                        setBankDetails(updated); 
-                        if (isChecked) handleSaveSection('bankDetails', false, updated); 
-                        else markChange(); 
-                      }} />
-                      <label htmlFor="bd_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
                     </div>
-                  )}
-                </div>
-              ); })()}
+
+                    <div style={{ marginTop: '20px' }}>
+                      <label style={labelStyle}>Cancelled Cheque / Passbook Front Page</label>
+                      {bankDetails.cancelledChequeUrl || profile?.bankDetails?.cancelledChequeUrl ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <a href={bankDetails.cancelledChequeUrl || profile?.bankDetails?.cancelledChequeUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', fontSize: '13px' }}>View uploaded file</a>
+                          {!sRO && (
+                            <label style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '12px', cursor: 'pointer', fontWeight: '600', color: '#475569' }}>
+                              Re-upload <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { if (e.target.files[0]) handleUploadCheque(e.target.files[0]); }} />
+                            </label>
+                          )}
+                        </div>
+                      ) : !sRO ? (
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', border: '2px dashed #d1d5db', cursor: 'pointer', fontSize: '13px', color: '#64748b' }}>
+                          <Upload size={16} /> Upload cheque / passbook
+                          <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { if (e.target.files[0]) handleUploadCheque(e.target.files[0]); }} />
+                        </label>
+                      ) : <span style={{ color: '#94a3b8', fontSize: '13px' }}>Not uploaded</span>}
+                    </div>
+
+                    {!isGlobalReadOnly && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+                        <input type="checkbox" id="bd_complete" checked={bankDetails.isComplete || false} onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          const updated = { ...bankDetails, isComplete: isChecked };
+                          setBankDetails(updated);
+                          if (isChecked) handleSaveSection('bankDetails', false, updated);
+                          else markChange();
+                        }} />
+                        <label htmlFor="bd_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Step 4: Company Policies */}
               {visibleSteps[currentStep]?.id === 'policies' && (
@@ -1015,22 +1009,22 @@ const PreOnboardingPortal = () => {
                             <div style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b' }}>{policy.name}</div>
                             <div style={{ fontSize: '12px', color: '#64748b' }}>{policy.isRequired ? 'Mandatory acknowledgment' : 'Optional review'}</div>
                           </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <a href={policy.url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#3b82f6', textDecoration: 'none', fontSize: '13px', fontWeight: '600', background: '#fff' }}>
-                                View Policy ↗
-                              </a>
-                              {!isAccepted && (
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '4px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc' }}>
-                                  <input type="checkbox" style={{ width: '16px', height: '16px', accentColor: '#10b981' }} onChange={() => handleAcceptPolicy(policy._id)} />
-                                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Accept the policy / Mark as read</span>
-                                </label>
-                              )}
-                              {isAccepted && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a', fontSize: '13px', fontWeight: '600', padding: '8px' }}>
-                                  <CheckCircle size={16} /> Accepted
-                                </div>
-                              )}
-                            </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <a href={policy.url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#3b82f6', textDecoration: 'none', fontSize: '13px', fontWeight: '600', background: '#fff' }}>
+                              View Policy ↗
+                            </a>
+                            {!isAccepted && (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '4px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc' }}>
+                                <input type="checkbox" style={{ width: '16px', height: '16px', accentColor: '#10b981' }} onChange={() => handleAcceptPolicy(policy._id)} />
+                                <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Accept the policy / Mark as read</span>
+                              </label>
+                            )}
+                            {isAccepted && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a', fontSize: '13px', fontWeight: '600', padding: '8px' }}>
+                                <CheckCircle size={16} /> Accepted
+                              </div>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -1051,12 +1045,12 @@ const PreOnboardingPortal = () => {
 
                   {!isReadOnly && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '24px', padding: '16px', background: '#fffbeb', borderRadius: '12px', border: '1px solid #fde68a' }}>
-                      <input type="checkbox" id="policies_complete" checked={offerDeclaration.hasReadPolicies || false} onChange={(e) => { 
+                      <input type="checkbox" id="policies_complete" checked={offerDeclaration.hasReadPolicies || false} onChange={(e) => {
                         const isChecked = e.target.checked;
                         const updated = { ...offerDeclaration, hasReadPolicies: isChecked };
-                        setOfferDeclaration(updated); 
-                        if (isChecked) handleSaveSection('offerDeclaration', false, updated); 
-                        else markChange(); 
+                        setOfferDeclaration(updated);
+                        if (isChecked) handleSaveSection('offerDeclaration', false, updated);
+                        else markChange();
                       }} />
                       <label htmlFor="policies_complete" style={{ fontSize: '14px', fontWeight: '600', color: '#92400e' }}>I confirm that I have reviewed all the policies listed above.</label>
                     </div>
@@ -1065,103 +1059,105 @@ const PreOnboardingPortal = () => {
               )}
 
               {/* Step 5: Offer Declaration */}
-              {visibleSteps[currentStep]?.id === 'offerDeclaration' && (() => { const sRO = isSectionReadOnly('offerDeclaration'); return (
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Offer & Declaration Documents</h3>
-                  <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px' }}>Please download, review, and acknowledge the following dynamic documents.</p>
+              {visibleSteps[currentStep]?.id === 'offerDeclaration' && (() => {
+                const sRO = isSectionReadOnly('offerDeclaration'); return (
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Offer & Declaration Documents</h3>
+                    <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px' }}>Please download, review, and acknowledge the following dynamic documents.</p>
 
-                  <div style={{ display: 'grid', gap: '12px', marginBottom: '24px' }}>
-                    {(() => {
-                      if (reqDocsLabels.length === 0 || reqDocsLabels.includes('Offer Letter')) {
+                    <div style={{ display: 'grid', gap: '12px', marginBottom: '24px' }}>
+                      {(() => {
+                        if (reqDocsLabels.length === 0 || reqDocsLabels.includes('Offer Letter')) {
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', background: offerDeclaration.hasReadOfferLetter ? '#f0fdf4' : '#fff' }}>
+                              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#f0f9ff', color: '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <FileText size={20} />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b' }}>Primary Offer Letter</div>
+                                <div style={{ fontSize: '12px', color: '#64748b' }}>System Generated document</div>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <a href={profile.offerLetterUrl} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#3b82f6', textDecoration: 'none', fontSize: '13px', fontWeight: '600', background: '#fff' }}>View</a>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      {profile?.dynamicTemplates?.filter(t => {
+                        return reqDocsLabels.length === 0 || reqDocsLabels.includes(t.name);
+                      }).map((temp) => {
+                        const isAccepted = profile?.offerDeclaration?.acceptedTemplates?.some(t => t.templateId === temp._id);
                         return (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', background: offerDeclaration.hasReadOfferLetter ? '#f0fdf4' : '#fff' }}>
-                            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#f0f9ff', color: '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <div key={temp._id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', background: isAccepted ? '#f0fdf4' : '#fff' }}>
+                            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: isAccepted ? '#dcfce7' : '#f8fafc', color: isAccepted ? '#16a34a' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               <FileText size={20} />
                             </div>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b' }}>Primary Offer Letter</div>
-                              <div style={{ fontSize: '12px', color: '#64748b' }}>System Generated document</div>
+                              <div style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b' }}>{temp.name}</div>
+                              <div style={{ fontSize: '12px', color: '#64748b' }}>Customized for you</div>
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <a href={profile.offerLetterUrl} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#3b82f6', textDecoration: 'none', fontSize: '13px', fontWeight: '600', background: '#fff' }}>View</a>
+                              <button onClick={() => handleDownloadDynamicTemplate(temp._id, temp.name)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #3b82f6', color: '#3b82f6', background: '#fff', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                                Download
+                              </button>
+                              {(!sRO && !isAccepted) && (
+                                <button onClick={() => handleAcceptTemplate(temp._id)} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#10b981', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                                  Acknowledge
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
+                      })}
+                    </div>
+
+                    <div style={{ display: 'grid', gap: '12px', marginBottom: '24px' }}>
+                      {
+                        (() => {
+                          return [
+                            { key: 'hasReadOfferLetter', label: 'I have read and understood the terms of my offer letter', show: reqDocsLabels.length === 0 || reqDocsLabels.includes('Offer Letter') },
+                            { key: 'hasProvidedTrueInfo', label: 'All information I have provided is true and accurate', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') },
+                            { key: 'agreesToOriginalVerification', label: 'I agree to submit original documents for verification on joining day', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') }
+                          ].filter(item => item.show).map((item) => (
+                            <label key={item.key} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', border: '1px solid #e2e8f0', borderRadius: '10px', cursor: sRO ? 'default' : 'pointer', background: offerDeclaration[item.key] ? '#f0fdf4' : '#fff' }}>
+                              <input type="checkbox" disabled={sRO} checked={offerDeclaration[item.key] || false} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, [item.key]: e.target.checked }); markChange(); }} style={{ marginTop: '2px', accentColor: '#16a34a' }} />
+                              <span style={{ fontSize: '14px', color: '#1e293b', fontWeight: '500' }}>{item.label}</span>
+                            </label>
+                          ));
+                        })()
                       }
-                      return null;
-                    })()}
+                    </div>
 
-                    {profile?.dynamicTemplates?.filter(t => {
-                      return reqDocsLabels.length === 0 || reqDocsLabels.includes(t.name);
-                    }).map((temp) => {
-                      const isAccepted = profile?.offerDeclaration?.acceptedTemplates?.some(t => t.templateId === temp._id);
-                      return (
-                        <div key={temp._id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', background: isAccepted ? '#f0fdf4' : '#fff' }}>
-                          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: isAccepted ? '#dcfce7' : '#f8fafc', color: isAccepted ? '#16a34a' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <FileText size={20} />
+                    {(() => {
+                      return (reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration')) && (
+                        <>
+                          <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>E-Signature</h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div><label style={labelStyle}>Full Name *</label><input style={inputStyle} readOnly={sRO} placeholder="Type your full name" value={offerDeclaration.eSignName || ''} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, eSignName: e.target.value }); markChange(); }} /></div>
+                            <div><label style={labelStyle}>Date *</label><input type="date" style={inputStyle} readOnly={sRO} value={offerDeclaration.eSignDate?.split('T')[0] || ''} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, eSignDate: e.target.value }); markChange(); }} /></div>
                           </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b' }}>{temp.name}</div>
-                            <div style={{ fontSize: '12px', color: '#64748b' }}>Customized for you</div>
-                          </div>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button onClick={() => handleDownloadDynamicTemplate(temp._id, temp.name)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #3b82f6', color: '#3b82f6', background: '#fff', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-                              Download
-                            </button>
-                            {( !sRO && !isAccepted) && (
-                              <button onClick={() => handleAcceptTemplate(temp._id)} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#10b981', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                                Acknowledge
-                              </button>
-                            )}
-                          </div>
-                        </div>
+
+                          {!isGlobalReadOnly && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+                              <input type="checkbox" id="od_complete" checked={offerDeclaration.isComplete || false} onChange={(e) => {
+                                const isChecked = e.target.checked;
+                                const updated = { ...offerDeclaration, isComplete: isChecked };
+                                setOfferDeclaration(updated);
+                                if (isChecked) handleSaveSection('offerDeclaration', false, updated);
+                                else markChange();
+                              }} />
+                              <label htmlFor="od_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
+                            </div>
+                          )}
+                        </>
                       );
-                    })}
+                    })()}
                   </div>
-
-                  <div style={{ display: 'grid', gap: '12px', marginBottom: '24px' }}>
-                    {
-                      (() => {
-                        return [
-                          { key: 'hasReadOfferLetter', label: 'I have read and understood the terms of my offer letter', show: reqDocsLabels.length === 0 || reqDocsLabels.includes('Offer Letter') },
-                          { key: 'hasProvidedTrueInfo', label: 'All information I have provided is true and accurate', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') },
-                          { key: 'agreesToOriginalVerification', label: 'I agree to submit original documents for verification on joining day', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') }
-                        ].filter(item => item.show).map((item) => (
-                          <label key={item.key} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', border: '1px solid #e2e8f0', borderRadius: '10px', cursor: sRO ? 'default' : 'pointer', background: offerDeclaration[item.key] ? '#f0fdf4' : '#fff' }}>
-                            <input type="checkbox" disabled={sRO} checked={offerDeclaration[item.key] || false} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, [item.key]: e.target.checked }); markChange(); }} style={{ marginTop: '2px', accentColor: '#16a34a' }} />
-                            <span style={{ fontSize: '14px', color: '#1e293b', fontWeight: '500' }}>{item.label}</span>
-                          </label>
-                        ));
-                      })()
-                    }
-                  </div>
-
-                  {(() => {
-                    return (reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration')) && (
-                    <>
-                      <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>E-Signature</h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                        <div><label style={labelStyle}>Full Name *</label><input style={inputStyle} readOnly={sRO} placeholder="Type your full name" value={offerDeclaration.eSignName || ''} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, eSignName: e.target.value }); markChange(); }} /></div>
-                        <div><label style={labelStyle}>Date *</label><input type="date" style={inputStyle} readOnly={sRO} value={offerDeclaration.eSignDate?.split('T')[0] || ''} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, eSignDate: e.target.value }); markChange(); }} /></div>
-                      </div>
-
-                      {!isGlobalReadOnly && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
-                          <input type="checkbox" id="od_complete" checked={offerDeclaration.isComplete || false} onChange={(e) => { 
-                            const isChecked = e.target.checked;
-                            const updated = { ...offerDeclaration, isComplete: isChecked };
-                            setOfferDeclaration(updated); 
-                            if (isChecked) handleSaveSection('offerDeclaration', false, updated); 
-                            else markChange(); 
-                          }} />
-                          <label htmlFor="od_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
-                        </div>
-                      )}
-                    </>
-                    );
-                  })()}
-                </div>
-              ); })()}
+                );
+              })()}
             </div>
 
             {/* Navigation */}
@@ -1197,7 +1193,7 @@ const PreOnboardingPortal = () => {
             )}
           </>
         )
-      }
+        }
       </div>
 
       {/* Extension Modal */}
