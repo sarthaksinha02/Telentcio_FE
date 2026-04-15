@@ -29,7 +29,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         <div className="h-16 flex items-center justify-between px-6 border-b border-slate-700/50">
           <div className="flex items-center space-x-2">
             <div className="h-8 w-8 bg-blue-600 rounded-md flex items-center justify-center font-bold text-white">T</div>
-            <span className="text-lg font-semibold tracking-tight">TalentCio</span>
+            <span className="text-lg font-semibold tracking-tight">TalentCIO</span>
           </div>
           {/* Mobile Close Button */}
           <button onClick={onClose} className="md:hidden text-slate-400 hover:text-white">
