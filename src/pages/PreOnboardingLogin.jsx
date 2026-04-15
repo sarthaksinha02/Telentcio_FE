@@ -117,7 +117,6 @@ const PreOnboardingLogin = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
-      <Toaster position="top-right" />
 
       {/* Decorative background elements */}
       <div style={{ position: 'fixed', top: '-100px', right: '-100px', width: '400px', height: '400px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)', pointerEvents: 'none' }} />

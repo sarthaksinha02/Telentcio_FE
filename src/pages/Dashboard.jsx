@@ -208,7 +208,7 @@ const Dashboard = () => {
                             {[
                                 {
                                     label: 'Total Workforce',
-                                    value: stats?.totalEmployees - 1 || 0,
+                                    value: stats?.totalEmployees || 0,
                                     icon: Users,
                                     color: 'blue',
                                     trend: 'Active',

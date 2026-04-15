@@ -58,7 +58,7 @@ const Onboarding = () => {
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const [sendingCustomFile, setSendingCustomFile] = useState(false);
-  const [customFile, setCustomFile] = useState(null);
+  const [customFiles, setCustomFiles] = useState([]);
   const customFileInputRef = useRef(null);
   const initialEmployeesFetchDoneRef = useRef(false);
   const initialSettingsFetchDoneRef = useRef(false);
@@ -145,15 +145,18 @@ const Onboarding = () => {
   };
 
   const handleSendCustomFile = async () => {
-    if (!customFile) {
-      toast.error('Please select a file first');
+    if (customFiles.length === 0) {
+      toast.error('Please select at least one file first');
       return;
     }
 
     try {
       setSendingCustomFile(true);
       const formData = new FormData();
-      formData.append('document', customFile);
+      // Append all files using the same field name 'documents' as expected by upload.array
+      customFiles.forEach(file => {
+        formData.append('documents', file);
+      });
 
       const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/send-custom-file`, formData, {
         headers: {
@@ -161,15 +164,15 @@ const Onboarding = () => {
         }
       });
 
-      toast.success(res.data.message || 'File sent to candidate email!');
-      setCustomFile(null);
+      toast.success(res.data.message || 'File(s) sent successfully!');
+      setCustomFiles([]);
       if (customFileInputRef.current) customFileInputRef.current.value = '';
 
       // Refresh employee to see audit log update
       const empDetail = await api.get(`/onboarding/employees/${selectedEmployee._id}`);
       setSelectedEmployee(empDetail.data);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to send file');
+      toast.error(err.response?.data?.message || 'Failed to send file(s)');
     } finally {
       setSendingCustomFile(false);
     }
@@ -222,12 +225,15 @@ const Onboarding = () => {
     try {
       const cached = readSessionCache(cacheKey);
       if (cached) {
-        const data = cached.data || {};
-        setEmployees(data.employees || []);
-        setStats(data.stats || { Pending: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 });
-        setTotalPages(data.totalPages || 1);
-        setLoading(false);
-        if (!force && isCacheFresh(cached, ONBOARDING_EMPLOYEE_CACHE_TTL_MS)) return;
+        // Only set from cache if NOT forcing a refresh. This prevents flickering back to old data.
+        if (!force) {
+          const data = cached.data || {};
+          setEmployees(data.employees || []);
+          setStats(data.stats || { Pending: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 });
+          setTotalPages(data.totalPages || 1);
+          setLoading(false);
+          if (isCacheFresh(cached, ONBOARDING_EMPLOYEE_CACHE_TTL_MS)) return;
+        }
       } else {
         setLoading(true);
       }
@@ -282,9 +288,9 @@ const Onboarding = () => {
     const cacheKey = `onboarding_settings_${user?._id}`;
     try {
       const cached = readSessionCache(cacheKey);
-      if (cached) {
+      if (cached && !force) {
         setOnboardingSettings(cached.data || { offerLetterTemplateUrl: '', declarationTemplateUrl: '', policies: [], dynamicTemplates: [] });
-        if (!force && isCacheFresh(cached, ONBOARDING_SETTINGS_CACHE_TTL_MS)) return;
+        if (isCacheFresh(cached, ONBOARDING_SETTINGS_CACHE_TTL_MS)) return;
       }
 
       const res = await api.get('/onboarding/bootstrap', { params: { tab: 'settings' } });
@@ -332,22 +338,27 @@ const Onboarding = () => {
   const handleDeleteDynamicTemplate = async (id) => {
     if (!confirm('Are you sure you want to delete this template?')) return;
     try {
+      // Optimistic update
+      setOnboardingSettings(prev => ({
+        ...prev,
+        dynamicTemplates: (prev.dynamicTemplates || []).filter(t => t._id !== id)
+      }));
+
       await api.delete(`/onboarding/settings/templates/dynamic/${id}`);
       toast.success('Template deleted');
       fetchSettings({ force: true });
     } catch {
       toast.error('Failed to delete template');
+      fetchSettings({ force: true });
     }
   };
 
   useEffect(() => {
     if (activeTab === 'employees') {
-      if (initialEmployeesFetchDoneRef.current && page === 1 && statusFilter === 'All' && !searchTerm) return;
       initialEmployeesFetchDoneRef.current = true;
       fetchEmployees();
     }
     if (activeTab === 'settings') {
-      if (initialSettingsFetchDoneRef.current) return;
       initialSettingsFetchDoneRef.current = true;
       fetchSettings();
     }
@@ -403,11 +414,18 @@ const Onboarding = () => {
   const handleDeletePolicy = async (policyId) => {
     if (!confirm('Are you sure you want to delete this policy?')) return;
     try {
+      // Optimistic update
+      setOnboardingSettings(prev => ({
+        ...prev,
+        policies: (prev.policies || []).filter(p => p._id !== policyId)
+      }));
+
       await api.delete(`/onboarding/settings/policies/${policyId}`);
       toast.success('Policy deleted');
       fetchSettings({ force: true });
     } catch {
       toast.error('Failed to delete policy');
+      fetchSettings({ force: true });
     }
   };
 
@@ -430,16 +448,21 @@ const Onboarding = () => {
     }
   };
 
-  const handleFilePreview = async (url, type = 'file') => {
+  const [previewLabel, setPreviewLabel] = useState('');
+
+  const handleFilePreview = async (url, label = 'File', type = 'file') => {
     try {
       setPreviewLoading(true);
       setPreviewType(type);
+      setPreviewLabel(label);
       setShowPreviewModal(true);
       setPreviewWithData(false);
       if (previewBlob) setPreviewBlob(null);
 
-      // Using raw axios for external URLs like Cloudinary to avoid base API interceptors
-      const res = await axios.get(url, { responseType: 'blob' });
+      // Use configured api instance for internal routes to get headers/base URL, 
+      // but use raw axios for external Cloudinary URLs to avoid CORS/BaseURL issues.
+      const isInternal = url.startsWith('/') || url.startsWith('onboarding');
+      const res = await (isInternal ? api : axios).get(url, { responseType: 'blob' });
       setPreviewBlob(res.data);
     } catch (err) {
       console.error('File preview error:', err);
@@ -451,11 +474,15 @@ const Onboarding = () => {
   };
 
   useEffect(() => {
+    let objectUrl = null;
     if (previewBlob && previewContainerRef.current) {
       previewContainerRef.current.innerHTML = '';
       if (previewBlob.type === 'application/pdf') {
-        const url = URL.createObjectURL(previewBlob);
-        previewContainerRef.current.innerHTML = `<iframe src="${url}" style="width:100%; height:800px; border:none; border-radius:12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);"></iframe>`;
+        objectUrl = URL.createObjectURL(previewBlob);
+        previewContainerRef.current.innerHTML = `<iframe src="${objectUrl}" style="width:100%; height:800px; border:none; border-radius:12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);"></iframe>`;
+      } else if (previewBlob.type.startsWith('image/')) {
+        objectUrl = URL.createObjectURL(previewBlob);
+        previewContainerRef.current.innerHTML = `<img src="${objectUrl}" style="max-width:100%; max-height:800px; object-fit:contain; border-radius:8px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);" />`;
       } else {
         renderAsync(previewBlob, previewContainerRef.current, null, {
           className: "docx-content",
@@ -467,6 +494,9 @@ const Onboarding = () => {
         }).catch(err => console.error('Docx-preview error:', err));
       }
     }
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [previewBlob, showPreviewModal]);
 
   const handleDownloadCurrent = () => {
@@ -474,8 +504,23 @@ const Onboarding = () => {
     const url = window.URL.createObjectURL(previewBlob);
     const a = document.createElement('a');
     a.href = url;
-    const extension = previewBlob.type === 'application/pdf' ? 'pdf' : 'docx';
-    a.download = `Preview_${new Date().getTime()}.${extension}`;
+
+    // Determine correct extension from mime type
+    const mimeMap = {
+      'application/pdf': 'pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/gif': 'gif',
+      'image/webp': 'webp'
+    };
+    const extension = mimeMap[previewBlob.type] || (previewBlob.type ? previewBlob.type.split('/')[1] : 'bin');
+
+    // Clean filename from previewLabel
+    const safeLabel = (previewLabel || 'Document').replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
+    a.download = `${safeLabel}_${new Date().getTime()}.${extension}`;
+
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1466,7 +1511,8 @@ const Onboarding = () => {
                         itemType: 'template',
                         _id: t._id,
                         isAccepted: (selectedEmployee.offerDeclaration?.acceptedTemplates || []).some(at => at.templateId === t._id),
-                        emailSentAt: req?.emailSentAt
+                        emailSentAt: req?.emailSentAt,
+                        url: t.url
                       };
                     }),
                     ...(onboardingSettings.offerLetterTemplateUrl ? [{
@@ -1475,7 +1521,8 @@ const Onboarding = () => {
                       itemType: 'template',
                       _id: 'offer-letter-default',
                       isAccepted: selectedEmployee.offerDeclaration?.hasReadOfferLetter,
-                      emailSentAt: (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Offer Letter')?.emailSentAt
+                      emailSentAt: (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Offer Letter')?.emailSentAt,
+                      url: onboardingSettings.offerLetterTemplateUrl
                     }] : []),
                     ...(onboardingSettings.declarationTemplateUrl ? [{
                       label: 'Declaration',
@@ -1483,7 +1530,8 @@ const Onboarding = () => {
                       itemType: 'template',
                       _id: 'declaration-default',
                       isAccepted: selectedEmployee.offerDeclaration?.isComplete,
-                      emailSentAt: (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Declaration')?.emailSentAt
+                      emailSentAt: (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Declaration')?.emailSentAt,
+                      url: onboardingSettings.declarationTemplateUrl
                     }] : [])
                   ].map((item, idx) => {
                     const isDoc = item.itemType === 'document';
@@ -1520,7 +1568,21 @@ const Onboarding = () => {
                         {(item.url || isDoc) && (
                           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                             {item.url && (
-                              <button onClick={() => handleFilePreview(item.url, item.itemType || 'file')} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#3b82f6', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>View</button>
+                              <button onClick={() => {
+                                if (item.itemType === 'template') {
+                                  let templatePreviewUrl = '';
+                                  if (item.label === 'Offer Letter') {
+                                    templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/offer-letter`;
+                                  } else if (item.label === 'Declaration') {
+                                    templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/declaration`;
+                                  } else {
+                                    templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/dynamic-template/${item._id}`;
+                                  }
+                                  handleFilePreview(templatePreviewUrl, item.label, 'document');
+                                } else {
+                                  handleFilePreview(item.url, item.label, item.itemType || 'file');
+                                }
+                              }} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#3b82f6', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>View</button>
                             )}
                             {isDoc && item.status === 'Uploaded' && (
                               <>
@@ -1603,27 +1665,50 @@ const Onboarding = () => {
                     >
                       <input
                         type="file"
+                        multiple
                         ref={customFileInputRef}
-                        onChange={(e) => setCustomFile(e.target.files[0])}
+                        onChange={(e) => {
+                          const newFiles = Array.from(e.target.files);
+                          setCustomFiles(prev => {
+                            const combined = [...prev, ...newFiles];
+                            // Filter duplicates by name and size
+                            return combined.filter((file, index, self) =>
+                              index === self.findIndex((t) => (
+                                t.name === file.name && t.size === file.size
+                              ))
+                            );
+                          });
+                          if (customFileInputRef.current) customFileInputRef.current.value = '';
+                        }}
                         style={{ display: 'none' }}
                       />
-                      {customFile ? (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                          <FileText size={18} color="#2563eb" />
-                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{customFile.name}</span>
-                          <button onClick={(e) => { e.stopPropagation(); setCustomFile(null); if (customFileInputRef.current) customFileInputRef.current.value = ''; }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', marginLeft: '8px' }}><X size={14} /></button>
+                      {customFiles.length > 0 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
+                          {customFiles.map((file, idx) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <FileText size={14} color="#2563eb" />
+                              <span style={{ fontSize: '12px', fontWeight: '600', color: '#1e293b', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+                              <button onClick={(e) => {
+                                e.stopPropagation();
+                                setCustomFiles(prev => prev.filter((_, i) => i !== idx));
+                              }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px', display: 'flex', alignItems: 'center' }}>
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))}
+                          <div style={{ width: '100%', marginTop: '8px', fontSize: '12px', color: '#3b82f6', fontWeight: '600' }}>+ Click to add more files</div>
                         </div>
                       ) : (
-                        <span style={{ fontSize: '13px', color: '#94a3b8' }}>Click to select a file...</span>
+                        <span style={{ fontSize: '13px', color: '#94a3b8' }}>Click to select files...</span>
                       )}
                     </div>
 
                     <button
                       onClick={handleSendCustomFile}
-                      disabled={sendingCustomFile || !customFile}
-                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px', borderRadius: '10px', border: 'none', background: !customFile ? '#e2e8f0' : 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', cursor: (sendingCustomFile || !customFile) ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '14px', transition: 'all 0.2s', opacity: sendingCustomFile ? 0.7 : (!customFile ? 0.6 : 1), boxShadow: customFile ? '0 4px 12px rgba(37,99,235,0.2)' : 'none' }}
+                      disabled={sendingCustomFile || customFiles.length === 0}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px', borderRadius: '10px', border: 'none', background: customFiles.length === 0 ? '#e2e8f0' : 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', cursor: (sendingCustomFile || customFiles.length === 0) ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '14px', transition: 'all 0.2s', opacity: sendingCustomFile ? 0.7 : (customFiles.length === 0 ? 0.6 : 1), boxShadow: customFiles.length > 0 ? '0 4px 12px rgba(37,99,235,0.2)' : 'none' }}
                     >
-                      <Send size={16} /> {sendingCustomFile ? 'Sending...' : 'Send to Candidate Email'}
+                      <Send size={16} /> {sendingCustomFile ? 'Sending...' : `Send ${customFiles.length > 0 ? customFiles.length : ''} File(s) to Candidate`}
                     </button>
                   </div>
                 </div>
@@ -1657,7 +1742,7 @@ const Onboarding = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                 <div>
                   <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>
-                    {previewType === 'offerLetter' ? 'Offer Letter' : 'Declaration'} Template Preview
+                    {previewLabel || (previewType === 'offerLetter' ? 'Offer Letter' : 'Declaration')} {(previewType === 'document' || previewType === 'file') ? '' : 'Template'} Preview
                   </h2>
                 </div>
 
@@ -1709,19 +1794,21 @@ const Onboarding = () => {
                     minHeight: 'fit-content'
                   }}
                 >
-                  {/* Manual logo injection for maximum visibility */}
-                  {user?.company?.logo ? (
-                    <div style={{ textAlign: 'left', marginBottom: '30px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
-                      <img
-                        src={user.company.logo}
-                        alt="Company Logo"
-                        style={{ maxHeight: '55px', maxWidth: '220px', objectFit: 'contain' }}
-                      />
-                    </div>
-                  ) : (
-                    <div style={{ marginBottom: '30px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
-                      <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{user?.company?.name || 'Resource Gateway'}</span>
-                    </div>
+                  {/* Manual logo injection ONLY for offer letters/declarations/templates, NOT for candidate docs/files */}
+                  {(previewType === 'offerLetter' || previewType === 'declaration' || previewType === 'template') && (
+                    user?.company?.logo ? (
+                      <div style={{ textAlign: 'left', marginBottom: '30px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
+                        <img
+                          src={user.company.logo}
+                          alt="Company Logo"
+                          style={{ maxHeight: '55px', maxWidth: '220px', objectFit: 'contain' }}
+                        />
+                      </div>
+                    ) : (
+                      <div style={{ marginBottom: '30px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
+                        <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{user?.company?.name || 'Resource Gateway'}</span>
+                      </div>
+                    )
                   )}
                   <div ref={previewContainerRef} style={{ width: '100%' }} />
                 </div>
